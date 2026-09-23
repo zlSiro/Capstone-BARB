@@ -37,7 +37,7 @@ y verificá con `uv --version`.
 
 ```bash
 git clone <url-del-repo>
-cd backend-capstone
+cd backend
 
 uv python install 3.12   # descarga Python 3.12 si no está (uv lo gestiona, no el sistema)
 uv sync                  # crea .venv/ e instala todas las deps con las versiones exactas de uv.lock
@@ -109,7 +109,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh        # Linux/macOS
 
 # 2. clonar y entrar
 git clone <url-del-repo>
-cd backend-capstone
+cd backend
 
 # 3. Python 3.12 + deps
 uv python install 3.12
