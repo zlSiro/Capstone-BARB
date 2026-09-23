@@ -1,0 +1,22 @@
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: barb_capstone_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-barb_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-barb_password123}
+      POSTGRES_DB: ${POSTGRES_DB:-barb_database}
+    ports:
+      - "5432:5432"
+    volumes:
+      - barb_capstone_pg_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-barb_admin} -d ${POSTGRES_DB:-barb_database}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  barb_capstone_pg_data:
