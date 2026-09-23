@@ -1,0 +1,52 @@
+[project]
+name = "barb-backend"
+version = "0.1.0"
+description = "BARB API — industrial maintenance & predictive AI platform (core, Python 3.12)"
+readme = "README.md"
+authors = [
+    { name = "JuanPablo", email = "jpablo.valdebenitom@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "bcrypt>=5.0.0",
+    "fastapi[standard]>=0.141.1",
+    "psycopg[binary,pool]>=3.3.6",
+    "pydantic-settings>=2.15.0",
+    "python-multipart>=0.0.32",
+    "redis>=8.1.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.17,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 130
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+# B008: FastAPI's Depends()-as-default is the documented pattern, not a bug.
+ignore = ["B008"]
+
+[tool.ruff.lint.per-file-ignores]
+# RBAC matrices read best as one row per role; keep them un-wrapped.
+"src/barb/core/permissions.py" = ["E501"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+asyncio_mode = "auto"
+
+[dependency-groups]
+dev = [
+    "alembic>=1.20.0",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "ruff>=0.16.8",
+    "sqlalchemy>=2.0.54",
+]
