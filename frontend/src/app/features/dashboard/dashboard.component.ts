@@ -2,6 +2,7 @@ import { Component, inject, signal, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { StatsService } from '../../core/services/stats.service';
 import { FinancialStats } from '../../core/models';
+import { ToastService } from '../../core/services/toast.service';
 
 @Component({
   selector: 'app-dashboard',
@@ -14,7 +15,14 @@ import { FinancialStats } from '../../core/models';
         <p class="text-sm text-gray-500">Impacto basado en US$2,000/min de inactividad</p>
       </div>
 
-      @if (loading()) {
+      <button
+        (click)="testToast()"
+        class="bg-blue-600 text-white px-4 py-2 rounded text-sm mb-4">
+        Test Toast
+      </button>
+
+
+      <!-- @if (loading()) {
         <div class="text-center py-10 text-gray-500">Cargando KPIs...</div>
       } @else if (stats()) {
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -44,13 +52,13 @@ import { FinancialStats } from '../../core/models';
         </div>
       } @else {
         <div class="text-center py-10 text-red-500">No se pudieron cargar los KPIs</div>
-      }
+      } -->
     </div>
   `
 })
 export class DashboardComponent implements OnInit {
   private statsService = inject(StatsService);
-
+  private toast = inject(ToastService);
   stats = signal<FinancialStats | null>(null);
   loading = signal(true);
 
@@ -62,5 +70,13 @@ export class DashboardComponent implements OnInit {
       },
       error: () => this.loading.set(false)
     });
+  }
+
+ 
+  testToast() {
+    this.toast.success('¡Funciona! Mensaje de éxito');
+    setTimeout(() => this.toast.error('Este es un error'), 500);
+    setTimeout(() => this.toast.info('Info adicional'), 1000);
+    setTimeout(() => this.toast.warning('Y una advertencia'), 1500);
   }
 }
