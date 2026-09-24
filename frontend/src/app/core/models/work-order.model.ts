@@ -1,26 +1,103 @@
-export type OTStatus = 'pending' | 'assigned' | 'in_progress' | 'completed' | 'cancelled' | 'overdue';
-export type OTPriority = 'low' | 'medium' | 'high' | 'urgent';
-export type OTSeverity = 'low' | 'medium' | 'high' | 'critical';
-export type OTType = 'corrective' | 'preventive' | 'predictive' | 'inspection';
+// =============================================================================
+// ÓRDENES DE TRABAJO
+// =============================================================================
+//
+// Contrato exacto que devuelve el backend en routers/work_orders.py:
+// row_to_work_order(). El backend retorna nombres en inglés y español,
+// para dar flexibilidad a cualquier frontend.
+//
+
+export type WorkOrderStatus =
+  | 'pending'
+  | 'assigned'
+  | 'in_progress'
+  | 'completed'
+  | 'cancelled'
+  | 'overdue'
+  | (string & {});
+
+export type WorkOrderPriority =
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'urgent'
+  | (string & {});
+
+export type WorkOrderSeverity =
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'critical'
+  | (string & {});
+
+export type MaintenanceType =
+  | 'corrective'
+  | 'preventive'
+  | 'predictive'
+  | 'inspection'
+  | (string & {});
+
+export interface WorkOrderPhoto {
+  id: number;
+  ot_id: number;
+  file_name: string;
+  original_name: string;
+  content_type: string;
+  file_path: string;
+  created_at?: string | null;
+}
 
 export interface WorkOrder {
-  ot_id: number;
+  // Identificadores
+  id: string;              // = numero_ot (string)
   numero_ot: string;
-  maquina_id: number;
-  tecnico_id: number;
-  creado_por: number;
-  tipo: OTType;
-  descripcion_problema?: string;
-  descripcion_reparacion?: string;
-  resolution?: string;
-  priority: OTPriority;
-  severity?: OTSeverity;
-  fecha_creacion: string;
-  fecha_inicio?: string;
-  fecha_cierre?: string;
-  tiempo_reparacion_min?: number;
-  downtime_minutes?: number;
-  costo_estimado?: number;
-  costo_real?: number;
-  estado: OTStatus;
+  ot_id: number;
+
+  // Título y descripción
+  title: string;
+  description?: string | null;
+  resolution?: string | null;
+
+  // Máquina
+  machine: string;
+  machine_name: string;
+  machine_id: number;
+
+  // Planta
+  plant: string;
+  plant_name: string;
+  plant_id: number;
+
+  // Disciplina
+  discipline: string;
+  discipline_name: string;
+
+  // Prioridad, estado, severidad
+  priority: WorkOrderPriority;
+  status: string;          // Humanizado ("In Progress")
+  estado: WorkOrderStatus; // Raw snake_case ("in_progress") ← usar para lógica
+  severity?: WorkOrderSeverity | null;
+
+  // Fechas y duración
+  age_minutes: number;
+  created_at: string;
+  fecha_inicio?: string | null;
+  fecha_cierre?: string | null;
+  downtime_minutes?: number | null;
+
+  // Fotos
+  photo_count: number;
+  photos: WorkOrderPhoto[];
+
+  // Técnico y tipo
+  tecnico_nombre: string;
+  tipo: MaintenanceType;
+
+  // Costos
+  costo_estimado: number;
+  costo_real: number;
+
+  // Referencias
+  reporte_id?: number | null;
+  diagnostico_id?: number | null;
 }

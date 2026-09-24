@@ -34,7 +34,7 @@ import { WorkOrder } from '../../../../core/models';
               @for (ot of orders(); track ot.ot_id) {
                 <tr class="border-t border-gray-100 hover:bg-gray-50">
                   <td class="px-4 py-2 font-mono">{{ ot.numero_ot }}</td>
-                  <td class="px-4 py-2">{{ ot.maquina_id }}</td>
+                  <td class="px-4 py-2">{{ ot.machine_name }}</td>
                   <td class="px-4 py-2">{{ ot.tipo }}</td>
                   <td class="px-4 py-2">
                     <span class="text-xs px-2 py-1 rounded bg-gray-100">{{ ot.estado }}</span>
@@ -62,7 +62,7 @@ export class WorkOrdersListComponent implements OnInit {
   ngOnInit() {
     this.workOrdersService.getAll().subscribe({
       next: (data) => {
-        this.orders.set(data);
+        this.orders.set(Array.isArray(data) ? data : []);
         this.loading.set(false);
       },
       error: () => this.loading.set(false)

@@ -1,30 +1,29 @@
-export interface Machine {
-  maquina_id: number;
-  planta_id: number;
-  categoria_id?: number;
-  nombre: string;
-  tipo?: string;
-  modelo?: string;
-  fabricante?: string;
-  numero_serie?: string;
-  estado: string;
-  image_url?: string;
-}
+// =============================================================================
+// CATÁLOGOS (contrato exacto del backend /api/machines, /api/disciplines,
+// /api/plants, /api/technicians)
+// =============================================================================
 
-export interface Plant {
-  planta_id: number;
-  cliente_id: number;
-  nombre: string;
-  ubicacion?: string;
-  area?: string;
-  sector?: string;
-  estado: string;
+export interface Machine {
+  id: number;
+  name: string;
+  discipline_id: number | null;
+  plant_id: number | null;
 }
 
 export interface Discipline {
-  disciplina_id: number;
-  nombre: string;
-  icono?: string;
-  color?: string;
-  descripcion?: string;
+  id: number;
+  name: string;
+}
+
+export interface Plant {
+  id: number;
+  name: string;
+  ubicacion?: string | null;
+}
+
+export interface Technician {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
 }

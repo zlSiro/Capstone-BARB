@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Machine, Plant, Discipline } from '../models';
+import { Machine, Plant, Discipline, Technician } from '../models';
 import { environment } from '../../../environments/environment';
 
 @Injectable({ providedIn: 'root' })
@@ -21,6 +21,6 @@ export class CatalogService {
   }
 
   getTechnicians() {
-    return this.http.get<any[]>(`${this.apiUrl}/technicians`);
+    return this.http.get<Technician[]>(`${this.apiUrl}/technicians`);
   }
 }
