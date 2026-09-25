@@ -95,18 +95,16 @@ def puede_ejecutar_accion(rol: str, accion: str) -> bool:
 # que el cliente pudiera manipular.
 
 async def get_sesion_actual(authorization: str = Header(..., alias="Authorization")) -> dict:
-    """
-    Resuelve la sesión completa (usuario_id, empresa_id, rol) a partir del
-    token de sesión real guardado en la tabla `sesion`. Rechaza tokens
-    inexistentes, expirados o de usuarios inactivos.
-    """
     token = authorization.replace("Bearer ", "").strip()
     if not token:
         raise HTTPException(status_code=401, detail="Falta el header Authorization: Bearer <token>.")
 
+    # NOTA: se elimina la referencia a u.empresa_id porque la migración
+    # Alembic actual no crea esa columna en la tabla usuario. Cuando se
+    # implemente multi-tenant real, agregar migración y volver a incluirla.
     sesion = await fetch_one(
         """
-        SELECT u.usuario_id, u.empresa_id, u.rol, u.activo
+        SELECT u.usuario_id, u.rol, u.activo
         FROM sesion s
         JOIN usuario u ON u.usuario_id = s.usuario_id
         WHERE s.token = %(token)s AND s.expira_en > NOW()
@@ -118,10 +116,8 @@ async def get_sesion_actual(authorization: str = Header(..., alias="Authorizatio
 
     return {
         "usuario_id": int(sesion["usuario_id"]),
-        "empresa_id": int(sesion["empresa_id"]),
         "rol": _normalizar_rol(sesion["rol"]),
     }
-
 
 async def get_rol_actual(authorization: str = Header(..., alias="Authorization")) -> str:
     """Igual que get_sesion_actual pero devuelve solo el rol normalizado."""
