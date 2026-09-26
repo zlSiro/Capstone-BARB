@@ -78,7 +78,7 @@ Obtiene el historial completo de una sesión.
 
 ### ⚙️ Configuración de LangChain (Siguiente subtarea)
 
-Para que Javier pueda empezar con el setup en los próximos 6 días, aquí tienes los comandos y variables de entorno iniciales.
+Para que el desarrollador pueda empezar con el setup en los próximos 6 días, aquí tienes los comandos y variables de entorno iniciales.
 
 **1. Dependencias (usando `uv`):**
 ```bash
