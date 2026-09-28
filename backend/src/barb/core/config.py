@@ -18,18 +18,28 @@ class Settings(BaseSettings):
     # --- Archivos ---
     upload_dir: Path = Path("./uploads")
 
-    # --- APIs de IA ---
-    llm_provider: Literal["openrouter", "groq", "deepseek", "openai"] = "openrouter"
+   # --- APIs de IA ---
+    llm_provider: Literal["deepseek", "openai", "openrouter", "groq"] = "deepseek"
     openrouter_api_key: str = ""
     groq_api_key: str = ""
     deepseek_api_key: str = ""
     openai_api_key: str = ""
 
     # --- Configuración LLM ---
-    llm_model: str = "meta-llama/llama-3.3-70b-instruct"
+    llm_model: str = "deepseek-chat"
     llm_temperature: float = 0.7
     llm_max_tokens: int = 1024
     chat_memory_window: int = 10
+
+    # --- Resiliencia LLM (HU-03) ---
+    # Lista separada por coma de proveedores de respaldo (se usan si el primario falla).
+    # Ejemplos: "openrouter", "openai", "groq"
+    # Si está vacío, no hay fallback entre proveedores (solo reintentos).
+    llm_fallback_providers: str = ""
+
+    @property
+    def llm_fallback_providers_list(self) -> list[str]:
+        return [p.strip() for p in self.llm_fallback_providers.split(",") if p.strip()]
 
     # --- CORS ---
     cors_origins: str = "http://localhost:4200,http://localhost:5173,http://localhost:3000"
