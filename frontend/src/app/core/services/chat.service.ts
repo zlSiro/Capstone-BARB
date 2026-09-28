@@ -14,13 +14,36 @@ export class ChatService {
     return new Observable((subscriber) => {
       const controller = new AbortController();
 
+      // Leer token desde localStorage (nombre ajustable según cómo lo guarde AuthService)
+      const token = localStorage.getItem('token');
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
       fetch(`${this.baseUrl}/stream`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(payload),
         signal: controller.signal,
       })
         .then(async (response) => {
+          // Manejo específico de errores de auth y rate limit
+          if (response.status === 401) {
+            subscriber.error(new Error('Sesión expirada. Vuelve a iniciar sesión.'));
+            return;
+          }
+          if (response.status === 429) {
+            subscriber.error(new Error('Demasiadas peticiones. Espera un momento.'));
+            return;
+          }
+          if (response.status === 422) {
+            subscriber.error(new Error('Mensaje inválido (vacío o demasiado largo).'));
+            return;
+          }
           if (!response.ok) {
             subscriber.error(new Error(`HTTP ${response.status}`));
             return;

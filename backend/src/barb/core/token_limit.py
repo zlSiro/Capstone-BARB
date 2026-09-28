@@ -50,6 +50,6 @@ def estimate_tokens(text: str) -> int:
     """Estimación rápida de tokens: ~4 caracteres por token."""
     return max(1, len(text) // 4)
 
-
-# Instancia compartida: 50 000 tokens / 24 h por usuario
-token_limiter = InMemoryTokenLimiter(max_tokens=50_000, window_seconds=86400)
+    
+# Instancia compartida: 50,000 tokens / 24 h por usuario
+token_limiter = InMemoryTokenLimiter(max_tokens=50000, window_seconds=86400)
