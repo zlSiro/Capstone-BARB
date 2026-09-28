@@ -1,0 +1,75 @@
+<!-- frontend/src/app/features/chat/doc-chat.component.html -->
+
+<div class="flex flex-col h-[calc(100vh-4rem)] max-w-4xl mx-auto p-4">
+
+    <!-- Header -->
+  <div class="mb-4 flex items-start justify-between">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900 dark:text-gray-100">DocChat IA</h1>
+      <p class="text-sm text-gray-500 dark:text-gray-400">
+        Consulta al asistente técnico de BARB en tiempo real.
+      </p>
+    </div>
+    <button
+      (click)="resetChat()"
+      [disabled]="messages().length === 0"
+      class="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+    >
+      + Nueva conversación
+    </button>
+  </div>
+
+  <!-- Área de mensajes -->
+  <div
+    #messagesContainer
+    class="flex-1 overflow-y-auto bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-4"
+  >
+    @if (messages().length === 0) {
+      <div class="flex items-center justify-center h-full text-gray-400 dark:text-gray-500">
+        <p>Inicia la conversación escribiendo tu primera pregunta.</p>
+      </div>
+    }
+
+    @for (msg of messages(); track msg.id) {
+      <app-message-bubble [message]="msg" />
+    }
+
+    @if (isLoading()) {
+      <div class="flex justify-start mb-3">
+        <div class="bg-gray-100 dark:bg-gray-800 px-4 py-2 rounded-2xl rounded-bl-sm">
+          <span class="inline-flex gap-1">
+            <span class="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></span>
+            <span class="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:0.15s]"></span>
+            <span class="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:0.3s]"></span>
+          </span>
+        </div>
+      </div>
+    }
+
+    @if (errorMessage()) {
+      <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 rounded-lg p-3 mt-2 text-sm">
+        ⚠️ {{ errorMessage() }}
+      </div>
+    }
+  </div>
+
+  <!-- Input -->
+  <div class="mt-4 flex items-end gap-2">
+    <textarea
+      [(ngModel)]="inputText"
+      (keydown)="onKeyDown($event)"
+      [disabled]="isLoading()"
+      rows="2"
+      placeholder="Escribe tu pregunta... (Enter para enviar, Shift+Enter para salto de línea)"
+      class="flex-1 resize-none rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+    ></textarea>
+
+    <button
+      (click)="sendMessage()"
+      [disabled]="isLoading() || !inputText().trim()"
+      class="px-5 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+    >
+      Enviar
+    </button>
+  </div>
+</div>

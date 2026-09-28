@@ -42,7 +42,7 @@ async def create_user(payload: UserCreateRequest, sesion: dict = Depends(get_ses
                 RETURNING usuario_id, nombre, email, rol, activo, created_at;
                 """,
                 {
-                    "empresa_id": sesion["empresa_id"],
+                    #empresa_id": sesion["empresa_id"],
                     "nombre": payload.nombre,
                     "email": payload.email,
                     "password_hash": hash_password(payload.password),
