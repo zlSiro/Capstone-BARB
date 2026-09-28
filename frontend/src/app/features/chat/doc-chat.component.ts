@@ -97,4 +97,12 @@ export class DocChatComponent {
       });
     }, 50);
   }
+
+  resetChat(): void {
+    this.messages.set([]);
+    this.sessionId.set(crypto.randomUUID());   // UUID nuevo → sesión nueva en backend
+    this.errorMessage.set(null);
+    this.inputText.set('');
+    }
 }
+
