@@ -15,7 +15,7 @@ export class ChatService {
       const controller = new AbortController();
 
       // Leer token desde localStorage (nombre ajustable según cómo lo guarde AuthService)
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('barb_token');
 
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
