@@ -36,7 +36,8 @@ export const routes: Routes = [
       {
         path: 'chat',
         canActivate: [roleGuard('docchat')],
-        loadComponent: () => import('./features/chat/doc-chat.component').then(m => m.DocChatComponent)
+        loadComponent: () =>
+          import('./features/chat/doc-chat.component').then(m => m.DocChatComponent)
       },
       { path: '', redirectTo: 'dashboard', pathMatch: 'full' }
     ]

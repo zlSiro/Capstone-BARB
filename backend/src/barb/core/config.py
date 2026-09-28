@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -17,11 +18,21 @@ class Settings(BaseSettings):
     # --- Archivos ---
     upload_dir: Path = Path("./uploads")
 
-    # --- DeepSeek (fase 2) ---
-    deepseek_api_key: str | None = None
+    # --- APIs de IA ---
+    llm_provider: Literal["openrouter", "groq", "deepseek", "openai"] = "openrouter"
+    openrouter_api_key: str = ""
+    groq_api_key: str = ""
+    deepseek_api_key: str = ""
+    openai_api_key: str = ""
+
+    # --- Configuración LLM ---
+    llm_model: str = "meta-llama/llama-3.3-70b-instruct"
+    llm_temperature: float = 0.7
+    llm_max_tokens: int = 1024
+    chat_memory_window: int = 10
 
     # --- CORS ---
-    cors_origins: str = "http://localhost:5173,http://localhost:3000"
+    cors_origins: str = "http://localhost:4200,http://localhost:5173,http://localhost:3000"
     cors_origin_regex: str = r"https://barb.*\.vercel\.app"
 
     # --- Constantes de negocio ---
@@ -29,7 +40,7 @@ class Settings(BaseSettings):
     downtime_cost_per_minute: int = 2000
     debug_history_limit: int = 5
 
-    # --- Prompt del sistema (fase 2) ---
+    # --- Prompt del sistema ---
     barb_system_prompt: str = (
         "Eres BARB, asistente experto en mantenimiento industrial. "
         "Responde de forma clara, técnica y concisa. "
