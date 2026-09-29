@@ -39,6 +39,12 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./features/chat/doc-chat.component').then(m => m.DocChatComponent)
       },
+      {
+        path: 'chat/history',
+        canActivate: [roleGuard('docchat')],
+        loadComponent: () =>
+          import('./features/chat/chat-history/chat-history.component').then(m => m.ChatHistoryComponent)
+      },
       { path: '', redirectTo: 'dashboard', pathMatch: 'full' }
     ]
   },

@@ -33,24 +33,14 @@ def generate_session_token() -> str:
 async def get_current_user(
     authorization: str = Header(default="", alias="Authorization"),
 ) -> dict:
-    """
-    Valida el token de sesión enviado en el header `Authorization: Bearer <token>`
-    y devuelve los datos del usuario autenticado.
-
-    Uso en un endpoint:
-        @router.get("/algo")
-        async def endpoint(user: dict = Depends(get_current_user)):
-            ...
-
-    Lanza 401 si el token falta, es inválido o expiró.
-    """
+   
     token = authorization.replace("Bearer ", "").strip()
     if not token:
         raise HTTPException(status_code=401, detail="Token de autenticación requerido.")
 
     row = await fetch_one(
         """
-        SELECT u.usuario_id, u.nombre, u.email, u.rol, s.expira_en
+        SELECT u.usuario_id, u.empresa_id, u.nombre, u.email, u.rol, s.expira_en
         FROM sesion s
         JOIN usuario u ON u.usuario_id = s.usuario_id
         WHERE s.token = %(token)s
@@ -66,6 +56,7 @@ async def get_current_user(
 
     return {
         "id": int(row["usuario_id"]),
+        "empresa_id": int(row["empresa_id"]),
         "name": str(row["nombre"]),
         "email": str(row["email"]),
         "role": str(row["rol"]).lower(),
