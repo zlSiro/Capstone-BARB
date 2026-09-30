@@ -6,28 +6,28 @@
   <div class="mb-6 flex items-start justify-between">
     <div>
       <h1 class="text-2xl font-bold text-gray-900 dark:text-gray-100">
-        Historial de Diagnósticos
+        {{ 'chatHistory.title' | translate }}
       </h1>
       <p class="text-sm text-gray-500 dark:text-gray-400">
-        Registro de auditoría y consultas previas realizadas a la IA.
+        {{ 'chatHistory.subtitle' | translate }}
       </p>
     </div>
     <a
       routerLink="/chat"
       class="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
     >
-      ← Volver al chat
+      {{ 'chatHistory.backToChat' | translate }}
     </a>
   </div>
 
   <!-- Estado de carga y error -->
   @if (loading()) {
-    <div class="text-center text-gray-500 dark:text-gray-400 py-12">Cargando conversaciones…</div>
+    <div class="text-center text-gray-500 dark:text-gray-400 py-12">{{ 'chatHistory.loadingSessions' | translate }}</div>
   }
 
-  @if (errorMessage()) {
+  @if (errorMessage(); as errorMsg) {
     <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 rounded-lg p-3 mb-4 text-sm">
-      ⚠️ {{ errorMessage() }}
+      ⚠️ {{ errorMsg | translate }}
     </div>
   }
 
@@ -40,9 +40,9 @@
         <table class="w-full text-sm">
           <thead class="bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300">
             <tr>
-              <th class="text-left px-4 py-3 font-medium">Fecha</th>
-              <th class="text-left px-4 py-3 font-medium">Título / Problema</th>
-              <th class="text-left px-4 py-3 font-medium">Equipo</th>
+              <th class="text-left px-4 py-3 font-medium">{{ 'chatHistory.date' | translate }}</th>
+              <th class="text-left px-4 py-3 font-medium">{{ 'chatHistory.titleIssue' | translate }}</th>
+              <th class="text-left px-4 py-3 font-medium">{{ 'chatHistory.machine' | translate }}</th>
               <th class="text-left px-4 py-3 font-medium w-16"></th>
             </tr>
           </thead>
@@ -66,7 +66,7 @@
                 <td class="px-4 py-3 text-right">
                   <button
                     (click)="deleteSession(s, $event)"
-                    title="Eliminar conversación"
+                    [title]="'chatHistory.deleteTooltip' | translate"
                     class="p-1.5 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
                   >
                     🗑
@@ -82,7 +82,7 @@
       <div class="lg:col-span-2">
         @if (!hasSelection()) {
           <div class="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-8 text-center text-gray-400 dark:text-gray-500 h-full flex items-center justify-center">
-            <p>Selecciona una conversación para ver el detalle.</p>
+            <p>{{ 'chatHistory.selectPrompt' | translate }}</p>
           </div>
         } @else {
           <div class="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 flex flex-col h-[70vh]">
@@ -103,14 +103,14 @@
               <button
                 (click)="closeDetail()"
                 class="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 ml-2"
-                title="Cerrar"
+                [title]="'common.close' | translate"
               >✕</button>
             </div>
 
             <!-- Mensajes -->
             <div class="flex-1 overflow-y-auto p-4 space-y-3">
               @if (loadingDetail()) {
-                <div class="text-center text-gray-500 text-sm py-8">Cargando mensajes…</div>
+                <div class="text-center text-gray-500 text-sm py-8">{{ 'chatHistory.loadingMessages' | translate }}</div>
               }
 
               @for (m of selectedMessages(); track $index) {
@@ -136,7 +136,7 @@
                 (click)="continueInChat()"
                 class="w-full py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors text-sm"
               >
-                Continuar esta conversación
+                {{ 'chatHistory.continueConversation' | translate }}
               </button>
             </div>
           </div>
@@ -149,13 +149,13 @@
   @if (!loading() && sessions().length === 0 && !errorMessage()) {
     <div class="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-12 text-center">
       <p class="text-gray-500 dark:text-gray-400 mb-4">
-        Todavía no tienes conversaciones guardadas.
+        {{ 'chatHistory.emptyState' | translate }}
       </p>
       <a
         routerLink="/chat"
         class="inline-block px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
       >
-        Iniciar una conversación
+        {{ 'chatHistory.startConversation' | translate }}
       </a>
     </div>
   }

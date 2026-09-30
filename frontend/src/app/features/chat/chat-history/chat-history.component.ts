@@ -1,25 +1,27 @@
 // frontend/src/app/features/chat/chat-history/chat-history.component.ts
 
 import { Component, computed, inject, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { Router, RouterLink } from '@angular/router';
 import { ChatService } from '../../../core/services/chat.service';
 import { SessionListItem, SessionMessage } from '../../../core/models/chat.model';
 import { ToastService } from '../../../core/services/toast.service';
+import { I18nService } from '../../../core/i18n/i18n.service';
+import { TranslatePipe } from '../../../core/i18n/translate.pipe';
 
 @Component({
   selector: 'app-chat-history',
-  standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [RouterLink, TranslatePipe],
   templateUrl: 'chat-history.component.html',
 })
 export class ChatHistoryComponent {
   private readonly chatService = inject(ChatService);
   private readonly router = inject(Router);
   private readonly toast = inject(ToastService);
+  private readonly i18n = inject(I18nService);
 
   readonly sessions = signal<SessionListItem[]>([]);
   readonly loading = signal(false);
+  /** Clave i18n del último error; se traduce en el template para reaccionar al cambio de idioma. */
   readonly errorMessage = signal<string | null>(null);
 
   readonly selectedId = signal<string | null>(null);
@@ -44,7 +46,7 @@ export class ChatHistoryComponent {
         this.loading.set(false);
       },
       error: () => {
-        this.errorMessage.set('No se pudieron cargar las conversaciones.');
+        this.errorMessage.set('chatHistory.loadError');
         this.loading.set(false);
       },
     });
@@ -67,7 +69,7 @@ export class ChatHistoryComponent {
         this.loadingDetail.set(false);
       },
       error: () => {
-        this.errorMessage.set('No se pudo cargar la conversación.');
+        this.errorMessage.set('chatHistory.loadDetailError');
         this.loadingDetail.set(false);
       },
     });
@@ -88,17 +90,18 @@ export class ChatHistoryComponent {
   deleteSession(s: SessionListItem, ev: Event): void {
     ev.stopPropagation();
 
-    const ok = confirm(`¿Eliminar la conversación "${s.titulo}"? Esta acción no se puede deshacer.`);
+    const texts = this.i18n.t('chatHistory');
+    const ok = confirm(texts.deleteConfirm.replace('{title}', s.titulo));
     if (!ok) return;
 
     this.chatService.deleteSession(s.session_id).subscribe({
       next: () => {
         this.sessions.update((list) => list.filter((x) => x.session_id !== s.session_id));
         if (this.selectedId() === s.session_id) this.closeDetail();
-        this.toast.show('Conversación eliminada', 'success');
+        this.toast.show(this.i18n.t('chatHistory').deleteSuccess, 'success');
       },
       error: () => {
-        this.toast.show('No se pudo eliminar la conversación', 'error');
+        this.toast.show(this.i18n.t('chatHistory').deleteError, 'error');
       },
     });
   }
