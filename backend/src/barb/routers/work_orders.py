@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
+from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from barb.core.config import settings
 from barb.core.db import fetch_all, fetch_one, transaction
@@ -212,7 +213,7 @@ async def create_work_order(request: Request):
         form = await request.form()
         payload = {key: form.get(key) for key in form.keys()}
         for key in ("images", "photos", "attachments", "photo"):
-            images.extend([value for value in form.getlist(key) if isinstance(value, UploadFile)])
+            images.extend([value for value in form.getlist(key) if isinstance(value, StarletteUploadFile)])
     elif "application/json" in content_type:
         payload = await request.json()
     else:

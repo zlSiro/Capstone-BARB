@@ -1,20 +1,32 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { WorkOrdersService } from '../../../../core/services/work-orders.service';
+import { PermissionsService } from '../../../../core/permissions/permissions.service';
 import { WorkOrder } from '../../../../core/models';
+import { CreateOtModalComponent } from '../../components/create-ot-modal/create-ot-modal.component';
 
 @Component({
   selector: 'app-work-orders-list',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, CreateOtModalComponent],
   template: `
     <div class="flex flex-col gap-4">
       <div class="flex items-center justify-between">
         <h1 class="text-2xl font-bold text-gray-800">Órdenes de Trabajo ({{ orders().length }})</h1>
-        <button class="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded">
-          + Crear OT
-        </button>
+        @if (permissions.canPerform('crear_ot')) {
+          <button
+            (click)="isCreateModalOpen.set(true)"
+            class="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded">
+            + Crear OT
+          </button>
+        }
       </div>
+
+      @if (isCreateModalOpen()) {
+        <app-create-ot-modal
+          (closed)="isCreateModalOpen.set(false)"
+          (created)="onOtCreated($event)" />
+      }
 
       @if (loading()) {
         <div class="text-center py-10 text-gray-500">Cargando órdenes...</div>
@@ -55,9 +67,11 @@ import { WorkOrder } from '../../../../core/models';
 })
 export class WorkOrdersListComponent implements OnInit {
   private workOrdersService = inject(WorkOrdersService);
+  permissions = inject(PermissionsService);
 
   orders = signal<WorkOrder[]>([]);
   loading = signal(true);
+  isCreateModalOpen = signal(false);
 
   ngOnInit() {
     this.workOrdersService.getAll().subscribe({
@@ -67,5 +81,10 @@ export class WorkOrdersListComponent implements OnInit {
       },
       error: () => this.loading.set(false)
     });
+  }
+
+  onOtCreated(order: WorkOrder) {
+    this.orders.update(current => [order, ...current]);
+    this.isCreateModalOpen.set(false);
   }
 }
