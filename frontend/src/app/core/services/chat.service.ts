@@ -1,28 +1,33 @@
 // frontend/src/app/core/services/chat.service.ts
 
 import { Injectable, inject } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { ChatRequest } from '../models/chat.model';
+import {
+  ChatRequest,
+  DeleteSessionResponse,
+  SessionDetailResponse,
+  SessionListResponse,
+} from '../models/chat.model';
 
 @Injectable({ providedIn: 'root' })
 export class ChatService {
   private readonly http = inject(HttpClient);
   private readonly baseUrl = '/api/chat';
 
+  // ---------------------------------------------------------------------------
+  // Chat en streaming (HU-03)
+  // ---------------------------------------------------------------------------
+
   streamChat(payload: ChatRequest): Observable<{ type: string; data: any }> {
     return new Observable((subscriber) => {
       const controller = new AbortController();
-
-      // Leer token desde localStorage (nombre ajustable según cómo lo guarde AuthService)
       const token = localStorage.getItem('barb_token');
 
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
       };
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
+      if (token) headers['Authorization'] = `Bearer ${token}`;
 
       fetch(`${this.baseUrl}/stream`, {
         method: 'POST',
@@ -31,7 +36,6 @@ export class ChatService {
         signal: controller.signal,
       })
         .then(async (response) => {
-          // Manejo específico de errores de auth y rate limit
           if (response.status === 401) {
             subscriber.error(new Error('Sesión expirada. Vuelve a iniciar sesión.'));
             return;
@@ -62,7 +66,6 @@ export class ChatService {
             const { done, value } = await reader.read();
             if (done) break;
 
-            // Normalizar CRLF → LF para que el split funcione siempre
             buffer += decoder
               .decode(value, { stream: true })
               .replace(/\r\n/g, '\n');
@@ -108,5 +111,28 @@ export class ChatService {
       console.warn('[ChatService] No se pudo parsear el evento SSE:', raw, e);
       return null;
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Historial de conversaciones (CGBIDA-254/255/256)
+  // ---------------------------------------------------------------------------
+
+  listSessions(limit = 20, offset = 0): Observable<SessionListResponse> {
+    const params = new HttpParams()
+      .set('limit', String(limit))
+      .set('offset', String(offset));
+    return this.http.get<SessionListResponse>(`${this.baseUrl}/sessions`, { params });
+  }
+
+  getSession(sessionId: string): Observable<SessionDetailResponse> {
+    return this.http.get<SessionDetailResponse>(
+      `${this.baseUrl}/sessions/${sessionId}`,
+    );
+  }
+
+  deleteSession(sessionId: string): Observable<DeleteSessionResponse> {
+    return this.http.delete<DeleteSessionResponse>(
+      `${this.baseUrl}/sessions/${sessionId}`,
+    );
   }
 }

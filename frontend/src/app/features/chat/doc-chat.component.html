@@ -1,75 +1,162 @@
 <!-- frontend/src/app/features/chat/doc-chat.component.html -->
 
-<div class="flex flex-col h-[calc(100vh-4rem)] max-w-4xl mx-auto p-4">
+<div class="flex h-[calc(100vh-4rem)]">
 
-    <!-- Header -->
-  <div class="mb-4 flex items-start justify-between">
-    <div>
-      <h1 class="text-2xl font-bold text-gray-900 dark:text-gray-100">DocChat IA</h1>
-      <p class="text-sm text-gray-500 dark:text-gray-400">
-        Consulta al asistente técnico de BARB en tiempo real.
+  <!-- ══════════════ SIDEBAR: HISTORIAL ══════════════ -->
+  <aside class="w-[440px] flex-shrink-0 flex flex-col border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+
+    <!-- Header sidebar -->
+    <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+      <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">
+        📋 Historial de Diagnósticos
+      </h2>
+      <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+        Consultas previas realizadas a la IA
       </p>
     </div>
-    <button
-      (click)="resetChat()"
-      [disabled]="messages().length === 0"
-      class="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-    >
-      + Nueva conversación
-    </button>
-  </div>
 
-  <!-- Área de mensajes -->
-  <div
-    #messagesContainer
-    class="flex-1 overflow-y-auto bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-4"
-  >
-    @if (messages().length === 0) {
-      <div class="flex items-center justify-center h-full text-gray-400 dark:text-gray-500">
-        <p>Inicia la conversación escribiendo tu primera pregunta.</p>
-      </div>
-    }
-
-    @for (msg of messages(); track msg.id) {
-      <app-message-bubble [message]="msg" />
-    }
-
-    @if (isLoading()) {
-      <div class="flex justify-start mb-3">
-        <div class="bg-gray-100 dark:bg-gray-800 px-4 py-2 rounded-2xl rounded-bl-sm">
-          <span class="inline-flex gap-1">
-            <span class="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></span>
-            <span class="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:0.15s]"></span>
-            <span class="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:0.3s]"></span>
-          </span>
+    <!-- Tabla de sesiones -->
+    <div class="flex-1 overflow-y-auto">
+      @if (loadingSessions()) {
+        <div class="p-4 text-center text-sm text-gray-500 dark:text-gray-400">
+          Cargando…
         </div>
+      } @else if (sessionError()) {
+        <div class="p-4 text-sm text-red-600 dark:text-red-400">
+          ⚠️ {{ sessionError() }}
+        </div>
+      } @else if (sessions().length === 0) {
+        <div class="p-6 text-center text-sm text-gray-400 dark:text-gray-500">
+          <p class="text-2xl mb-2">💬</p>
+          <p>Sin conversaciones guardadas.</p>
+          <p class="text-xs mt-1">Inicia una nueva para verla aquí.</p>
+        </div>
+      } @else {
+        <table class="w-full text-xs">
+          <thead class="bg-gray-50 dark:bg-gray-800 sticky top-0 z-10">
+            <tr class="text-gray-600 dark:text-gray-400">
+              <th class="text-left px-3 py-2 font-medium whitespace-nowrap">Fecha</th>
+              <th class="text-left px-3 py-2 font-medium">Título / Problema</th>
+              <th class="text-left px-3 py-2 font-medium w-16">Técnico</th>
+              <th class="text-left px-3 py-2 font-medium w-20">Equipo</th>
+              <th class="w-8"></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (s of sessions(); track s.session_id) {
+              <tr
+                (click)="selectSession(s)"
+                [class.bg-blue-50]="sessionId() === s.session_id"
+                [class.dark:bg-blue-900]="sessionId() === s.session_id"
+                class="border-t border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors"
+              >
+                <td class="px-3 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap align-top">
+                  {{ formatDate(s.saved_at) }}
+                </td>
+                <td class="px-3 py-2 text-gray-900 dark:text-gray-100 font-medium align-top">
+                  {{ s.titulo }}
+                </td>
+                <!-- Columnas reservadas para futura HU (Técnico / Equipo) -->
+                <td class="px-3 py-2 align-top"></td>
+                <td class="px-3 py-2 align-top"></td>
+                <td class="px-1 py-2 text-right align-top">
+                  <button
+                    (click)="deleteSession(s, $event)"
+                    title="Eliminar conversación"
+                    class="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                  >🗑</button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
+    </div>
+  </aside>
+
+  <!-- ══════════════ PANEL DE CHAT ══════════════ -->
+  <main class="flex-1 flex flex-col min-w-0">
+
+    <!-- Header chat -->
+    <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between bg-white dark:bg-gray-900">
+      <div>
+        <h1 class="text-xl font-bold text-gray-900 dark:text-gray-100">DocChat IA</h1>
+        <p class="text-xs text-gray-500 dark:text-gray-400">
+          @if (sessionId()) {
+            Conversación activa
+          } @else {
+            Consulta al asistente técnico en tiempo real
+          }
+        </p>
       </div>
-    }
+      <button
+        (click)="newConversation()"
+        class="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+      >
+        + Nueva conversación
+      </button>
+    </div>
 
-    @if (errorMessage()) {
-      <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 rounded-lg p-3 mt-2 text-sm">
-        ⚠️ {{ errorMessage() }}
-      </div>
-    }
-  </div>
-
-  <!-- Input -->
-  <div class="mt-4 flex items-end gap-2">
-    <textarea
-      [(ngModel)]="inputText"
-      (keydown)="onKeyDown($event)"
-      [disabled]="isLoading()"
-      rows="2"
-      placeholder="Escribe tu pregunta... (Enter para enviar, Shift+Enter para salto de línea)"
-      class="flex-1 resize-none rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-    ></textarea>
-
-    <button
-      (click)="sendMessage()"
-      [disabled]="isLoading() || !inputText().trim()"
-      class="px-5 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+    <!-- Mensajes -->
+    <div
+      #messagesContainer
+      class="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-950 p-6"
     >
-      Enviar
-    </button>
-  </div>
+      @if (messages().length === 0 && !isLoading()) {
+        <div class="flex items-center justify-center h-full text-gray-400 dark:text-gray-500 text-sm">
+          <div class="text-center">
+            <p class="text-3xl mb-2">💬</p>
+            <p>Inicia la conversación escribiendo tu primera pregunta.</p>
+          </div>
+        </div>
+      }
+
+      @for (msg of messages(); track msg.id) {
+        <app-message-bubble [message]="msg" />
+      }
+
+      @if (
+        messages().length > 0 &&
+        messages()[messages().length - 1].role === 'assistant' &&
+        messages()[messages().length - 1].content === ''
+      ) {
+        <div class="flex justify-start mb-3">
+          <div class="bg-white dark:bg-gray-800 px-4 py-2 rounded-2xl rounded-bl-sm shadow-sm">
+            <span class="inline-flex gap-1">
+              <span class="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></span>
+              <span class="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:0.15s]"></span>
+              <span class="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:0.3s]"></span>
+            </span>
+          </div>
+        </div>
+      }
+
+      @if (errorMessage()) {
+        <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 rounded-lg p-3 mt-2 text-sm">
+          ⚠️ {{ errorMessage() }}
+        </div>
+      }
+    </div>
+
+    <!-- Input -->
+    <div class="px-6 py-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+      <div class="flex items-end gap-2">
+        <textarea
+          [(ngModel)]="inputText"
+          (keydown)="onKeyDown($event)"
+          [disabled]="isLoading()"
+          rows="2"
+          placeholder="Escribe tu pregunta... (Enter para enviar, Shift+Enter para salto de línea)"
+          class="flex-1 resize-none rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 text-sm"
+        ></textarea>
+        <button
+          (click)="sendMessage()"
+          [disabled]="isLoading() || !inputText().trim()"
+          class="px-5 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          Enviar
+        </button>
+      </div>
+    </div>
+  </main>
 </div>

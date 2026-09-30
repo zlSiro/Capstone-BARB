@@ -44,6 +44,69 @@ entre proveedores a través de la API de LangChain.
   NVIDIA/OpenRouter, se activa sin tocar código.
 
 
+### 2.7 Manejo de errores en streaming
+
+**Decisión:** si el LLM falla **después** de que el stream SSE ya empezó, la
+respuesta HTTP ya es `200` y no se puede cambiar. En ese caso el backend emite
+un evento estructurado dentro del stream:
+
+event: error
+data: {"code": "internal_error", "message": "<detalle>"}
+
+
+**Contrato implícito:**
+- El evento `done` **no se emite** cuando hubo error.
+- El cliente **debe** escuchar el evento `error` y no asumir que `HTTP 200`
+  significa éxito.
+- El bloque `finally` del generador registra el consumo de tokens de entrada
+  **incluso si el LLM falló**, para que el usuario no pueda evadir el límite
+  diario lanzando peticiones que fallen.
+
+**Deuda técnica conocida:**
+- `str(e)` se expone crudo al cliente. En producción debe sanitizarse a un
+  mensaje genérico + log interno del detalle.
+
+---
+
+## 2.8 Gestión del historial de conversaciones
+
+**Decisión:** cada conversación del chat IA se persiste en la tabla
+`chat_session` (existente desde la migración `0002_runtime_tables`), y su
+historial se reconstruye desde la BD al abrir una sesión.
+
+### Modelo de datos
+
+Se reutiliza la tabla `chat_session` que ya existía en el esquema:
+
+| Columna | Tipo | Notas |
+|---------|------|-------|
+| `session_id` | `UUID` PK | Autogenerado con `gen_random_uuid()` |
+| `empresa_id` | `INT` FK | Multi-tenant (aunque el frontend actual solo usa una empresa) |
+| `usuario_id` | `INT` FK | Dueño de la conversación |
+| `titulo` | `VARCHAR(200)` | Autogenerado desde el primer mensaje del usuario |
+| `saved_by` | `VARCHAR(100)` | Nombre del usuario (desnormalizado para rendimiento) |
+| `machine_name` | `VARCHAR(120)` | Contexto del equipo (reservado para HU futura) |
+| `discipline` | `VARCHAR(100)` | Contexto de disciplina (reservado) |
+| `messages` | `JSONB` | Array `[{role, content, timestamp}, ...]` |
+| `metadata` | `JSONB` | Reservado para extensiones |
+| `saved_at` | `TIMESTAMPTZ` | Se actualiza en cada append |
+
+### Persistencia durante el streaming
+
+El endpoint `POST /api/chat/stream` persiste el turno completo
+(user + assistant) **en el bloque `finally`** del generador, no después
+del stream. Esto garantiza que:
+
+- Si el cliente cierra la conexión a mitad del stream, lo que se alcanzó a
+  emitir igual se guarda.
+- Si el LLM falla a mitad, los tokens parciales quedan persistidos.
+- El consumo de tokens se registra siempre, incluso si el stream falla.
+
+### Reconstrucción del historial
+
+Al abrir una conversación existente, el flujo es:
+
+
 ┌─────────────────────────────────────────────────────────────────┐
 │  FRONTEND (Angular 22, localhost:4200)                          │
 │                                                                 │

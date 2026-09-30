@@ -1,23 +1,47 @@
-"""
-Configuración global de tests para BARB.
+import asyncio
+import sys
 
-Estrategia actual:
-- Los tests corren contra la app FastAPI real usando AsyncClient.
-- Usan la BD que esté configurada en backend/.env (local Docker).
-- Los datos de prueba se insertan/limpian según sea necesario.
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-Nota: la estrategia de "SQLite en memoria" del README no aplica porque el
-backend usa psycopg3 (async) con PostgreSQL-específico. Cuando se migre a
-una estrategia de BD aislada real, actualizar este archivo.
-"""
-from __future__ import annotations
+    _original_new_event_loop = asyncio.new_event_loop
 
-from typing import AsyncIterator
+    def _forced_selector_new_event_loop():
+        return asyncio.SelectorEventLoop()
 
-import pytest_asyncio
-from httpx import AsyncClient, ASGITransport
+    asyncio.new_event_loop = _forced_selector_new_event_loop
+# ==== FIN FORCE ====
 
-from barb.main import app
+from typing import AsyncIterator  # noqa: E402
+
+import pytest  
+import pytest_asyncio  
+from httpx import AsyncClient, ASGITransport  
+
+from barb.core.db import close_pool, open_pool  
+from barb.main import app  
+
+
+# =============================================================================
+# Refuerzo por si otro plugin resetea la policy
+# =============================================================================
+
+def pytest_configure(config):
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+
+# =============================================================================
+# POOL DE BD (CGBIDA-150 / 151) — session-scoped
+# =============================================================================
+
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
+async def db_pool() -> AsyncIterator[None]:
+    await open_pool()
+    try:
+        yield
+    finally:
+        await close_pool()
 
 
 # =============================================================================
@@ -38,35 +62,21 @@ async def client() -> AsyncIterator[AsyncClient]:
 
 @pytest_asyncio.fixture
 def usuario_admin() -> dict:
-    """Payload de usuario admin para pruebas."""
-    return {
-        "email": "admin@barb.com",
-        "password": "admin123",
-    }
+    return {"email": "admin@barb.com", "password": "admin123"}
 
 
 @pytest_asyncio.fixture
 def usuario_tecnico() -> dict:
-    """Payload de usuario técnico para pruebas."""
-    return {
-        "email": "carlos@planta.com",
-        "password": "tecnico123",
-    }
+    return {"email": "carlos@planta.com", "password": "tecnico123"}
 
 
 @pytest_asyncio.fixture
 def maquina_ejemplo() -> dict:
-    """Payload de máquina para pruebas."""
-    return {
-        "nombre": "Máquina Test",
-        "planta_id": 1,
-        "disciplina_id": 1,
-    }
+    return {"nombre": "Máquina Test", "planta_id": 1, "disciplina_id": 1}
 
 
 @pytest_asyncio.fixture
 def ot_ejemplo() -> dict:
-    """Payload de orden de trabajo para pruebas."""
     return {
         "maquina_id": 1,
         "tecnico_id": 1,
