@@ -19,11 +19,14 @@ class Settings(BaseSettings):
     upload_dir: Path = Path("./uploads")
 
    # --- APIs de IA ---
-    llm_provider: Literal["deepseek", "openai", "openrouter", "groq"] = "deepseek"
+    llm_provider: Literal["deepseek", "openai", "openrouter", "groq", "nvidia"] = "deepseek"
     openrouter_api_key: str = ""
     groq_api_key: str = ""
     deepseek_api_key: str = ""
     openai_api_key: str = ""
+    nvidia_api_key: str = ""
+    # NVIDIA NIM (build.nvidia.com) expone una API OpenAI-compatible.
+    nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
 
     # --- Configuración LLM ---
     llm_model: str = "deepseek-chat"
