@@ -77,6 +77,7 @@ def _build_llm(provider: str | None = None):
             api_key=settings.nvidia_api_key,
             base_url=settings.nvidia_base_url,
             request_timeout=settings.nvidia_timeout,
+            extra_body={"chat_template_kwargs": {"enable_thinking": settings.nvidia_enable_thinking}},
         )
 
     raise ValueError(f"Proveedor LLM no soportado: {provider}")

@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     # Timeout por request (segundos): el endpoint gratuito puede saturarse
     # y dejar la conexión colgada; sin esto la lib OpenAI espera hasta 600s.
     nvidia_timeout: int = 60
+    # Vía chat_template_kwargs: algunos modelos NIM (Nemotron, DeepSeek) traen
+    # "thinking" habilitado por defecto y emiten razonamiento interno antes de
+    # la respuesta. En false → respuestas directas en el chat.
+    nvidia_enable_thinking: bool = False
 
     # --- Configuración LLM ---
     llm_model: str = "deepseek-chat"
