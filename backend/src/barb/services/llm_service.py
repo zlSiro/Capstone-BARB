@@ -76,6 +76,7 @@ def _build_llm(provider: str | None = None):
             streaming=True,
             api_key=settings.nvidia_api_key,
             base_url=settings.nvidia_base_url,
+            request_timeout=settings.nvidia_timeout,
         )
 
     raise ValueError(f"Proveedor LLM no soportado: {provider}")

@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     nvidia_api_key: str = ""
     # NVIDIA NIM (build.nvidia.com) expone una API OpenAI-compatible.
     nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
+    # Timeout por request (segundos): el endpoint gratuito puede saturarse
+    # y dejar la conexión colgada; sin esto la lib OpenAI espera hasta 600s.
+    nvidia_timeout: int = 60
 
     # --- Configuración LLM ---
     llm_model: str = "deepseek-chat"
