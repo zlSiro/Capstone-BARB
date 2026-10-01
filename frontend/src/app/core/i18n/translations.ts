@@ -123,7 +123,17 @@ export const translations = {
       startConversation: 'Iniciar una conversación', loadError: 'No se pudieron cargar las conversaciones.',
       loadDetailError: 'No se pudo cargar la conversación.',
       deleteConfirm: '¿Eliminar la conversación "{title}"? Esta acción no se puede deshacer.',
-      deleteSuccess: 'Conversación eliminada', deleteError: 'No se pudo eliminar la conversación'
+      deleteSuccess: 'Conversación eliminada', deleteError: 'No se pudo eliminar la conversación',
+      sidebarSubtitle: 'Consultas previas realizadas a la IA', sidebarEmpty: 'Sin conversaciones guardadas.',
+      sidebarEmptyHint: 'Inicia una nueva para verla aquí.', loadSessionsError: 'No se pudo cargar el historial.'
+    },
+    docChat: {
+      title: 'DocChat IA', subtitle: 'Consulta al asistente técnico en tiempo real',
+      activeConversation: 'Conversación activa', newConversation: '+ Nueva conversación',
+      emptyState: 'Inicia la conversación escribiendo tu primera pregunta.',
+      inputPlaceholder: 'Escribe tu pregunta... (Enter para enviar, Shift+Enter para salto de línea)',
+      unknownError: 'Error desconocido', connectionError: 'No se pudo conectar con el asistente.',
+      deleteError: 'No se pudo eliminar la conversación.'
     }
   },
 
@@ -246,7 +256,17 @@ export const translations = {
       startConversation: 'Start a conversation', loadError: 'Could not load the conversations.',
       loadDetailError: 'Could not load the conversation.',
       deleteConfirm: 'Delete the conversation "{title}"? This action cannot be undone.',
-      deleteSuccess: 'Conversation deleted', deleteError: 'Could not delete the conversation'
+      deleteSuccess: 'Conversation deleted', deleteError: 'Could not delete the conversation',
+      sidebarSubtitle: 'Previous queries made to the AI', sidebarEmpty: 'No saved conversations.',
+      sidebarEmptyHint: 'Start a new one to see it here.', loadSessionsError: 'Could not load the history.'
+    },
+    docChat: {
+      title: 'DocChat AI', subtitle: 'Ask the technical assistant in real time',
+      activeConversation: 'Active conversation', newConversation: '+ New conversation',
+      emptyState: 'Start the conversation by typing your first question.',
+      inputPlaceholder: 'Type your question... (Enter to send, Shift+Enter for a new line)',
+      unknownError: 'Unknown error', connectionError: 'Could not connect to the assistant.',
+      deleteError: 'Could not delete the conversation.'
     }
   }
 };
