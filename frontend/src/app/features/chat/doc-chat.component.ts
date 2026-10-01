@@ -1,22 +1,23 @@
 // frontend/src/app/features/chat/doc-chat.component.ts
 
 import { Component, ElementRef, ViewChild, inject, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { ChatService } from '../../core/services/chat.service';
 import { ChatMessage, SessionListItem } from '../../core/models/chat.model';
 import { MessageBubbleComponent } from './message-bubble.component';
+import { I18nService } from '../../core/i18n/i18n.service';
+import { TranslatePipe } from '../../core/i18n/translate.pipe';
 
 @Component({
   selector: 'app-doc-chat',
-  standalone: true,
-  imports: [CommonModule, FormsModule, MessageBubbleComponent],
+  imports: [FormsModule, MessageBubbleComponent, TranslatePipe],
   templateUrl: './doc-chat.component.html',
 })
 export class DocChatComponent {
   private readonly chatService = inject(ChatService);
   private readonly route = inject(ActivatedRoute);
+  private readonly i18n = inject(I18nService);
 
   @ViewChild('messagesContainer') messagesContainer!: ElementRef<HTMLDivElement>;
 
@@ -57,7 +58,7 @@ export class DocChatComponent {
         this.loadingSessions.set(false);
       },
       error: () => {
-        this.sessionError.set('No se pudo cargar el historial.');
+        this.sessionError.set(this.i18n.t('chatHistory').loadSessionsError);
         this.loadingSessions.set(false);
       },
     });
@@ -86,7 +87,7 @@ export class DocChatComponent {
         this.scrollToBottom();
       },
       error: () => {
-        this.errorMessage.set('No se pudo cargar la conversación.');
+        this.errorMessage.set(this.i18n.t('chatHistory').loadDetailError);
         this.isLoading.set(false);
       },
     });
@@ -95,7 +96,7 @@ export class DocChatComponent {
   deleteSession(s: SessionListItem, ev: Event): void {
     ev.stopPropagation();
     const ok = window.confirm(
-      `¿Eliminar la conversación "${s.titulo}"? Esta acción no se puede deshacer.`,
+      this.i18n.t('chatHistory').deleteConfirm.replace('{title}', s.titulo),
     );
     if (!ok) return;
 
@@ -109,7 +110,7 @@ export class DocChatComponent {
         }
       },
       error: () => {
-        this.errorMessage.set('No se pudo eliminar la conversación.');
+        this.errorMessage.set(this.i18n.t('docChat').deleteError);
       },
     });
   }
@@ -167,7 +168,7 @@ export class DocChatComponent {
             );
             this.scrollToBottom();
           } else if (event.type === 'error') {
-            this.errorMessage.set(event.data.message ?? 'Error desconocido');
+            this.errorMessage.set(event.data.message ?? this.i18n.t('docChat').unknownError);
             this.isLoading.set(false);
           } else if (event.type === 'done') {
             this.isLoading.set(false);
@@ -175,7 +176,7 @@ export class DocChatComponent {
           }
         },
         error: () => {
-          this.errorMessage.set('No se pudo conectar con el asistente.');
+          this.errorMessage.set(this.i18n.t('docChat').connectionError);
           this.isLoading.set(false);
         },
         complete: () => this.isLoading.set(false),
