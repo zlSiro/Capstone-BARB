@@ -1,10 +1,10 @@
 import { Component, computed, effect, inject, output, signal } from '@angular/core';
-import { form, required, FormField } from '@angular/forms/signals';
+import { form, required, validate, FormField } from '@angular/forms/signals';
+import { HttpErrorResponse } from '@angular/common/http';
 import { forkJoin } from 'rxjs';
 
 import { CatalogService } from '../../../../core/services/catalog.service';
 import { WorkOrdersService } from '../../../../core/services/work-orders.service';
-import { AuthService } from '../../../../core/services/auth.service';
 import { ToastService } from '../../../../core/services/toast.service';
 import { Discipline, Machine, Technician, WorkOrder, WorkOrderPriority } from '../../../../core/models';
 
@@ -40,10 +40,15 @@ function defaultModel(): CreateOtFormModel {
     <div
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
       (click)="onBackdropClick($event)">
-      <div class="w-full max-w-2xl rounded-xl border border-slate-700 bg-slate-900 shadow-2xl" (click)="$event.stopPropagation()">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="create-ot-title"
+        class="max-h-full w-full max-w-2xl overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 shadow-2xl"
+        (click)="$event.stopPropagation()">
         <div class="flex items-start justify-between border-b border-slate-800 px-6 py-4">
           <div>
-            <h2 class="text-xl font-bold text-slate-100">Crear OT</h2>
+            <h2 id="create-ot-title" class="text-xl font-bold text-slate-100">Crear OT</h2>
             <p class="text-sm text-slate-400">Ingresa los detalles para generar y asignar la orden.</p>
           </div>
           <button
@@ -51,27 +56,33 @@ function defaultModel(): CreateOtFormModel {
             (click)="close()"
             class="rounded p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-100"
             aria-label="Cerrar">
-            ✕
+            <span aria-hidden="true">✕</span>
           </button>
         </div>
 
         <div class="grid gap-4 px-6 py-5 md:grid-cols-2">
           <div>
-            <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Título</label>
+            <label for="ot-title" class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Título *</label>
             <input
               type="text"
               [formField]="otForm.title"
+              id="ot-title"
+              [attr.aria-invalid]="otForm.title().touched() && otForm.title().invalid()"
+              [attr.aria-describedby]="otForm.title().touched() && otForm.title().invalid() ? 'ot-title-error' : null"
               placeholder="Ej. Inspección de vibración motor D1"
               class="w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500" />
             @if (otForm.title().touched() && otForm.title().invalid()) {
-              <p class="mt-1 text-xs text-red-400">{{ otForm.title().errors()[0]?.message }}</p>
+              <p id="ot-title-error" role="alert" class="mt-1 text-xs text-red-400">{{ otForm.title().errors()[0]?.message }}</p>
             }
           </div>
 
           <div>
-            <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Disciplina</label>
+            <label for="ot-disciplineId" class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Disciplina *</label>
             <select
               [formField]="otForm.disciplineId"
+              id="ot-disciplineId"
+              [attr.aria-invalid]="otForm.disciplineId().touched() && otForm.disciplineId().invalid()"
+              [attr.aria-describedby]="otForm.disciplineId().touched() && otForm.disciplineId().invalid() ? 'ot-disciplineId-error' : null"
               class="w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
               <option value="">Selecciona una disciplina</option>
               @for (d of disciplines(); track d.id) {
@@ -79,14 +90,17 @@ function defaultModel(): CreateOtFormModel {
               }
             </select>
             @if (otForm.disciplineId().touched() && otForm.disciplineId().invalid()) {
-              <p class="mt-1 text-xs text-red-400">{{ otForm.disciplineId().errors()[0]?.message }}</p>
+              <p id="ot-disciplineId-error" role="alert" class="mt-1 text-xs text-red-400">{{ otForm.disciplineId().errors()[0]?.message }}</p>
             }
           </div>
 
           <div>
-            <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Máquina</label>
+            <label for="ot-machineId" class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Máquina *</label>
             <select
               [formField]="otForm.machineId"
+              id="ot-machineId"
+              [attr.aria-invalid]="otForm.machineId().touched() && otForm.machineId().invalid()"
+              [attr.aria-describedby]="otForm.machineId().touched() && otForm.machineId().invalid() ? 'ot-machineId-error' : null"
               class="w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
               <option value="">Selecciona una máquina</option>
               @for (m of filteredMachines(); track m.id) {
@@ -94,14 +108,17 @@ function defaultModel(): CreateOtFormModel {
               }
             </select>
             @if (otForm.machineId().touched() && otForm.machineId().invalid()) {
-              <p class="mt-1 text-xs text-red-400">{{ otForm.machineId().errors()[0]?.message }}</p>
+              <p id="ot-machineId-error" role="alert" class="mt-1 text-xs text-red-400">{{ otForm.machineId().errors()[0]?.message }}</p>
             }
           </div>
 
           <div>
-            <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Técnico</label>
+            <label for="ot-technicianId" class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Técnico *</label>
             <select
               [formField]="otForm.technicianId"
+              id="ot-technicianId"
+              [attr.aria-invalid]="otForm.technicianId().touched() && otForm.technicianId().invalid()"
+              [attr.aria-describedby]="otForm.technicianId().touched() && otForm.technicianId().invalid() ? 'ot-technicianId-error' : null"
               class="w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
               <option value="">Selecciona un técnico</option>
               @for (t of technicians(); track t.id) {
@@ -109,14 +126,15 @@ function defaultModel(): CreateOtFormModel {
               }
             </select>
             @if (otForm.technicianId().touched() && otForm.technicianId().invalid()) {
-              <p class="mt-1 text-xs text-red-400">{{ otForm.technicianId().errors()[0]?.message }}</p>
+              <p id="ot-technicianId-error" role="alert" class="mt-1 text-xs text-red-400">{{ otForm.technicianId().errors()[0]?.message }}</p>
             }
           </div>
 
           <div>
-            <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Prioridad</label>
+            <label for="ot-priority" class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Prioridad</label>
             <select
               [formField]="otForm.priority"
+              id="ot-priority"
               class="w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
               <option value="low">Baja</option>
               <option value="medium">Media</option>
@@ -126,9 +144,10 @@ function defaultModel(): CreateOtFormModel {
           </div>
 
           <div>
-            <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Estado</label>
+            <label for="ot-estado" class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Estado</label>
             <select
               [formField]="otForm.estado"
+              id="ot-estado"
               class="w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
               <option value="pending">Abierta</option>
               <option value="assigned">Asignada</option>
@@ -139,31 +158,36 @@ function defaultModel(): CreateOtFormModel {
           </div>
 
           <div class="md:col-span-2">
-            <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Descripción</label>
+            <label for="ot-description" class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Descripción *</label>
             <textarea
               [formField]="otForm.description"
+              id="ot-description"
+              [attr.aria-invalid]="otForm.description().touched() && otForm.description().invalid()"
+              [attr.aria-describedby]="otForm.description().touched() && otForm.description().invalid() ? 'ot-description-error' : null"
               rows="4"
               placeholder="Describe la falla..."
               class="w-full resize-none rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
             @if (otForm.description().touched() && otForm.description().invalid()) {
-              <p class="mt-1 text-xs text-red-400">{{ otForm.description().errors()[0]?.message }}</p>
+              <p id="ot-description-error" role="alert" class="mt-1 text-xs text-red-400">{{ otForm.description().errors()[0]?.message }}</p>
             }
           </div>
 
           <div class="md:col-span-2">
-            <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Foto de la falla (opcional)</label>
+            <span id="ot-photo-label" class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Foto de la falla (opcional)</span>
             <div class="flex items-center gap-3">
               <button
                 type="button"
                 (click)="fileInput.click()"
+                aria-describedby="ot-photo-label"
                 class="rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 hover:bg-slate-700">
-                📎 Adjuntar
+                <span aria-hidden="true">📎</span> Adjuntar
               </button>
-              <span class="text-sm text-slate-500">{{ selectedFile()?.name ?? 'Sin foto' }}</span>
+              <span class="text-sm text-slate-400">{{ selectedFile()?.name ?? 'Sin foto' }}</span>
               <input
                 #fileInput
                 type="file"
                 class="hidden"
+                aria-labelledby="ot-photo-label"
                 accept="image/jpeg,image/png,image/webp"
                 (change)="onFileSelected($event)" />
             </div>
@@ -206,7 +230,6 @@ function defaultModel(): CreateOtFormModel {
 export class CreateOtModalComponent {
   private catalogService = inject(CatalogService);
   private workOrdersService = inject(WorkOrdersService);
-  private authService = inject(AuthService);
   private toastService = inject(ToastService);
 
   readonly closed = output<void>();
@@ -221,10 +244,14 @@ export class CreateOtModalComponent {
   readonly model = signal<CreateOtFormModel>(defaultModel());
   readonly otForm = form(this.model, (f) => {
     required(f.title, { message: 'Ingresa un título para la OT.' });
+    validate(f.title, ({ value }) =>
+      value().trim() ? undefined : { kind: 'blank', message: 'Ingresa un título para la OT.' });
     required(f.disciplineId, { message: 'Selecciona una disciplina.' });
     required(f.machineId, { message: 'Selecciona una máquina.' });
     required(f.technicianId, { message: 'Selecciona un técnico.' });
     required(f.description, { message: 'Describe la falla.' });
+    validate(f.description, ({ value }) =>
+      value().trim() ? undefined : { kind: 'blank', message: 'Describe la falla.' });
   });
 
   readonly filteredMachines = computed(() => {
@@ -287,18 +314,15 @@ export class CreateOtModalComponent {
   }
 
   onSubmit(): void {
+    if (this.submitting()) return;
     this.otForm().markAsTouched();
     if (!this.otForm().valid()) return;
 
     const m = this.model();
-    const currentUserId = this.authService.user()?.id;
 
     const formData = new FormData();
     formData.append('maquina_id', m.machineId);
     formData.append('tecnico_id', m.technicianId);
-    if (currentUserId != null) {
-      formData.append('creado_por', String(currentUserId));
-    }
     formData.append('descripcion_problema', `${m.title.trim()}\n\n${m.description.trim()}`.trim());
     formData.append('priority', m.priority);
     formData.append('estado', m.estado);
@@ -316,8 +340,27 @@ export class CreateOtModalComponent {
       },
       error: (err) => {
         this.submitting.set(false);
-        this.toastService.error(err?.error?.detail || 'Error al crear la OT.');
+        this.toastService.error(this.errorMessage(err));
       },
     });
+  }
+
+  private errorMessage(err: HttpErrorResponse): string {
+    const detail = err?.error?.detail;
+    const text = typeof detail === 'string' ? detail : null;
+    switch (err?.status) {
+      case 0:
+        return 'No se pudo conectar con el servidor. Revisa tu conexión.';
+      case 401:
+        return 'Tu sesión expiró. Vuelve a iniciar sesión.';
+      case 403:
+        return text ?? 'No tienes permisos para crear órdenes de trabajo.';
+      case 400:
+      case 415:
+      case 422:
+        return text ?? 'Los datos de la OT no son válidos.';
+      default:
+        return text ?? 'Error al crear la OT.';
+    }
   }
 }

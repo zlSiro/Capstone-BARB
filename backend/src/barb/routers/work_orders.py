@@ -10,13 +10,12 @@ from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from barb.core.config import settings
 from barb.core.db import fetch_all, fetch_one, transaction
-from barb.core.permissions import require_action, require_auth
+from barb.core.permissions import get_sesion_actual, require_action, require_auth
 from barb.schemas.work_orders import WorkOrderStatusRequest
 from barb.services.files import delete_ot_files, save_ot_photos
 from barb.utils import (
     humanize_status,
     iso_z,
-    normalize_priority,
     parse_optional_datetime,
     parse_work_order_status,
     safe_int,
@@ -202,9 +201,43 @@ async def delete_work_order(numero_ot: str):
         raise HTTPException(status_code=500, detail=f"Error al eliminar OT: {str(e)}") from e
 
 
+TIPOS_VALIDOS = ("corrective", "preventive", "predictive", "inspection")
+PRIORIDADES_VALIDAS = ("low", "medium", "high", "urgent")
+SEVERIDADES_VALIDAS = ("low", "medium", "high", "critical")
+DESCRIPCION_MAX_LEN = 5000
+
+
+def _validate_enum(value: str, allowed: tuple[str, ...], field_name: str) -> str:
+    if value not in allowed:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Valor inválido para '{field_name}': '{value}'. Permitidos: {', '.join(allowed)}.",
+        )
+    return value
+
+
+async def _ensure_machine_exists(maquina_id: int) -> None:
+    row = await fetch_one("SELECT maquina_id FROM maquina WHERE maquina_id = %(id)s", {"id": maquina_id})
+    if not row:
+        raise HTTPException(status_code=422, detail=f"La máquina {maquina_id} no existe.")
+
+
+async def _ensure_technician_exists(tecnico_id: int) -> None:
+    row = await fetch_one(
+        "SELECT usuario_id, rol, activo FROM usuario WHERE usuario_id = %(id)s",
+        {"id": tecnico_id},
+    )
+    if not row:
+        raise HTTPException(status_code=422, detail=f"El técnico {tecnico_id} no existe.")
+    if str(row["rol"]).lower() != "tecnico":
+        raise HTTPException(status_code=422, detail=f"El usuario {tecnico_id} no tiene rol de técnico.")
+    if not row.get("activo", True):
+        raise HTTPException(status_code=422, detail=f"El técnico {tecnico_id} está inactivo.")
+
+
 @router.post("/api/work-orders", dependencies=[Depends(require_action("crear_ot"))])
 @router.post("/api/work_orders", dependencies=[Depends(require_action("crear_ot"))])
-async def create_work_order(request: Request):
+async def create_work_order(request: Request, sesion: dict = Depends(get_sesion_actual)):
     content_type = (request.headers.get("content-type") or "").lower()
     payload: dict[str, Any] = {}
     images: list[UploadFile] = []
@@ -215,14 +248,20 @@ async def create_work_order(request: Request):
         for key in ("images", "photos", "attachments", "photo"):
             images.extend([value for value in form.getlist(key) if isinstance(value, StarletteUploadFile)])
     elif "application/json" in content_type:
-        payload = await request.json()
+        try:
+            payload = await request.json()
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="El cuerpo JSON es inválido.") from exc
+        if not isinstance(payload, dict):
+            raise HTTPException(status_code=400, detail="El cuerpo JSON debe ser un objeto.")
     else:
         raise HTTPException(status_code=415, detail="Content-Type no soportado para crear OT.")
 
     maquina_id = safe_int(payload.get("maquina_id") or payload.get("machine_id"), "maquina_id")
     tecnico_id = safe_int(payload.get("tecnico_id") or payload.get("technician_id"), "tecnico_id")
-    creado_por = safe_int(payload.get("creado_por") or payload.get("created_by") or tecnico_id, "creado_por")
-    tipo = safe_text(payload.get("tipo"), "corrective") or "corrective"
+    # El creador siempre es el usuario autenticado; no se acepta desde el cliente.
+    creado_por = sesion["usuario_id"]
+    tipo = _validate_enum(safe_text(payload.get("tipo"), "corrective").lower() or "corrective", TIPOS_VALIDOS, "tipo")
     descripcion_problema = safe_text(
         payload.get("descripcion_problema")
         or payload.get("description")
@@ -230,12 +269,25 @@ async def create_work_order(request: Request):
         or payload.get("issue_description"),
         "",
     )
+    if not descripcion_problema:
+        raise HTTPException(status_code=400, detail="El campo 'descripcion_problema' es obligatorio.")
+    if len(descripcion_problema) > DESCRIPCION_MAX_LEN:
+        raise HTTPException(
+            status_code=400,
+            detail=f"El campo 'descripcion_problema' excede {DESCRIPCION_MAX_LEN} caracteres.",
+        )
     descripcion_reparacion = safe_text(payload.get("descripcion_reparacion"), "")
     resolution = safe_text(payload.get("resolution"), "")
-    priority = normalize_priority(safe_text(payload.get("priority"), "medium"))
-    severity = safe_text(payload.get("severity"), "") or None
+    priority = _validate_enum(
+        safe_text(payload.get("priority"), "medium").lower() or "medium", PRIORIDADES_VALIDAS, "priority"
+    )
+    severity_raw = safe_text(payload.get("severity"), "").lower()
+    severity = _validate_enum(severity_raw, SEVERIDADES_VALIDAS, "severity") if severity_raw else None
     estado = parse_work_order_status(safe_text(payload.get("estado") or payload.get("status"), "pending"))
     fecha_vencimiento = parse_optional_datetime(payload.get("fecha_vencimiento") or payload.get("due_date"))
+
+    await _ensure_machine_exists(maquina_id)
+    await _ensure_technician_exists(tecnico_id)
 
     temp_numero_ot = f"OT-TEMP-{uuid.uuid4().hex[:6]}"
 
@@ -280,16 +332,19 @@ async def create_work_order(request: Request):
         raise
     except Exception as e:
         logger.exception("Error al crear OT")
-        raise HTTPException(status_code=500, detail=f"Error al crear OT: {str(e)}") from e
+        raise HTTPException(status_code=500, detail="Error interno al crear la OT.") from e
 
     try:
         if images:
             await save_ot_photos(clean_numero_ot, ot_id, images, settings.upload_dir)
     except Exception as e:
+        logger.exception("Error al guardar fotos de la OT")
         await delete_ot_files(ot_id, settings.upload_dir)
         async with transaction() as cur:
             await cur.execute("DELETE FROM orden_trabajo WHERE ot_id = %(ot_id)s;", {"ot_id": ot_id})
-        raise HTTPException(status_code=500, detail=f"Error al guardar fotos de la OT: {str(e)}") from e
+        if isinstance(e, HTTPException):
+            raise
+        raise HTTPException(status_code=500, detail="Error al guardar las fotos de la OT.") from e
 
     created = await fetch_work_order_row(clean_numero_ot)
     photos = await fetch_work_order_photos(ot_id)

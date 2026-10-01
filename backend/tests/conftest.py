@@ -12,12 +12,22 @@ una estrategia de BD aislada real, actualizar este archivo.
 """
 from __future__ import annotations
 
-from typing import AsyncIterator
+import asyncio
+import sys
+from collections.abc import AsyncIterator
 
 import pytest_asyncio
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
+from psycopg.rows import dict_row
+from psycopg_pool import AsyncConnectionPool
 
+from barb.core import db
+from barb.core.config import settings
 from barb.main import app
+
+# psycopg async no funciona con ProactorEventLoop (default en Windows).
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
 # =============================================================================
@@ -27,9 +37,19 @@ from barb.main import app
 @pytest_asyncio.fixture
 async def client() -> AsyncIterator[AsyncClient]:
     """Cliente HTTP asíncrono apuntando a la app FastAPI."""
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        yield ac
+    # ASGITransport no ejecuta el lifespan de la app: se abre/cierra el pool aquí.
+    # Un AsyncConnectionPool no se puede reabrir y cada test usa su propio event loop,
+    # así que se crea un pool nuevo por test (los helpers de db leen `db.pool` en cada llamada).
+    db.pool = AsyncConnectionPool(
+        conninfo=settings.database_url, min_size=1, max_size=4, kwargs={"row_factory": dict_row}, open=False
+    )
+    await db.open_pool()
+    try:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            yield ac
+    finally:
+        await db.close_pool()
 
 
 # =============================================================================
