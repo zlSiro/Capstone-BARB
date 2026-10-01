@@ -40,16 +40,58 @@ Ejemplo de request (JSON):
 }
 ```
 
-Response `200`: la OT creada, con la misma forma que `GET /api/work-orders/{numero_ot}` (`row_to_work_order`):
-`numero_ot`, `ot_id`, `title`, `description`, `machine`/`machine_name`, `machine_id`, `plant`/`plant_name`, `discipline`/`discipline_name`, `priority`, `status` (legible), `estado` (valor BD), `severity`, `tipo`, `tecnico_nombre`, `created_at`, `photos`, `photo_count`, etc.
+Response `200` (respuesta real del servidor; la misma forma que `GET /api/work-orders/{numero_ot}`):
+
+```json
+{
+  "id": "OT-2026-0039",
+  "numero_ot": "OT-2026-0039",
+  "ot_id": 39,
+  "title": "Vibración anormal en motor D1",
+  "description": "Vibración anormal en motor D1",
+  "resolution": null,
+  "machine": "Compressor A1",
+  "machine_name": "Compressor A1",
+  "machine_id": 1,
+  "plant": "Planta Central San Bernardo",
+  "plant_name": "Planta Central San Bernardo",
+  "plant_id": 1,
+  "discipline": "Mecánica",
+  "discipline_name": "Mecánica",
+  "priority": "high",
+  "status": "Open",
+  "estado": "pending",
+  "severity": null,
+  "age_minutes": 0,
+  "created_at": "2026-10-01T03:35:31.444783Z",
+  "fecha_inicio": null,
+  "fecha_cierre": null,
+  "photo_count": 0,
+  "photos": [],
+  "tecnico_nombre": "Carlos Mendoza",
+  "tipo": "corrective",
+  "costo_estimado": 0.0,
+  "costo_real": 0.0,
+  "downtime_minutes": null,
+  "reporte_id": null,
+  "diagnostico_id": null
+}
+```
+
+Notas sobre la respuesta:
+
+- Cada dato tiene clave en español y en inglés (`machine`/`machine_name`, `plant`/`plant_name`, `discipline`/`discipline_name`) por compatibilidad con el contrato anterior.
+- `status` es el texto legible (`Open`, `Assigned`, `In Progress`, `Closed`, `Cancelled`, `Overdue`); `estado` es el valor de la BD.
+- `photos` lista las fotos adjuntas (`id`, `ot_id`, `file_name`, `original_name`, `content_type`, `file_path`, `created_at`).
 
 ### Errores
 
 | Código | Cuándo | Ejemplo de `detail` |
 |---|---|---|
 | 400 | Campo obligatorio vacío, no numérico, JSON inválido, descripción > 5000, estado inválido | `El campo 'maquina_id' es obligatorio.` |
-| 401 | Sin sesión o sesión expirada | `Sesión inválida o expirada. Vuelve a iniciar sesión.` |
+| 401 | Token inválido o sesión expirada | `Sesión inválida o expirada. Vuelve a iniciar sesión.` |
 | 403 | Rol sin permiso `crear_ot` | `El rol 'tecnico' no puede ejecutar 'crear_ot'.` |
+| 422 (header) | Falta el header `Authorization` (validación de FastAPI, no llega a 401) | `{"detail":[{"type":"missing","loc":["header","Authorization"],"msg":"Field required"}]}` |
 | 415 | `Content-Type` no soportado, o foto que no es JPEG/PNG/WEBP | `Content-Type no soportado para crear OT.` |
 | 422 | Valor de enum inválido, máquina o técnico inexistente, usuario sin rol técnico o inactivo | `La máquina 999 no existe.` |
 | 500 | Error interno (el detalle se registra en el log, no se expone) | `Error interno al crear la OT.` |
