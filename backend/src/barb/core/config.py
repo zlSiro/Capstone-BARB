@@ -19,11 +19,21 @@ class Settings(BaseSettings):
     upload_dir: Path = Path("./uploads")
 
    # --- APIs de IA ---
-    llm_provider: Literal["deepseek", "openai", "openrouter", "groq"] = "deepseek"
+    llm_provider: Literal["deepseek", "openai", "openrouter", "groq", "nvidia"] = "deepseek"
     openrouter_api_key: str = ""
     groq_api_key: str = ""
     deepseek_api_key: str = ""
     openai_api_key: str = ""
+    nvidia_api_key: str = ""
+    # NVIDIA NIM (build.nvidia.com) expone una API OpenAI-compatible.
+    nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
+    # Timeout por request (segundos): el endpoint gratuito puede saturarse
+    # y dejar la conexión colgada; sin esto la lib OpenAI espera hasta 600s.
+    nvidia_timeout: int = 60
+    # Vía chat_template_kwargs: algunos modelos NIM (Nemotron, DeepSeek) traen
+    # "thinking" habilitado por defecto y emiten razonamiento interno antes de
+    # la respuesta. En false → respuestas directas en el chat.
+    nvidia_enable_thinking: bool = False
 
     # --- Configuración LLM ---
     llm_model: str = "deepseek-chat"

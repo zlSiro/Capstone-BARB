@@ -40,8 +40,13 @@ entre proveedores a través de la API de LangChain.
 **Configuración actual:**
 - Reintentos: 3 intentos con `wait_exponential_jitter=True`.
 - Fallback: lista configurable vía `LLM_FALLBACK_PROVIDERS` en `.env`.
-  Actualmente vacía (solo DeepSeek tiene key). Cuando lleguen las keys de
-  NVIDIA/OpenRouter, se activa sin tocar código.
+  Solo se activan los respaldos que tengan key configurada, sin tocar código.
+
+**Proveedores soportados** (`LLM_PROVIDER`): `deepseek` | `openai` | `openrouter` |
+`groq` | `nvidia`. El proveedor `nvidia` usa NIM (build.nvidia.com), que expone
+una API OpenAI-compatible vía `ChatOpenAI` + `NVIDIA_BASE_URL`
+(`https://integrate.api.nvidia.com/v1`); los modelos se referencian con
+namespace, p. ej. `deepseek-ai/deepseek-v4.1-flash`.
 
 
 ### 2.7 Manejo de errores en streaming

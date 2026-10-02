@@ -9,7 +9,6 @@ from langchain_core.runnables import Runnable, RunnableLambda
 
 from barb.core.config import settings
 
-
 # ---------------------------------------------------------------------------
 # Construcción del LLM por proveedor
 # ---------------------------------------------------------------------------
@@ -63,6 +62,22 @@ def _build_llm(provider: str | None = None):
             max_tokens=settings.llm_max_tokens,
             streaming=True,
             api_key=settings.groq_api_key,
+        )
+
+    if provider == "nvidia":
+        # NVIDIA NIM (build.nvidia.com) expone una API OpenAI-compatible.
+        from langchain_openai import ChatOpenAI
+        if not settings.nvidia_api_key:
+            raise RuntimeError("NVIDIA_API_KEY no configurada en .env")
+        return ChatOpenAI(
+            model=settings.llm_model,
+            temperature=settings.llm_temperature,
+            max_tokens=settings.llm_max_tokens,
+            streaming=True,
+            api_key=settings.nvidia_api_key,
+            base_url=settings.nvidia_base_url,
+            request_timeout=settings.nvidia_timeout,
+            extra_body={"chat_template_kwargs": {"enable_thinking": settings.nvidia_enable_thinking}},
         )
 
     raise ValueError(f"Proveedor LLM no soportado: {provider}")
