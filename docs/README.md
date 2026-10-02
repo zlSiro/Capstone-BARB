@@ -27,6 +27,8 @@ cd Capstone-BARB/backend
 # 2. Instalar dependencias
 uv sync
 
+
+
 # 3. Levantar PostgreSQL local
 docker compose up -d db
 
@@ -39,3 +41,12 @@ cp .env.example .env
 
 # 6. Arrancar el backend
 uv run fastapi dev src/barb/main.py --port 9000
+
+---
+
+## 🧪 Tests
+
+### Suite completa
+
+```bash
+uv run pytest -v

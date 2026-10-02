@@ -1,0 +1,162 @@
+<!-- frontend/src/app/features/chat/chat-history/chat-history.component.html -->
+
+<div class="p-4 md:p-6 max-w-7xl mx-auto">
+
+  <!-- Header -->
+  <div class="mb-6 flex items-start justify-between">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900 dark:text-gray-100">
+        {{ 'chatHistory.title' | translate }}
+      </h1>
+      <p class="text-sm text-gray-500 dark:text-gray-400">
+        {{ 'chatHistory.subtitle' | translate }}
+      </p>
+    </div>
+    <a
+      routerLink="/chat"
+      class="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+    >
+      {{ 'chatHistory.backToChat' | translate }}
+    </a>
+  </div>
+
+  <!-- Estado de carga y error -->
+  @if (loading()) {
+    <div class="text-center text-gray-500 dark:text-gray-400 py-12">{{ 'chatHistory.loadingSessions' | translate }}</div>
+  }
+
+  @if (errorMessage(); as errorMsg) {
+    <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 rounded-lg p-3 mb-4 text-sm">
+      ⚠️ {{ errorMsg | translate }}
+    </div>
+  }
+
+  <!-- Layout master-detail -->
+  @if (!loading() && sessions().length > 0) {
+    <div class="grid grid-cols-1 lg:grid-cols-5 gap-4">
+
+      <!-- Tabla de sesiones -->
+      <div class="lg:col-span-3 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <table class="w-full text-sm">
+          <thead class="bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300">
+            <tr>
+              <th class="text-left px-4 py-3 font-medium">{{ 'chatHistory.date' | translate }}</th>
+              <th class="text-left px-4 py-3 font-medium">{{ 'chatHistory.titleIssue' | translate }}</th>
+              <th class="text-left px-4 py-3 font-medium">{{ 'chatHistory.machine' | translate }}</th>
+              <th class="text-left px-4 py-3 font-medium w-16"></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (s of sessions(); track s.session_id) {
+              <tr
+                (click)="selectSession(s)"
+                [class.bg-blue-50]="selectedId() === s.session_id"
+                [class.dark:bg-blue-900/20]="selectedId() === s.session_id"
+                class="border-t border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/60 cursor-pointer transition-colors"
+              >
+                <td class="px-4 py-3 text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                  {{ formatDate(s.saved_at) }}
+                </td>
+                <td class="px-4 py-3 text-gray-900 dark:text-gray-100 font-medium">
+                  {{ s.titulo }}
+                </td>
+                <td class="px-4 py-3 text-gray-600 dark:text-gray-400">
+                  {{ s.machine_name || '—' }}
+                </td>
+                <td class="px-4 py-3 text-right">
+                  <button
+                    (click)="deleteSession(s, $event)"
+                    [title]="'chatHistory.deleteTooltip' | translate"
+                    class="p-1.5 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                  >
+                    🗑
+                  </button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Panel de detalle -->
+      <div class="lg:col-span-2">
+        @if (!hasSelection()) {
+          <div class="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-8 text-center text-gray-400 dark:text-gray-500 h-full flex items-center justify-center">
+            <p>{{ 'chatHistory.selectPrompt' | translate }}</p>
+          </div>
+        } @else {
+          <div class="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 flex flex-col h-[70vh]">
+
+            <!-- Header del detalle -->
+            <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-start justify-between">
+              <div class="min-w-0">
+                <h2 class="font-semibold text-gray-900 dark:text-gray-100 truncate">
+                  {{ selectedTitle() }}
+                </h2>
+                @if (selectedMeta().machine || selectedMeta().discipline) {
+                  <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">
+                    @if (selectedMeta().discipline) { {{ selectedMeta().discipline }} }
+                    @if (selectedMeta().machine) { · {{ selectedMeta().machine }} }
+                  </p>
+                }
+              </div>
+              <button
+                (click)="closeDetail()"
+                class="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 ml-2"
+                [title]="'common.close' | translate"
+              >✕</button>
+            </div>
+
+            <!-- Mensajes -->
+            <div class="flex-1 overflow-y-auto p-4 space-y-3">
+              @if (loadingDetail()) {
+                <div class="text-center text-gray-500 text-sm py-8">{{ 'chatHistory.loadingMessages' | translate }}</div>
+              }
+
+              @for (m of selectedMessages(); track $index) {
+                @if (m.role === 'user') {
+                  <div class="flex justify-end">
+                    <div class="bg-blue-600 text-white rounded-2xl rounded-br-sm px-4 py-2 max-w-[85%] text-sm whitespace-pre-wrap">
+                      {{ m.content }}
+                    </div>
+                  </div>
+                } @else if (m.role === 'assistant') {
+                  <div class="flex justify-start">
+                    <div class="bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-2xl rounded-bl-sm px-4 py-2 max-w-[85%] text-sm whitespace-pre-wrap">
+                      {{ m.content }}
+                    </div>
+                  </div>
+                }
+              }
+            </div>
+
+            <!-- Footer con CTA -->
+            <div class="px-4 py-3 border-t border-gray-200 dark:border-gray-700">
+              <button
+                (click)="continueInChat()"
+                class="w-full py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors text-sm"
+              >
+                {{ 'chatHistory.continueConversation' | translate }}
+              </button>
+            </div>
+          </div>
+        }
+      </div>
+    </div>
+  }
+
+  <!-- Estado vacío -->
+  @if (!loading() && sessions().length === 0 && !errorMessage()) {
+    <div class="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-12 text-center">
+      <p class="text-gray-500 dark:text-gray-400 mb-4">
+        {{ 'chatHistory.emptyState' | translate }}
+      </p>
+      <a
+        routerLink="/chat"
+        class="inline-block px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
+      >
+        {{ 'chatHistory.startConversation' | translate }}
+      </a>
+    </div>
+  }
+</div>
