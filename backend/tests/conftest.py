@@ -49,7 +49,7 @@ async def db_pool() -> AsyncIterator[None]:
 # =============================================================================
 
 @pytest_asyncio.fixture
-async def client() -> AsyncIterator[AsyncClient]:
+async def client(db_pool) -> AsyncIterator[AsyncClient]:
     """Cliente HTTP asíncrono apuntando a la app FastAPI."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:

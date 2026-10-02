@@ -16,7 +16,7 @@ export class WorkOrdersService {
     return this.http.get<WorkOrder>(`${this.apiUrl}/work-orders/${numeroOt}`);
   }
 
-  create(payload: Partial<WorkOrder>) {
+  create(payload: FormData) {
     return this.http.post<WorkOrder>(`${this.apiUrl}/work-orders`, payload);
   }
 
