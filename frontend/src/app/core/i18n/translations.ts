@@ -24,7 +24,8 @@ export const translations = {
       technician: 'Técnico', duration: 'Duración', action: 'Acciones', view: 'Ver', urgent: 'Urgente',
       understood: 'Entendido',
       errorLoadingCatalogs: 'No se pudieron cargar los catálogos. Verifica la conexión.',
-      fillDetails: 'Ingresa los detalles para generar y asignar la orden.'
+      fillDetails: 'Ingresa los detalles para generar y asignar la orden.',
+      sessionExpired: 'Tu sesión expiró. Inicia sesión nuevamente.'
     },
     statuses: {
       pending: 'Pendiente', assigned: 'Asignada', in_progress: 'En Progreso', completed: 'Completada',
@@ -156,7 +157,8 @@ export const translations = {
       technician: 'Technician', duration: 'Duration', action: 'Actions', view: 'View',
       urgent: 'Urgent', understood: 'Got it',
       errorLoadingCatalogs: 'Could not load the catalogs. Check your connection.',
-      fillDetails: 'Enter the details to generate and assign the order.'
+      fillDetails: 'Enter the details to generate and assign the order.',
+      sessionExpired: 'Your session has expired. Please log in again.'
     },
     statuses: {
       pending: 'Pending', assigned: 'Assigned', in_progress: 'In Progress', completed: 'Completed',

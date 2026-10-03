@@ -9,10 +9,16 @@ import {
   SessionDetailResponse,
   SessionListResponse,
 } from '../models/chat.model';
+import { AuthService } from './auth.service';
+import { ToastService } from './toast.service';
+import { I18nService } from '../i18n/i18n.service';
 
 @Injectable({ providedIn: 'root' })
 export class ChatService {
   private readonly http = inject(HttpClient);
+  private readonly auth = inject(AuthService);
+  private readonly toast = inject(ToastService);
+  private readonly i18n = inject(I18nService);
   private readonly baseUrl = '/api/chat';
 
   // ---------------------------------------------------------------------------
@@ -37,6 +43,10 @@ export class ChatService {
       })
         .then(async (response) => {
           if (response.status === 401) {
+            // El stream usa fetch nativo (no pasa por authInterceptor):
+            // mismo manejo de sesión expirada → logout + redirect a /login.
+            this.toast.show(this.i18n.t('common').sessionExpired, 'error');
+            this.auth.logout();
             subscriber.error(new Error('Sesión expirada. Vuelve a iniciar sesión.'));
             return;
           }
