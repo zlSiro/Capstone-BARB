@@ -1,7 +1,8 @@
 # Arquitectura RAG — HU-04: Que la IA pueda recibir documentos
 
-> **Estado: PROPUESTA (CGBIDA-231).** Pendiente de validación con el equipo.
-> Al implementarse, este documento se actualiza con el estado final (CGBIDA-252).
+> **Estado:** D1 (proveedor de embeddings) **VALIDADA por el equipo** — 03/10/2026,
+> se cierra CGBIDA-240. Contrato API formalizado en `docs/contrato_api_documents.md`
+> (CGBIDA-232). Al implementarse, este documento se actualiza (CGBIDA-252).
 
 ## 1. Objetivo
 
