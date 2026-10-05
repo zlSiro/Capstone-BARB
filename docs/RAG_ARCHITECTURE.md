@@ -75,7 +75,9 @@ CREATE TABLE documento_embedding (
 );
 
 CREATE INDEX documento_embedding_idx ON documento_embedding
-    USING hnsw (embedding vector_cosine_ops);
+    -- HNSW soporta hasta 2000 dims; el modelo produce 2048 → se indexa la
+    -- proyección halfvec (float16, hasta 4000 dims). Técnica oficial pgvector 0.7+.
+    USING hnsw ((embedding::halfvec(2048)) halfvec_cosine_ops);
 ```
 
 - La tabla `documento` ya existe (migración `0002_runtime_tables`); su columna
@@ -111,7 +113,8 @@ CREATE INDEX documento_embedding_idx ON documento_embedding
 ### D6 — Retrieval en el chat
 
 1. Al llegar un mensaje: `embed(mensaje)`.
-2. `SELECT content FROM documento_embedding ORDER BY embedding <=> :query_vec LIMIT :top_k`
+2. `SELECT content FROM documento_embedding ORDER BY embedding::halfvec(2048) <=> :query_vec::halfvec(2048) LIMIT :top_k`
+   (coseno con el mismo cast `halfvec` del índice — ver D2)
    (coseno, `top_k` por `.env`, default 4).
 3. Inyección en el system prompt: *"Contexto de manuales técnicos: [chunks]"* con
    instrucción de usarlo solo si es relevante (CGBIDA-243/244).
