@@ -8,7 +8,10 @@ pipeline de RAG (ver docs/RAG_ARCHITECTURE.md, decisión D2):
 - FK a `documento` con ON DELETE CASCADE: al eliminar un documento se borran
   sus chunks.
 - UNIQUE (documento_id, chunk_index): evita duplicados si un PDF se re-ingesta.
-- Índice HNSW con operador coseno (`<=>`) para búsqueda por similitud.
+- Índice HNSW sobre la proyección `halfvec` (float16): HNSW soporta hasta 2000
+  dimensiones y el modelo produce 2048 — `halfvec` llega a 4000. Es la técnica
+  oficial de pgvector 0.7+ para vectores grandes. La consulta debe usar el
+  mismo cast (`embedding::halfvec(2048) <=> :q::halfvec(2048)`).
 
 En producción (Supabase) la extensión ya viene incluida; el CREATE EXTENSION
 es idempotente (IF NOT EXISTS). En local requiere la imagen pgvector del
@@ -41,8 +44,12 @@ CREATE TABLE documento_embedding (
     CONSTRAINT documento_embedding_unique_chunk UNIQUE (documento_id, chunk_index)
 );
 
+-- HNSW soporta columnas de hasta 2000 dimensiones y el modelo produce 2048.
+-- Tecnica oficial de pgvector 0.7+ para vectores grandes: indexar la proyeccion
+-- a halfvec (float16, hasta 4000 dims). La consulta de retrieval debe usar
+-- el mismo cast: ORDER BY embedding::halfvec(2048) <=> :q::halfvec(2048).
 CREATE INDEX documento_embedding_idx ON documento_embedding
-    USING hnsw (embedding vector_cosine_ops);
+    USING hnsw ((embedding::halfvec(2048)) halfvec_cosine_ops);
 """
 
 _DDL_DOWN = r"""
