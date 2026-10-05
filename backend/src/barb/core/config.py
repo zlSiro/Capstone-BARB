@@ -15,6 +15,17 @@ class Settings(BaseSettings):
     # --- Redis ---
     redis_url: str = "redis://localhost:6379/0"
 
+    # --- Supabase Storage (HU-04 / RAG) ---
+    # Tolerante a fallos (patrón Redis): sin estas variables, los endpoints de
+    # documentos responderán 503 y el resto de la app funciona igual.
+    supabase_url: str = ""
+    supabase_service_role_key: str = ""
+    supabase_bucket: str = "barb-files"
+
+    @property
+    def storage_configurado(self) -> bool:
+        return bool(self.supabase_url and self.supabase_service_role_key)
+
     # --- Archivos ---
     upload_dir: Path = Path("./uploads")
 
