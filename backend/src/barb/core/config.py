@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     # --- Archivos ---
     upload_dir: Path = Path("./uploads")
 
+    # --- RAG (HU-04): chunking e ingesta (D4 de docs/RAG_ARCHITECTURE.md) ---
+    rag_chunk_size: int = 1200
+    rag_chunk_overlap: int = 200
+
    # --- APIs de IA ---
     llm_provider: Literal["deepseek", "openai", "openrouter", "groq", "nvidia"] = "deepseek"
     openrouter_api_key: str = ""
