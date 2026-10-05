@@ -1,6 +1,8 @@
 services:
   db:
-    image: postgres:17-alpine
+    # PostgreSQL 17 + extensión pgvector preinstalada (HU-04 / RAG).
+    # Misma versión/base de datos; el volumen barb_capstone_pg_data persiste los datos.
+    image: pgvector/pgvector:pg17
     container_name: barb_capstone_postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-barb_admin}
