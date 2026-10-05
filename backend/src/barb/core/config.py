@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     # --- RAG (HU-04): chunking e ingesta (D4 de docs/RAG_ARCHITECTURE.md) ---
     rag_chunk_size: int = 1200
     rag_chunk_overlap: int = 200
+    # Modelo validado por el equipo (D1). La misma NVIDIA_API_KEY del chat sirve
+    # para /v1/embeddings (verificado 04-10: una key habilita las funciones de
+    # los modelos de la cuenta).
+    embeddings_model: str = "nvidia/nemotron-3-embed-1b"
+    embeddings_timeout: int = 60
 
    # --- APIs de IA ---
     llm_provider: Literal["deepseek", "openai", "openrouter", "groq", "nvidia"] = "deepseek"
