@@ -12,6 +12,7 @@ import {
 import { AuthService } from './auth.service';
 import { ToastService } from './toast.service';
 import { I18nService } from '../i18n/i18n.service';
+import { environment } from '../../../environments/environment';
 
 @Injectable({ providedIn: 'root' })
 export class ChatService {
@@ -19,7 +20,7 @@ export class ChatService {
   private readonly auth = inject(AuthService);
   private readonly toast = inject(ToastService);
   private readonly i18n = inject(I18nService);
-  private readonly baseUrl = '/api/chat';
+  private readonly baseUrl = `${environment.apiUrl}/chat`;
 
   // ---------------------------------------------------------------------------
   // Chat en streaming (HU-03)
