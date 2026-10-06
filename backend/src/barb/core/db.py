@@ -16,7 +16,8 @@ pool = AsyncConnectionPool(
     conninfo=settings.database_url,
     min_size=1,
     max_size=10,
-    kwargs={"row_factory": dict_row},
+    # prepare_threshold=None: el pooler de Supabase (modo transaction, :6543) no soporta prepared statements.
+    kwargs={"row_factory": dict_row, "prepare_threshold": None},
     open=False,
 )
 
