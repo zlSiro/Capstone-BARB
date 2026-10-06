@@ -5,12 +5,12 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from barb.core.config import settings
 from barb.core.db import fetch_all, fetch_one, transaction
-from barb.core.permissions import get_sesion_actual, require_action, require_auth
+from barb.core.permissions import get_sesion_actual, require_action, require_auth, resolver_empresa
 from barb.schemas.work_orders import WorkOrderStatusRequest
 from barb.services.files import delete_ot_files, save_ot_photos
 from barb.utils import (
@@ -42,6 +42,9 @@ def row_to_work_order(row: dict, photos: list[dict] | None = None) -> dict:
         "plant": str(row.get("plant_name") or ""),
         "plant_name": str(row.get("plant_name") or ""),
         "plant_id": int(row.get("planta_id") or 1),
+        # Multi-empresa: empresa dueña de la OT (derivada de maquina -> planta).
+        "empresa_id": row.get("empresa_id"),
+        "empresa_nombre": str(row.get("empresa_nombre") or ""),
         "discipline": str(row.get("discipline_name") or ""),
         "discipline_name": str(row.get("discipline_name") or ""),
         "priority": str(row.get("priority") or "medium"),
@@ -74,19 +77,26 @@ _WORK_ORDER_SELECT = """
         ot.costo_real, ot.estado,
         m.nombre AS machine_name, m.planta_id,
         d.disciplina_id AS discipline_id, d.nombre AS discipline_name,
-        p.nombre AS plant_name, u.nombre AS tecnico_nombre
+        p.nombre AS plant_name, u.nombre AS tecnico_nombre,
+        p.empresa_id, em.nombre AS empresa_nombre
     FROM orden_trabajo ot
     JOIN maquina m ON m.maquina_id = ot.maquina_id
     LEFT JOIN disciplina d ON d.disciplina_id = m.disciplina_id
     LEFT JOIN planta p ON p.planta_id = m.planta_id
+    LEFT JOIN empresa em ON em.empresa_id = p.empresa_id
     LEFT JOIN usuario u ON u.usuario_id = ot.tecnico_id
 """
 
 
-async def fetch_work_order_row(numero_ot: str) -> dict | None:
+# Filtro multi-empresa reutilizable: NULL = sin restricción (solo el super_usuario).
+_EMPRESA_FILTER = "(%(empresa_id)s::int IS NULL OR p.empresa_id = %(empresa_id)s)"
+
+
+async def fetch_work_order_row(numero_ot: str, empresa_id: int | None = None) -> dict | None:
+    """Carga una OT. Si `empresa_id` no es None, solo la devuelve si pertenece a esa empresa."""
     return await fetch_one(
-        f"{_WORK_ORDER_SELECT} WHERE ot.numero_ot = %(numero_ot)s LIMIT 1",
-        {"numero_ot": numero_ot},
+        f"{_WORK_ORDER_SELECT} WHERE ot.numero_ot = %(numero_ot)s AND {_EMPRESA_FILTER} LIMIT 1",
+        {"numero_ot": numero_ot, "empresa_id": empresa_id},
     )
 
 
@@ -114,9 +124,13 @@ async def fetch_work_order_photos(ot_id: int) -> list[dict]:
 
 @router.get("/api/work-orders", dependencies=[Depends(require_auth)])
 @router.get("/api/work_orders", dependencies=[Depends(require_auth)])
-async def get_work_orders():
+async def get_work_orders(empresa_id: int | None = Query(default=None), sesion: dict = Depends(get_sesion_actual)):
+    scope = resolver_empresa(sesion, empresa_id)
     try:
-        rows = await fetch_all(f"{_WORK_ORDER_SELECT} ORDER BY ot.fecha_creacion DESC, ot.ot_id DESC")
+        rows = await fetch_all(
+            f"{_WORK_ORDER_SELECT} WHERE {_EMPRESA_FILTER} ORDER BY ot.fecha_creacion DESC, ot.ot_id DESC",
+            {"empresa_id": scope},
+        )
         return [row_to_work_order(row) for row in rows]
     except Exception:
         logger.exception("Error al listar órdenes de trabajo")
@@ -125,8 +139,8 @@ async def get_work_orders():
 
 @router.get("/api/work-orders/{numero_ot}", dependencies=[Depends(require_auth)])
 @router.get("/api/work_orders/{numero_ot}", dependencies=[Depends(require_auth)])
-async def get_work_order(numero_ot: str):
-    row = await fetch_work_order_row(numero_ot)
+async def get_work_order(numero_ot: str, sesion: dict = Depends(get_sesion_actual)):
+    row = await fetch_work_order_row(numero_ot, resolver_empresa(sesion))
     if not row:
         raise HTTPException(status_code=404, detail="OT no encontrada.")
     photos = await fetch_work_order_photos(int(row["ot_id"]))
@@ -135,9 +149,9 @@ async def get_work_order(numero_ot: str):
 
 @router.put("/api/work-orders/{numero_ot}/status", dependencies=[Depends(require_action("cambiar_estado_ot"))])
 @router.put("/api/work_orders/{numero_ot}/status", dependencies=[Depends(require_action("cambiar_estado_ot"))])
-async def update_work_order_status(numero_ot: str, payload: WorkOrderStatusRequest):
+async def update_work_order_status(numero_ot: str, payload: WorkOrderStatusRequest, sesion: dict = Depends(get_sesion_actual)):
     desired_status = parse_work_order_status(payload.status)
-    current = await fetch_work_order_row(numero_ot)
+    current = await fetch_work_order_row(numero_ot, resolver_empresa(sesion))
     if not current:
         raise HTTPException(status_code=404, detail="OT no encontrada.")
 
@@ -180,8 +194,8 @@ async def update_work_order_status(numero_ot: str, payload: WorkOrderStatusReque
 
 @router.delete("/api/work-orders/{numero_ot}", status_code=204, dependencies=[Depends(require_action("eliminar_ot"))])
 @router.delete("/api/work_orders/{numero_ot}", status_code=204, dependencies=[Depends(require_action("eliminar_ot"))])
-async def delete_work_order(numero_ot: str):
-    current = await fetch_work_order_row(numero_ot)
+async def delete_work_order(numero_ot: str, sesion: dict = Depends(get_sesion_actual)):
+    current = await fetch_work_order_row(numero_ot, resolver_empresa(sesion))
     if not current:
         raise HTTPException(status_code=404, detail="OT no encontrada.")
     ot_id = int(current["ot_id"])
@@ -216,16 +230,32 @@ def _validate_enum(value: str, allowed: tuple[str, ...], field_name: str) -> str
     return value
 
 
-async def _ensure_machine_exists(maquina_id: int) -> None:
-    row = await fetch_one("SELECT maquina_id FROM maquina WHERE maquina_id = %(id)s", {"id": maquina_id})
+async def _ensure_machine_exists(maquina_id: int, empresa_id: int | None = None) -> int:
+    """
+    Verifica que la máquina exista y, si se indica `empresa_id`, que pertenezca a esa
+    empresa (un usuario no puede crear OTs sobre máquinas de otra empresa).
+    Devuelve la empresa dueña de la máquina.
+    """
+    row = await fetch_one(
+        """
+        SELECT m.maquina_id, p.empresa_id FROM maquina m JOIN planta p ON p.planta_id = m.planta_id
+        WHERE m.maquina_id = %(id)s AND (%(empresa_id)s::int IS NULL OR p.empresa_id = %(empresa_id)s)
+        """,
+        {"id": maquina_id, "empresa_id": empresa_id},
+    )
     if not row:
         raise HTTPException(status_code=422, detail=f"La máquina {maquina_id} no existe.")
+    return int(row["empresa_id"])
 
 
-async def _ensure_technician_exists(tecnico_id: int) -> None:
+async def _ensure_technician_exists(tecnico_id: int, empresa_id: int | None = None) -> None:
+    # El técnico debe ser de la misma empresa que la máquina/OT.
     row = await fetch_one(
-        "SELECT usuario_id, rol, activo FROM usuario WHERE usuario_id = %(id)s",
-        {"id": tecnico_id},
+        """
+        SELECT usuario_id, rol, activo FROM usuario
+        WHERE usuario_id = %(id)s AND empresa_id IS NOT DISTINCT FROM %(empresa_id)s
+        """,
+        {"id": tecnico_id, "empresa_id": empresa_id},
     )
     if not row:
         raise HTTPException(status_code=422, detail=f"El técnico {tecnico_id} no existe.")
@@ -286,8 +316,10 @@ async def create_work_order(request: Request, sesion: dict = Depends(get_sesion_
     estado = parse_work_order_status(safe_text(payload.get("estado") or payload.get("status"), "pending"))
     fecha_vencimiento = parse_optional_datetime(payload.get("fecha_vencimiento") or payload.get("due_date"))
 
-    await _ensure_machine_exists(maquina_id)
-    await _ensure_technician_exists(tecnico_id)
+    # Multi-empresa: la máquina debe ser de la empresa del usuario (el super_usuario puede
+    # operar sobre cualquiera) y el técnico debe pertenecer a la misma empresa que la máquina.
+    empresa_maquina = await _ensure_machine_exists(maquina_id, resolver_empresa(sesion))
+    await _ensure_technician_exists(tecnico_id, empresa_maquina)
 
     temp_numero_ot = f"OT-TEMP-{uuid.uuid4().hex[:6]}"
 
@@ -346,7 +378,7 @@ async def create_work_order(request: Request, sesion: dict = Depends(get_sesion_
             raise
         raise HTTPException(status_code=500, detail="Error al guardar las fotos de la OT.") from e
 
-    created = await fetch_work_order_row(clean_numero_ot)
+    created = await fetch_work_order_row(clean_numero_ot, empresa_maquina)
     photos = await fetch_work_order_photos(ot_id)
     response_data = row_to_work_order(created, photos=photos) if created else {"numero_ot": clean_numero_ot, "ot_id": ot_id}
     response_data["photos"] = photos

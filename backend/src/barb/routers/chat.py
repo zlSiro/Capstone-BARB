@@ -3,20 +3,15 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
 from barb.core.rate_limit import chat_rate_limiter
 from barb.core.security import get_current_user
 from barb.core.token_limit import estimate_tokens, token_limiter
-from barb.services import chat_repository
-from barb.services.llm_service import create_conversation_chain
-
-from fastapi import Query
-
 from barb.schemas.chat import (
     ChatMessage,
     DeleteSessionResponse,
@@ -24,7 +19,9 @@ from barb.schemas.chat import (
     SessionListItem,
     SessionListResponse,
 )
-
+from barb.services import chat_repository
+from barb.services.document_service import format_context, search_chunks
+from barb.services.llm_service import NO_DOCS_ANSWER, create_conversation_chain
 
 logger = logging.getLogger("barb.chat")
 
@@ -39,10 +36,17 @@ class ChatRequest(BaseModel):
         max_length=2000,
         description="Mensaje del usuario (1 a 2000 caracteres).",
     )
+    # Solo lo usa el super_usuario (no tiene empresa propia): empresa cuya
+    # documentación consulta. Para el resto se ignora.
+    empresa_id: int | None = None
+
+
+async def _single_chunk(text: str):
+    yield text
 
 
 def _now_ms() -> int:
-    return int(datetime.now(timezone.utc).timestamp() * 1000)
+    return int(datetime.now(UTC).timestamp() * 1000)
 
 
 @router.post("/stream")
@@ -51,7 +55,17 @@ async def stream_chat(
     user: dict = Depends(get_current_user),
 ):
     user_id = int(user["id"])
-    empresa_id = int(user["empresa_id"])
+    # Aislamiento: un usuario de empresa SIEMPRE consulta la documentación de su empresa.
+    # El super_usuario (sin empresa) debe elegir una.
+    empresa_id = user["empresa_id"]
+    if user["role"] == "super_usuario":
+        empresa_id = request.empresa_id
+    if empresa_id is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Selecciona una empresa para consultar su documentación.",
+        )
+    empresa_id = int(empresa_id)
 
     chat_rate_limiter.check(str(user_id))
 
@@ -82,7 +96,16 @@ async def stream_chat(
         )
         history = []
 
-    chain = create_conversation_chain()
+    # --- RAG: fragmentos relevantes de la documentación ACTIVA de la empresa ---
+    # Se incluye el último mensaje del usuario para resolver preguntas de seguimiento
+    # ("¿y el torque?").
+    previous_user_msgs = [m.get("content", "") for m in history if m.get("role") == "user"][-1:]
+    chunks = await search_chunks(empresa_id, request.message, *previous_user_msgs)
+    context = format_context(chunks)
+
+    # Sin documentación relevante no se consulta al LLM: se garantiza que la IA
+    # nunca responda con conocimiento ajeno a lo compartido por la empresa.
+    chain = create_conversation_chain() if chunks else None
     input_tokens = estimate_tokens(request.message)
 
     async def event_generator():
@@ -95,9 +118,14 @@ async def stream_chat(
                 "data": json.dumps({"session_id": session_id}),
             }
 
-            async for chunk in chain.astream(
-                {"input": request.message, "history": history}
-            ):
+            if chain is None:
+                stream = _single_chunk(NO_DOCS_ANSWER)
+            else:
+                stream = chain.astream(
+                    {"input": request.message, "history": history, "context": context}
+                )
+
+            async for chunk in stream:
                 if chunk:
                     output_chars += len(chunk)
                     assistant_chunks.append(chunk)

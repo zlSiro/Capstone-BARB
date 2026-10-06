@@ -18,6 +18,7 @@ export const ROLES = [
   'gerente',
   'admin',
   'visitante',
+  'super_usuario',
 ] as const;
 
 export type PermisoValor = boolean | 'ver';
@@ -30,7 +31,10 @@ export type RutaKey =
   | 'memory'
   | 'report'
   | 'dashboard'
-  | 'history';
+  | 'history'
+  | 'empresas'
+  | 'usuarios'
+  | 'documentos';
 
 export type AccionKey =
   | 'crear_ot'
@@ -38,21 +42,27 @@ export type AccionKey =
   | 'eliminar_ot'
   | 'subir_documentos'
   | 'gestionar_usuarios'
-  | 'ver_usuarios';
+  | 'ver_usuarios'
+  | 'eliminar_documentos'
+  | 'gestionar_empresas';
 
 // =============================================================================
 // MATRIZ DE RUTAS (idéntica a RUTAS en permissions.py)
 // =============================================================================
 
 export const RUTAS: Record<RutaKey, Record<string, PermisoValor>> = {
-  menu:      { operador: true, tecnico: true,  supervisor: true,  engineer: true,  gerente: true,  admin: true, visitante: true },
-  docchat:   { operador: true, tecnico: true,  supervisor: true,  engineer: true,  gerente: true,  admin: true, visitante: false },
-  debug:     { operador: true, tecnico: true,  supervisor: true,  engineer: true,  gerente: true,  admin: true, visitante: false },
-  topology:  { operador: true, tecnico: true,  supervisor: true,  engineer: true,  gerente: true,  admin: true, visitante: 'ver' },
-  memory:    { operador: true, tecnico: true,  supervisor: true,  engineer: true,  gerente: true,  admin: true, visitante: 'ver' },
-  report:    { operador: true, tecnico: true,  supervisor: true,  engineer: true,  gerente: true,  admin: true, visitante: false },
-  dashboard: { operador: false, tecnico: false, supervisor: true,  engineer: true,  gerente: true,  admin: true, visitante: 'ver' },
-  history:   { operador: false, tecnico: false, supervisor: true,  engineer: false, gerente: true,  admin: true, visitante: false },
+  menu:      { operador: true, tecnico: true,  supervisor: true,  engineer: true,  gerente: true,  admin: true, visitante: true , super_usuario: true },
+  docchat:   { operador: true, tecnico: true,  supervisor: true,  engineer: true,  gerente: true,  admin: true, visitante: false , super_usuario: true },
+  debug:     { operador: true, tecnico: true,  supervisor: true,  engineer: true,  gerente: true,  admin: true, visitante: false , super_usuario: true },
+  topology:  { operador: true, tecnico: true,  supervisor: true,  engineer: true,  gerente: true,  admin: true, visitante: 'ver' , super_usuario: true },
+  memory:    { operador: true, tecnico: true,  supervisor: true,  engineer: true,  gerente: true,  admin: true, visitante: 'ver' , super_usuario: true },
+  report:    { operador: true, tecnico: true,  supervisor: true,  engineer: true,  gerente: true,  admin: true, visitante: false , super_usuario: true },
+  dashboard: { operador: false, tecnico: false, supervisor: true,  engineer: true,  gerente: true,  admin: true, visitante: 'ver' , super_usuario: true },
+  // Multi-empresa (espejo de permissions.py)
+  empresas:   { operador: false, tecnico: false, supervisor: false, engineer: false, gerente: false, admin: false, visitante: false, super_usuario: true },
+  usuarios:   { operador: false, tecnico: false, supervisor: false, engineer: false, gerente: false, admin: true,  visitante: false, super_usuario: true },
+  documentos: { operador: 'ver',  tecnico: 'ver',  supervisor: 'ver',  engineer: true,  gerente: true,  admin: true,  visitante: false, super_usuario: true },
+  history:   { operador: false, tecnico: false, supervisor: true,  engineer: false, gerente: true,  admin: true, visitante: false , super_usuario: true },
 };
 
 // =============================================================================
@@ -60,12 +70,14 @@ export const RUTAS: Record<RutaKey, Record<string, PermisoValor>> = {
 // =============================================================================
 
 export const ACCIONES: Record<AccionKey, Record<string, boolean>> = {
-  crear_ot:           { operador: false, tecnico: false, supervisor: false, engineer: false, gerente: true, admin: true, visitante: false },
-  cambiar_estado_ot:  { operador: false, tecnico: true,  supervisor: true,  engineer: true,  gerente: true, admin: true, visitante: false },
-  eliminar_ot:        { operador: false, tecnico: false, supervisor: true,  engineer: true,  gerente: true, admin: true, visitante: false },
-  subir_documentos:   { operador: false, tecnico: false, supervisor: false, engineer: true,  gerente: true, admin: true, visitante: false },
-  gestionar_usuarios: { operador: false, tecnico: false, supervisor: false, engineer: false, gerente: false, admin: true, visitante: false },
-  ver_usuarios:       { operador: false, tecnico: false, supervisor: false, engineer: false, gerente: false, admin: true, visitante: false },
+  crear_ot:           { operador: false, tecnico: false, supervisor: false, engineer: false, gerente: true, admin: true, visitante: false , super_usuario: true },
+  cambiar_estado_ot:  { operador: false, tecnico: true,  supervisor: true,  engineer: true,  gerente: true, admin: true, visitante: false , super_usuario: true },
+  eliminar_ot:        { operador: false, tecnico: false, supervisor: true,  engineer: true,  gerente: true, admin: true, visitante: false , super_usuario: true },
+  subir_documentos:   { operador: false, tecnico: false, supervisor: false, engineer: true,  gerente: true, admin: true, visitante: false , super_usuario: true },
+  gestionar_usuarios: { operador: false, tecnico: false, supervisor: false, engineer: false, gerente: false, admin: true, visitante: false , super_usuario: true },
+  eliminar_documentos: { operador: false, tecnico: false, supervisor: false, engineer: true,  gerente: true, admin: true, visitante: false, super_usuario: true },
+  gestionar_empresas: { operador: false, tecnico: false, supervisor: false, engineer: false, gerente: false, admin: false, visitante: false, super_usuario: true },
+  ver_usuarios:       { operador: false, tecnico: false, supervisor: false, engineer: false, gerente: false, admin: true, visitante: false , super_usuario: true },
 };
 
 // =============================================================================
@@ -103,8 +115,10 @@ export const puedeEjecutarAccion = (
  * Retorna la primera ruta accesible para el rol dado, usada tras el login.
  */
 export const getDefaultRouteForRole = (role: Role | null | undefined): string => {
+  // El super_usuario administra la plataforma: aterriza en el mantenedor de empresas.
+  if (puedeAccederRuta(role, 'empresas')) return '/empresas';
   if (puedeAccederRuta(role, 'dashboard')) return '/dashboard';
-  if (puedeAccederRuta(role, 'menu')) return '/menu';
+  if (puedeAccederRuta(role, 'menu')) return '/work-orders';
   return '/login';
 };
 

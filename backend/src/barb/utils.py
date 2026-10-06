@@ -34,6 +34,10 @@ def serialize_user(user: dict) -> dict:
         "rol": str(user["rol"]).lower(),
         "activo": bool(user["activo"]),
         "created_at": user["created_at"].isoformat() if user.get("created_at") else None,
+        # Multi-empresa: None para super_usuario. empresa_nombre solo viene en los listados (JOIN).
+        "empresa_id": int(user["empresa_id"]) if user.get("empresa_id") is not None else None,
+        "empresa_nombre": user.get("empresa_nombre"),
+        "ultimo_login": user["ultimo_login"].isoformat() if user.get("ultimo_login") else None,
     }
 
 

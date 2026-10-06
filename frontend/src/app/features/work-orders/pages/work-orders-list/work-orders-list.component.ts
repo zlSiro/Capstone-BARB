@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { WorkOrdersService } from '../../../../core/services/work-orders.service';
 import { PermissionsService } from '../../../../core/permissions/permissions.service';
 import { WorkOrder } from '../../../../core/models';
+import { TenantContextService } from '../../../../core/services/tenant-context.service';
 import { CreateOtModalComponent } from '../../components/create-ot-modal/create-ot-modal.component';
 
 @Component({
@@ -36,6 +37,9 @@ import { CreateOtModalComponent } from '../../components/create-ot-modal/create-
             <thead class="bg-gray-50 text-gray-600 uppercase text-xs">
               <tr>
                 <th class="px-4 py-2 text-left">N° OT</th>
+                @if (tenant.isSuper()) {
+                  <th class="px-4 py-2 text-left">Empresa</th>
+                }
                 <th class="px-4 py-2 text-left">Máquina</th>
                 <th class="px-4 py-2 text-left">Tipo</th>
                 <th class="px-4 py-2 text-left">Estado</th>
@@ -46,6 +50,9 @@ import { CreateOtModalComponent } from '../../components/create-ot-modal/create-
               @for (ot of orders(); track ot.ot_id) {
                 <tr class="border-t border-gray-100 hover:bg-gray-50">
                   <td class="px-4 py-2 font-mono">{{ ot.numero_ot }}</td>
+                  @if (tenant.isSuper()) {
+                    <td class="px-4 py-2">{{ ot.empresa_nombre }}</td>
+                  }
                   <td class="px-4 py-2">{{ ot.machine_name }}</td>
                   <td class="px-4 py-2">{{ ot.tipo }}</td>
                   <td class="px-4 py-2">
@@ -55,7 +62,7 @@ import { CreateOtModalComponent } from '../../components/create-ot-modal/create-
                 </tr>
               } @empty {
                 <tr>
-                  <td colspan="5" class="text-center py-6 text-gray-500">No hay órdenes registradas</td>
+                  <td [attr.colspan]="tenant.isSuper() ? 6 : 5" class="text-center py-6 text-gray-500">No hay órdenes registradas</td>
                 </tr>
               }
             </tbody>
@@ -68,6 +75,7 @@ import { CreateOtModalComponent } from '../../components/create-ot-modal/create-
 export class WorkOrdersListComponent implements OnInit {
   private workOrdersService = inject(WorkOrdersService);
   permissions = inject(PermissionsService);
+  tenant = inject(TenantContextService);
 
   orders = signal<WorkOrder[]>([]);
   loading = signal(true);

@@ -1,6 +1,6 @@
 import { Routes } from '@angular/router';
 import { authGuard } from './core/guards/auth.guard';
-import { roleGuard } from './core/guards/role.guard';
+import { homeRedirectGuard, roleGuard } from './core/guards/role.guard';
 import { MainLayoutComponent } from './shared/components/layout/main-layout/main-layout.component';
 import { ForbiddenComponent } from './features/forbidden/forbidden.component';
 
@@ -45,7 +45,24 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./features/chat/chat-history/chat-history.component').then(m => m.ChatHistoryComponent)
       },
-      { path: '', redirectTo: 'dashboard', pathMatch: 'full' }
+      // --- Multi-empresa ---
+      {
+        path: 'empresas',
+        canActivate: [roleGuard('empresas', false)],
+        loadComponent: () => import('./features/empresas/empresas.component').then(m => m.EmpresasComponent)
+      },
+      {
+        path: 'usuarios',
+        canActivate: [roleGuard('usuarios', false)],
+        loadComponent: () => import('./features/usuarios/usuarios.component').then(m => m.UsuariosComponent)
+      },
+      {
+        path: 'documentos',
+        canActivate: [roleGuard('documentos')],
+        loadComponent: () => import('./features/documentos/documentos.component').then(m => m.DocumentosComponent)
+      },
+      // Redirección según el rol (super_usuario -> /empresas; el resto -> /dashboard o /work-orders)
+      { path: '', canActivate: [homeRedirectGuard], children: [] }
     ]
   },
   { path: '**', redirectTo: 'login' }

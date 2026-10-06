@@ -15,6 +15,8 @@ export type Role =
   | 'gerente'
   | 'admin'
   | 'visitante'
+  // Operador de la plataforma BARB: no pertenece a una empresa y ve todas.
+  | 'super_usuario'
   | (string & {});
 
 export interface User {
@@ -22,6 +24,9 @@ export interface User {
   name: string;
   role: Role;
   token?: string;
+  // Multi-empresa: null para el super_usuario (no pertenece a ninguna empresa).
+  empresa_id?: number | null;
+  empresa_nombre?: string | null;
 }
 
 // =============================================================================
@@ -39,6 +44,8 @@ export interface LoginResponse {
     id: number;
     name: string;
     role: Role;
+    empresa_id: number | null;
+    empresa_nombre: string | null;
   };
 }
 
@@ -52,6 +59,21 @@ export interface UserCreateRequest {
   password: string;
   rol: string;
   activo?: boolean;
+  // Solo lo respeta el backend para el super_usuario; el admin siempre crea en su empresa.
+  empresa_id?: number | null;
+}
+
+/** Perfil de usuario tal como lo devuelve GET /api/usuarios. */
+export interface UsuarioPerfil {
+  usuario_id: number;
+  nombre: string;
+  email: string;
+  rol: Role;
+  activo: boolean;
+  created_at: string | null;
+  ultimo_login: string | null;
+  empresa_id: number | null;
+  empresa_nombre: string | null;
 }
 
 export interface UserUpdateRequest {

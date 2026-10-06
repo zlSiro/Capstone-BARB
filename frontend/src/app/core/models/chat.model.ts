@@ -12,6 +12,8 @@ export interface ChatMessage {
 export interface ChatRequest {
   session_id: string | null;
   message: string;
+  // Solo para el super_usuario: empresa cuya documentación consulta.
+  empresa_id?: number | null;
 }
 
 // --- Eventos SSE ---

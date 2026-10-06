@@ -1,6 +1,7 @@
 // frontend/src/app/core/services/chat.service.ts
 
 import { Injectable, inject } from '@angular/core';
+import { TenantContextService } from './tenant-context.service';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import {
@@ -13,6 +14,7 @@ import {
 @Injectable({ providedIn: 'root' })
 export class ChatService {
   private readonly http = inject(HttpClient);
+  private readonly tenant = inject(TenantContextService);
   private readonly baseUrl = '/api/chat';
 
   // ---------------------------------------------------------------------------
@@ -21,6 +23,10 @@ export class ChatService {
 
   streamChat(payload: ChatRequest): Observable<{ type: string; data: any }> {
     return new Observable((subscriber) => {
+      if (this.tenant.isSuper() && this.tenant.empresaId() === null) {
+        subscriber.error(new Error('Selecciona una empresa en la cabecera para consultar su documentación.'));
+        return;
+      }
       const controller = new AbortController();
       const token = localStorage.getItem('barb_token');
 
@@ -32,7 +38,10 @@ export class ChatService {
       fetch(`${this.baseUrl}/stream`, {
         method: 'POST',
         headers,
-        body: JSON.stringify(payload),
+        // super_usuario: indica qué empresa consulta (el backend lo ignora para usuarios de empresa).
+        body: JSON.stringify(
+          this.tenant.isSuper() ? { ...payload, empresa_id: this.tenant.empresaId() } : payload,
+        ),
         signal: controller.signal,
       })
         .then(async (response) => {

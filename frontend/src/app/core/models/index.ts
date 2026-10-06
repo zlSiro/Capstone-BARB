@@ -1,4 +1,6 @@
 export * from './user.model';
+export * from './empresa.model';
+export * from './documento.model';
 export * from './work-order.model';
 export * from './machine.model';
 export * from './message.model';

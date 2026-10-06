@@ -22,9 +22,14 @@ def test_todas_las_acciones_cubren_todos_los_roles():
         assert set(matriz.keys()) == set(ROLES), f"Acción '{accion}' no cubre todos los roles"
 
 
+# Rutas de administración de la plataforma: exclusivas del super_usuario (ver test_multiempresa.py).
+RUTAS_SOLO_SUPER = {"empresas"}
+
+
 def test_admin_tiene_acceso_total_a_rutas():
     for ruta in RUTAS:
-        assert puede_acceder_ruta("admin", ruta) is True
+        esperado = ruta not in RUTAS_SOLO_SUPER
+        assert puede_acceder_ruta("admin", ruta) is esperado
 
 
 def test_visitante_no_puede_crear_ot():
