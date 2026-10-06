@@ -1,6 +1,11 @@
 services:
   db:
-    image: postgres:17-alpine
+    # PostgreSQL 17 + extensión pgvector preinstalada (HU-04 / RAG).
+    # Misma versión/base de datos; el volumen barb_capstone_pg_data persiste los datos.
+    # Prefijo docker.io explícito: podman no debe preguntar interactivamente el registro.
+    # (Idéntico al PR #11: cualquier rama de la HU-04 necesita el binario de la
+    # extensión vector porque la migración 0003 ya vive en el esquema local.)
+    image: docker.io/pgvector/pgvector:pg17
     container_name: barb_capstone_postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-barb_admin}
