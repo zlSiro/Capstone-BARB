@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Query
 
 from barb.core.config import settings
 from barb.core.db import pool
-from barb.core.permissions import require_route
+from barb.core.permissions import get_sesion_actual, require_route, resolver_empresa
 
 logger = logging.getLogger("barb.stats")
 
@@ -14,9 +14,20 @@ router = APIRouter()
 
 
 @router.get("/api/stats/financial-impact", dependencies=[Depends(require_route("dashboard", solo_lectura=True))])
-async def get_financial_impact(days: int | None = Query(default=None, ge=1)):
+async def get_financial_impact(
+    days: int | None = Query(default=None, ge=1),
+    empresa_id: int | None = Query(default=None),
+    sesion: dict = Depends(get_sesion_actual),
+):
     date_filter = "AND ot.fecha_creacion >= NOW() - (%(days)s || ' days')::interval" if days else ""
-    params = {"days": days} if days else {}
+    params: dict = {"days": days} if days else {}
+
+    # Multi-empresa: las métricas solo consideran OTs/máquinas de la empresa del usuario
+    # (OT -> maquina -> planta -> empresa). NULL = todas (solo super_usuario).
+    params["empresa_id"] = resolver_empresa(sesion, empresa_id)
+    ot_scope = """AND ot.maquina_id IN (
+        SELECT m2.maquina_id FROM maquina m2 JOIN planta p2 ON p2.planta_id = m2.planta_id
+        WHERE (%(empresa_id)s::int IS NULL OR p2.empresa_id = %(empresa_id)s))"""
 
     sla_target = settings.sla_target_minutes
     downtime_cost = settings.downtime_cost_per_minute
@@ -32,17 +43,18 @@ async def get_financial_impact(days: int | None = Query(default=None, ge=1)):
             ) AS completadas_en_sla,
             COUNT(*) AS total_ots
         FROM orden_trabajo ot
-        WHERE 1=1 {date_filter}
+        WHERE 1=1 {date_filter} {ot_scope}
         """
 
-    trend_query = """
+    trend_query = f"""
         SELECT
             d::date AS date,
             COUNT(*) FILTER (WHERE ot.fecha_creacion::date = d::date) AS abiertas,
             COUNT(*) FILTER (WHERE ot.fecha_cierre::date = d::date) AS cerradas
         FROM generate_series(CURRENT_DATE - INTERVAL '13 days', CURRENT_DATE, INTERVAL '1 day') d
         LEFT JOIN orden_trabajo ot
-            ON ot.fecha_creacion::date = d::date OR ot.fecha_cierre::date = d::date
+            ON (ot.fecha_creacion::date = d::date OR ot.fecha_cierre::date = d::date)
+            {ot_scope}
         GROUP BY d
         ORDER BY d
         """
@@ -60,7 +72,9 @@ async def get_financial_impact(days: int | None = Query(default=None, ge=1)):
                 0
             ) AS sla_compliance
         FROM maquina m
+        JOIN planta pl ON pl.planta_id = m.planta_id
         LEFT JOIN orden_trabajo ot ON ot.maquina_id = m.maquina_id {date_filter}
+        WHERE (%(empresa_id)s::int IS NULL OR pl.empresa_id = %(empresa_id)s)
         GROUP BY m.maquina_id, m.nombre
         ORDER BY total DESC
         LIMIT 5
@@ -72,7 +86,7 @@ async def get_financial_impact(days: int | None = Query(default=None, ge=1)):
                 await cur.execute(financials_query, params)
                 f = await cur.fetchone()
 
-                await cur.execute(trend_query)
+                await cur.execute(trend_query, {"empresa_id": params["empresa_id"]})
                 trend_rows = await cur.fetchall()
 
                 await cur.execute(machines_query, params)

@@ -43,6 +43,7 @@ export class AuthService {
   private clear() {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
+    localStorage.removeItem('barb_tenant_empresa_id'); // empresa elegida por el super_usuario
     this.user.set(null);
     this.router.navigate(['/login']);
   }

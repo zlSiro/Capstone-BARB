@@ -13,6 +13,8 @@ from barb.routers import (
     auth,
     catalog,
     chat,
+    documents,
+    empresas,
     health,
     preferences,
     stats,
@@ -74,6 +76,8 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(users.router)
+app.include_router(empresas.router)
+app.include_router(documents.router)
 app.include_router(catalog.router)
 app.include_router(topology.router)
 app.include_router(stats.router)

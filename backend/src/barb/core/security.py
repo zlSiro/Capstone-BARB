@@ -3,7 +3,6 @@ from __future__ import annotations
 import secrets
 
 import bcrypt
-
 from fastapi import Header, HTTPException
 
 from barb.core.db import fetch_one
@@ -40,9 +39,10 @@ async def get_current_user(
 
     row = await fetch_one(
         """
-        SELECT u.usuario_id, u.empresa_id, u.nombre, u.email, u.rol, s.expira_en
+        SELECT u.usuario_id, u.empresa_id, u.nombre, u.email, u.rol, s.expira_en, e.estado AS empresa_estado
         FROM sesion s
         JOIN usuario u ON u.usuario_id = s.usuario_id
+        LEFT JOIN empresa e ON e.empresa_id = u.empresa_id
         WHERE s.token = %(token)s
           AND s.expira_en > NOW()
           AND u.activo = TRUE
@@ -54,10 +54,16 @@ async def get_current_user(
     if not row:
         raise HTTPException(status_code=401, detail="Token inválido o expirado.")
 
+    role = str(row["rol"]).lower()
+    # Empresa suspendida/cancelada: sin acceso (el super_usuario no tiene empresa).
+    if role != "super_usuario" and row.get("empresa_estado") in ("suspended", "cancelled"):
+        raise HTTPException(status_code=403, detail="La empresa está suspendida o cancelada. Contacta a BARB.")
+
     return {
         "id": int(row["usuario_id"]),
-        "empresa_id": int(row["empresa_id"]),
+        # None para el super_usuario (no pertenece a una empresa).
+        "empresa_id": int(row["empresa_id"]) if row["empresa_id"] is not None else None,
         "name": str(row["nombre"]),
         "email": str(row["email"]),
-        "role": str(row["rol"]).lower(),
+        "role": role,
     }

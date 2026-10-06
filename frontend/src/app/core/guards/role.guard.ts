@@ -36,3 +36,13 @@ export const roleGuard = (ruta: RutaKey, soloLectura = true): CanActivateFn => {
     return true;
   };
 };
+
+/**
+ * Ruta raíz ("/"): envía al usuario a su página inicial según el rol
+ * (super_usuario -> /empresas, resto -> /dashboard o /work-orders).
+ */
+export const homeRedirectGuard: CanActivateFn = () => {
+  const permissions = inject(PermissionsService);
+  const router = inject(Router);
+  return router.parseUrl(permissions.getDefaultRoute());
+};

@@ -1,7 +1,9 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { HttpErrorResponse } from '@angular/common/http';
 import { AuthService } from '../../../core/services/auth.service';
+import { PermissionsService } from '../../../core/permissions/permissions.service';
 
 @Component({
   selector: 'app-login',
@@ -59,6 +61,7 @@ import { AuthService } from '../../../core/services/auth.service';
 export class LoginComponent {
   private auth = inject(AuthService);
   private router = inject(Router);
+  private permissions = inject(PermissionsService);
 
   email = '';
   password = '';
@@ -72,9 +75,11 @@ export class LoginComponent {
     this.error.set(null);
 
     this.auth.login(this.email, this.password).subscribe({
-      next: () => this.router.navigate(['/dashboard']),
-      error: (err) => {
-        this.error.set('Usuario o contraseña incorrecta');
+      // Cada rol aterriza en su página inicial (super_usuario -> /empresas).
+      next: () => this.router.navigateByUrl(this.permissions.getDefaultRoute()),
+      error: (err: HttpErrorResponse) => {
+        // 403 = empresa suspendida/cancelada; el backend explica el motivo.
+        this.error.set(err.status === 403 && err.error?.detail ? err.error.detail : 'Usuario o contraseña incorrecta');
         this.loading.set(false);
       }
     });

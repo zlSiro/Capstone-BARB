@@ -25,6 +25,20 @@ def _reset_state():
     token_limiter._usage.clear()
 
 
+@pytest.fixture(autouse=True)
+def _docs_disponibles():
+    """
+    Estas pruebas validan la mecánica del streaming con un LLM falso. Como el chat
+    ahora solo consulta al LLM cuando hay documentación de la empresa (RAG), se simula
+    un fragmento relevante. El comportamiento sin documentación se prueba en test_multiempresa.py.
+    """
+    with patch(
+        "barb.routers.chat.search_chunks",
+        return_value=[{"title": "Doc", "contenido": "contenido de prueba"}],
+    ) as m:
+        yield m
+
+
 @pytest.fixture
 def fake_user():
     return {

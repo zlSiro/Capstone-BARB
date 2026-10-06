@@ -26,6 +26,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("barb.seed")
 
 SEED_SQL_PATH = Path(__file__).resolve().parent.parent / "seeds" / "seed_data.sql"
+# Datos ficticios multi-empresa (super_usuario, más empresas, OTs y documentación por empresa).
+SEED_MULTIEMPRESA_PATH = Path(__file__).resolve().parent.parent / "seeds" / "seed_multiempresa.sql"
+SUPER_EMAIL = "super@barb.com"
 
 DEFAULT_ADMIN_EMAIL = "admin@barb.com"
 DEFAULT_ADMIN_PASSWORD = "admin123"
@@ -44,6 +47,16 @@ async def _run_seed_sql(conn) -> None:
     async with conn.cursor() as cur:
         await cur.execute(sql_script)
     logger.info("Datos semilla insertados desde %s", SEED_SQL_PATH.name)
+
+
+async def _ensure_multiempresa_seed(conn) -> None:
+    """Aplica seed_multiempresa.sql una sola vez (se detecta por la existencia del super_usuario)."""
+    async with conn.cursor() as cur:
+        await cur.execute("SELECT 1 FROM usuario WHERE lower(email) = %(email)s", {"email": SUPER_EMAIL})
+        if await cur.fetchone():
+            return
+        await cur.execute(SEED_MULTIEMPRESA_PATH.read_text(encoding="utf-8"))
+    logger.info("Datos multi-empresa insertados desde %s", SEED_MULTIEMPRESA_PATH.name)
 
 
 async def _ensure_default_admin(conn) -> None:
@@ -112,6 +125,9 @@ async def main() -> None:
 
             async with conn.transaction():
                 await _ensure_default_admin(conn)
+
+            async with conn.transaction():
+                await _ensure_multiempresa_seed(conn)
 
             async with conn.transaction():
                 actualizados = await _ensure_passwords_hashed(conn)

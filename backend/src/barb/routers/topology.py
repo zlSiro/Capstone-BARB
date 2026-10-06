@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from barb.core.db import fetch_all
-from barb.core.permissions import require_route
+from barb.core.permissions import get_sesion_actual, require_route, resolver_empresa
 
 logger = logging.getLogger("barb.topology")
 
@@ -14,11 +14,25 @@ router = APIRouter()
 
 @router.get("/api/topologia", dependencies=[Depends(require_route("topology", solo_lectura=True))])
 @router.get("/api/topology", dependencies=[Depends(require_route("topology", solo_lectura=True))])
-async def get_topologia():
+async def get_topologia(empresa_id: int | None = Query(default=None), sesion: dict = Depends(get_sesion_actual)):
+    # Multi-empresa: solo plantas, disciplinas y máquinas de la empresa del usuario
+    # (NULL = todas, exclusivo del super_usuario).
+    scope = {"empresa_id": resolver_empresa(sesion, empresa_id)}
     try:
-        plantas = await fetch_all("SELECT planta_id, nombre FROM planta")
-        disciplinas = await fetch_all("SELECT disciplina_id, nombre FROM disciplina")
-        maquinas = await fetch_all("SELECT maquina_id, nombre, planta_id, disciplina_id FROM maquina")
+        filtro = "(%(empresa_id)s::int IS NULL OR empresa_id = %(empresa_id)s)"
+        plantas = await fetch_all(f"SELECT planta_id, nombre FROM planta WHERE {filtro} ORDER BY planta_id", scope)
+        disciplinas = await fetch_all(
+            f"SELECT disciplina_id, nombre FROM disciplina WHERE {filtro} ORDER BY disciplina_id", scope
+        )
+        maquinas = await fetch_all(
+            """
+            SELECT m.maquina_id, m.nombre, m.planta_id, m.disciplina_id
+            FROM maquina m JOIN planta p ON p.planta_id = m.planta_id
+            WHERE (%(empresa_id)s::int IS NULL OR p.empresa_id = %(empresa_id)s)
+            ORDER BY m.maquina_id
+            """,
+            scope,
+        )
 
         machine_status_rows = await fetch_all(
             """
@@ -27,8 +41,10 @@ async def get_topologia():
                 BOOL_OR(estado NOT IN ('completed', 'cancelled') AND (priority = 'urgent' OR estado = 'overdue')) AS tiene_falla,
                 BOOL_OR(estado NOT IN ('completed', 'cancelled')) AS tiene_alerta
             FROM orden_trabajo
+            WHERE maquina_id = ANY(%(maquinas)s)
             GROUP BY maquina_id
-            """
+            """,
+            {"maquinas": [m["maquina_id"] for m in maquinas]},
         )
         machine_status = {}
         for row in machine_status_rows:

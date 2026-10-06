@@ -53,6 +53,10 @@ export interface WorkOrder {
   numero_ot: string;
   ot_id: number;
 
+  // Multi-empresa: empresa dueña de la OT (visible para el super_usuario)
+  empresa_id?: number | null;
+  empresa_nombre?: string;
+
   // Título y descripción
   title: string;
   description?: string | null;
