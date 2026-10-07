@@ -27,9 +27,9 @@ services:
       - key: NVIDIA_TIMEOUT
         value: "180"
       - key: CORS_ORIGINS
-        value: http://localhost:4200
+        value: https://capstone-barb.pages.dev
       - key: CORS_ORIGIN_REGEX
-        value: https://([a-z0-9-]+\.)?barb[a-z0-9-]*\.pages\.dev
+        value: https://([a-z0-9-]+\.)?capstone-barb\.pages\.dev
       # Disco efimero en plan free: fotos de OT se pierden al redeploy/reposo.
       - key: UPLOAD_DIR
         value: /tmp/uploads
