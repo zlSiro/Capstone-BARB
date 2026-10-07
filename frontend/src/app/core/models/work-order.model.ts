@@ -47,6 +47,18 @@ export interface WorkOrderPhoto {
   created_at?: string | null;
 }
 
+/** Registro de auditoría de un cambio de estado (quién, cuándo, de qué a qué). */
+export interface WorkOrderStatusChange {
+  id: number;
+  from_status: WorkOrderStatus | null;
+  to_status: WorkOrderStatus;
+  comment?: string | null;
+  user_id: number;
+  user_name: string;
+  user_role?: string | null;
+  changed_at: string; // ISO 8601 (UTC)
+}
+
 export interface WorkOrder {
   // Identificadores
   id: string;              // = numero_ot (string)
@@ -104,4 +116,9 @@ export interface WorkOrder {
   // Referencias
   reporte_id?: number | null;
   diagnostico_id?: number | null;
+
+  // Estados a los que el rol del usuario puede mover esta OT (calculado por el backend).
+  allowed_transitions?: WorkOrderStatus[];
+  // Solo viene en el detalle (GET /work-orders/{n}) y en la respuesta del cambio de estado; el más reciente primero.
+  status_history?: WorkOrderStatusChange[];
 }

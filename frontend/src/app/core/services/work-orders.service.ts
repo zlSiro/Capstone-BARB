@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { WorkOrder } from '../models';
+import { WorkOrder, WorkOrderStatus } from '../models';
 import { environment } from '../../../environments/environment';
 
 @Injectable({ providedIn: 'root' })
@@ -20,8 +20,12 @@ export class WorkOrdersService {
     return this.http.post<WorkOrder>(`${this.apiUrl}/work-orders`, payload);
   }
 
-  updateStatus(numeroOt: string, status: string) {
-    return this.http.put(`${this.apiUrl}/work-orders/${numeroOt}/status`, { status });
+  /** PATCH /work-orders/{n}/status — devuelve la OT actualizada con su historial de estados. */
+  updateStatus(numeroOt: string, status: WorkOrderStatus, comment?: string) {
+    return this.http.patch<WorkOrder>(`${this.apiUrl}/work-orders/${numeroOt}/status`, {
+      status,
+      ...(comment ? { comment } : {}),
+    });
   }
 
   delete(numeroOt: string) {
