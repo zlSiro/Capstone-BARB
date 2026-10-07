@@ -26,6 +26,24 @@ class Settings(BaseSettings):
     def storage_configurado(self) -> bool:
         return bool(self.supabase_url and self.supabase_service_role_key)
 
+    # --- Correo (HU OTs atrasadas) ---
+    # SMTP genérico. Tolerante a fallos (patrón Redis/Supabase): sin SMTP_HOST el job
+    # de OTs atrasadas responde 503 y el resto de la app funciona igual.
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+    smtp_starttls: bool = True
+    # Token que debe enviar el cron externo en el header X-Job-Token. Vacío = job deshabilitado.
+    job_token: str = ""
+    notif_timezone: str = "America/Santiago"
+    frontend_url: str = ""
+
+    @property
+    def smtp_configurado(self) -> bool:
+        return bool(self.smtp_host and (self.smtp_from or self.smtp_user))
+
     # --- Archivos ---
     upload_dir: Path = Path("./uploads")
 

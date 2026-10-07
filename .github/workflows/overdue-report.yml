@@ -1,0 +1,19 @@
+# Dispara cada hora el job de OTs atrasadas. El backend decide por empresa si "toca" enviar
+# (frecuencia/hora configuradas) y es idempotente por período. Ver docs/NOTIFICACIONES.md.
+name: overdue-report
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Llamar al job (Render free puede tardar en despertar)
+        run: |
+          curl --fail-with-body -sS -X POST \
+            --retry 3 --retry-delay 20 --retry-all-errors --max-time 120 \
+            -H "X-Job-Token: ${{ secrets.JOB_TOKEN }}" \
+            "${{ secrets.API_URL }}/api/jobs/ot-atrasadas"

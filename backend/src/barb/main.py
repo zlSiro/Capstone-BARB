@@ -16,6 +16,7 @@ from barb.routers import (
     documents,
     empresas,
     health,
+    notifications,
     preferences,
     stats,
     topology,
@@ -84,3 +85,4 @@ app.include_router(stats.router)
 app.include_router(work_orders.router)
 app.include_router(preferences.router)
 app.include_router(chat.router)
+app.include_router(notifications.router)

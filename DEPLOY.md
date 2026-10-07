@@ -128,6 +128,11 @@ Cuenta en <https://render.com> con GitHub. Dale acceso al repo del monorepo.
 | `CORS_ORIGINS` | `https://capstone-barb.pages.dev` (URL exacta del front, sin `/` final) |
 | `CORS_ORIGIN_REGEX` | `https://([a-z0-9-]+\.)?capstone-barb\.pages\.dev` (cubre previews; cambia `capstone-barb` por el nombre de tu proyecto Pages) |
 | `UPLOAD_DIR` | `/tmp/uploads` |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | SMTP para el correo de OTs atrasadas (ver `docs/NOTIFICACIONES.md`) |
+| `JOB_TOKEN` | secreto del cron externo (header `X-Job-Token`); vacío = job deshabilitado |
+| `FRONTEND_URL` | URL del front (link en el correo, opcional) |
+
+Cron del correo de OTs atrasadas: `.github/workflows/overdue-report.yml` (cada hora). Requiere secrets del repo `API_URL` (URL de Render, sin `/` final) y `JOB_TOKEN` (el mismo de Render).
 
 Otros proveedores LLM: ver `backend/.env.example`.
 

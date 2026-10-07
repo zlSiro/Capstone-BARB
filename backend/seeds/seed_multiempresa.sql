@@ -157,6 +157,12 @@ FROM (VALUES
 JOIN maquina m ON m.codigo = v.maq
 JOIN usuario t ON t.email = 'tomas@trialcorp.cl';
 
+-- Vencimientos para probar el correo de OTs atrasadas (OTs abiertas con plazo ya vencido).
+UPDATE orden_trabajo SET fecha_vencimiento = NOW() - INTERVAL '3 days'
+WHERE numero_ot IN ('OT-2026-105', 'OT-2026-202');
+UPDATE orden_trabajo SET fecha_vencimiento = NOW() - INTERVAL '10 days' WHERE numero_ot = 'OT-2026-108';
+UPDATE orden_trabajo SET fecha_vencimiento = NOW() + INTERVAL '5 days'  WHERE numero_ot = 'OT-2026-106';
+
 -- ---------------------------------------------------------------------------
 -- Documentación por empresa (base de conocimiento del chat IA)
 -- ---------------------------------------------------------------------------
