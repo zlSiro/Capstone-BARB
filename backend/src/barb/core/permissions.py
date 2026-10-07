@@ -64,7 +64,10 @@ RUTAS: dict[str, dict[str, bool | str]] = {
 
 ACCIONES: dict[str, dict[str, bool]] = {
     "crear_ot":            {"operador": False, "tecnico": False, "supervisor": False, "engineer": False, "gerente": True, "admin": True, "visitante": False, "super_usuario": True},
-    "cambiar_estado_ot":   {"operador": False, "tecnico": True,  "supervisor": True,  "engineer": True,  "gerente": True, "admin": True, "visitante": False, "super_usuario": True},
+    # Técnico y operador NO cambian estados de OT (solo supervisión hacia arriba).
+    "cambiar_estado_ot":   {"operador": False, "tecnico": False, "supervisor": True,  "engineer": True,  "gerente": True, "admin": True, "visitante": False, "super_usuario": True},
+    # Cancelar una OT (estado final) es más restrictivo que iniciarla/cerrarla: engineer no puede.
+    "cancelar_ot":         {"operador": False, "tecnico": False, "supervisor": True,  "engineer": False, "gerente": True, "admin": True, "visitante": False, "super_usuario": True},
     "eliminar_ot":         {"operador": False, "tecnico": False, "supervisor": True,  "engineer": True,  "gerente": True, "admin": True, "visitante": False, "super_usuario": True},
     "subir_documentos":    {"operador": False, "tecnico": False, "supervisor": False, "engineer": True,  "gerente": True, "admin": True, "visitante": False, "super_usuario": True},
     # No estaba en la matriz original; gestión de usuarios (crear/editar/eliminar) queda

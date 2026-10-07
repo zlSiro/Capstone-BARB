@@ -5,7 +5,7 @@ import { ToastService, Toast } from '../../../../core/services/toast.service';
   selector: 'app-toast',
   standalone: true,
   template: `
-    <div class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm">
+    <div class="fixed bottom-4 right-4 z-[60] flex flex-col gap-2 max-w-sm" role="status" aria-live="polite">
       @for (toast of toastService.toasts(); track toast.id) {
         <div
           class="flex items-start gap-3 px-4 py-3 rounded shadow-lg text-sm text-white animate-slide-in"
