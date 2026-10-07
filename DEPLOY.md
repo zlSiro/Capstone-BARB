@@ -19,7 +19,7 @@ Navegador ──> Cloudflare Pages (Angular, estático)
 - **Render duerme tras 15 min sin tráfico.** La primera petición tarda ~30-60 s (cold start). Normal; avisar en la defensa o hacer un ping previo.
 - **Disco efímero en Render.** Las fotos de OT (`uploads/`) se pierden al redeploy o al dormir. Para demo está bien; a futuro migrar a Supabase Storage.
 - **Sin Redis.** No se despliega; `core/cache.py` tolera su ausencia (solo no cachea).
-- **Sin pre-deploy command en free.** Las migraciones Alembic se corren desde tu PC (sección 2).
+- **Sin pre-deploy command en free.** Render **no aplica migraciones**: se corren a mano desde tu PC (secciones 2.2 y 2.4). Si despliegas código que necesita tablas nuevas antes de migrar, el backend da 500.
 - Supabase free pausa proyectos tras 7 días sin actividad (se reactiva desde el dashboard).
 
 ## 1. Seguridad previa (HACER PRIMERO)
@@ -52,17 +52,40 @@ Notas:
 cd backend
 uv sync
 $env:DATABASE_URL = "postgresql://postgres.<REF>:<PASSWORD>@aws-0-<REGION>.pooler.supabase.com:5432/postgres"   # Session pooler
-uv run alembic upgrade head
+uv run alembic upgrade heads
 uv run python scripts/seed.py      # admin@barb.com / admin123 + datos demo (idempotente)
 ```
 
 (En Git Bash: `export DATABASE_URL="..."`.) La variable de entorno tiene prioridad sobre `.env`, así no tocas tu config local.
 
+> Usa `heads` (plural). Mientras el repo tenga dos migraciones `0003` sin unir, `upgrade head` falla con `Multiple head revisions`. `heads` funciona siempre, también cuando ya haya un solo head (migración `0005_merge_heads`).
+
+Verifica la versión aplicada: `uv run alembic current` debe terminar en el último head del repo (`uv run alembic heads`).
+
 > Cambia la password del admin `admin123` después de sembrar si la URL será pública.
 
 ### 2.3 Verificar
 
-Supabase → **Table Editor**: deben aparecer tablas (`sesion`, usuarios, OT, etc.).
+Supabase → **Table Editor**: deben aparecer tablas (`sesion`, usuarios, OT, `documento`, `documento_chunk`, etc.).
+
+### 2.4 Cambios de esquema: orden obligatorio
+
+Render y Pages se despliegan solos al hacer push a `main`, pero **la base de datos no**. Cuando un PR agrega una migración nueva (`backend/migrations/versions/`), el orden es:
+
+1. **Antes de mergear** el PR: aplica la migración en Supabase desde tu PC (sección 2.2, Session pooler :5432). Las migraciones del proyecto son aditivas, así que el código viejo que sigue corriendo en Render no se rompe.
+2. **Después** mergea el PR a `main`. Render redepliega con el código que usa las tablas nuevas.
+3. Verifica: `/health` = `online` y prueba la función afectada (por ejemplo, el chat).
+
+Si lo haces al revés (mergear primero), el backend nuevo consulta tablas que aún no existen y responde 500 hasta que migres. Caso real de este proyecto: el chat daba `Internal Server Error` porque Supabase estaba en `0002` y el código ya usaba `documento_chunk` (migración `0004`).
+
+Antes de aplicar, revisa qué hay pendiente:
+
+```powershell
+uv run alembic current     # versión actual de Supabase
+uv run alembic heads       # versión que espera el código
+```
+
+Si necesitas revertir, `uv run alembic downgrade -1` deshace la última migración. Haz un backup antes (Supabase → Database → Backups) si la migración borra datos.
 
 ## 3. Render (backend)
 
@@ -163,11 +186,12 @@ SPA: Pages sirve `index.html` como fallback cuando no hay `404.html`; las rutas 
 - **Pages**: Root directory `frontend` + watch path `frontend/*` → solo construye si cambió `frontend/`.
 - Cada push a `main` = deploy de producción de la parte afectada. Ramas/PRs distintas de `main` generan **preview** en Pages (`<rama>.<proyecto>.pages.dev`), cubierto por `CORS_ORIGIN_REGEX`. Render free no hace previews.
 - Orden recomendado la primera vez: Supabase → Render → (URL) → Pages → ajustar CORS.
+- Si el PR incluye migraciones: **migrar Supabase primero, mergear después** (sección 2.4).
 
 ## 7. Checklist final
 
 - [ ] Password Supabase rotado
-- [ ] Migraciones + seed aplicados en Supabase
+- [ ] Migraciones + seed aplicados en Supabase (`alembic current` = último head de `alembic heads`)
 - [ ] `/health` en Render = `online`
 - [ ] `environment.prod.ts` con URL real de Render
 - [ ] `CORS_ORIGINS`/`CORS_ORIGIN_REGEX` con dominio `pages.dev`
@@ -186,6 +210,8 @@ SPA: Pages sirve `index.html` como fallback cuando no hay `404.html`; las rutas 
 | `Network is unreachable` / `could not translate host` | Usaste Direct connection (IPv6). Usa pooler. |
 | `password authentication failed` | Password rotado/mal codificado en URL. Usuario del pooler es `postgres.<REF>`, no `postgres`. |
 | `/health` → `error_db` | `DATABASE_URL` incorrecta en Render. |
+| `Multiple head revisions are present` | Hay dos heads de Alembic. Usa `uv run alembic upgrade heads`. |
+| Endpoint o chat responde 500, `/health` online | Falta aplicar una migración en Supabase (ej. `relation "documento_chunk" does not exist`). Compara `alembic current` con `alembic heads` y corre `upgrade heads` (sección 2.4). Un redeploy no lo arregla. |
 | Build Pages falla: `Angular CLI requires a minimum Node.js version` | `NODE_VERSION=24.15.0` en variables de entorno (Production y Preview) y Retry deployment. |
 | `Output directory "frontend/dist/cloudflare" not found` | El preset Angular trae un output por defecto incorrecto. Pon `dist/frontend/browser` en Build output directory. |
 | Recargar ruta Angular da 404 | Hay un `404.html` en output; elimínalo. |
