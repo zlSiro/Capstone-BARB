@@ -102,8 +102,8 @@ Cuenta en <https://render.com> con GitHub. Dale acceso al repo del monorepo.
 | `LLM_MODEL` | `nvidia/nemotron-3.5-lightning-30b-a3b` |
 | `NVIDIA_API_KEY` | tu key (`nvapi-...`) |
 | `NVIDIA_TIMEOUT` | `180` |
-| `CORS_ORIGINS` | `https://<tu-proyecto>.pages.dev` (URL exacta del front, sin `/` final) |
-| `CORS_ORIGIN_REGEX` | `https://([a-z0-9-]+\.)?barb[a-z0-9-]*\.pages\.dev` (cubre previews; ajusta si tu proyecto Pages no empieza con `barb`) |
+| `CORS_ORIGINS` | `https://capstone-barb.pages.dev` (URL exacta del front, sin `/` final) |
+| `CORS_ORIGIN_REGEX` | `https://([a-z0-9-]+\.)?capstone-barb\.pages\.dev` (cubre previews; cambia `capstone-barb` por el nombre de tu proyecto Pages) |
 | `UPLOAD_DIR` | `/tmp/uploads` |
 
 Otros proveedores LLM: ver `backend/.env.example`.
@@ -134,7 +134,7 @@ Cuenta en <https://dash.cloudflare.com>.
 | Build command | `npm run build` |
 | Build output directory | `dist/frontend/browser` |
 
-3. **Environment variables** (Production y Preview): `NODE_VERSION` = `22`. (También existe `frontend/.node-version`.)
+3. **Environment variables** (Production y Preview): `NODE_VERSION` = `24.15.0`. Angular 22 exige Node `^22.22.3` o `^24.15.0`; `22` a secas resuelve a 22.22.0 y falla. (También existe `frontend/.node-version`.)
 4. **Save and Deploy**. Obtendrás `https://<proyecto>.pages.dev`.
 5. **Build watch paths** (Settings → Builds → Build watch paths): Include `frontend/*` para que cambios solo en `backend/` no disparen build.
 
@@ -186,7 +186,8 @@ SPA: Pages sirve `index.html` como fallback cuando no hay `404.html`; las rutas 
 | `Network is unreachable` / `could not translate host` | Usaste Direct connection (IPv6). Usa pooler. |
 | `password authentication failed` | Password rotado/mal codificado en URL. Usuario del pooler es `postgres.<REF>`, no `postgres`. |
 | `/health` → `error_db` | `DATABASE_URL` incorrecta en Render. |
-| Build Pages falla por versión de Node | `NODE_VERSION=22` en variables de entorno. |
+| Build Pages falla: `Angular CLI requires a minimum Node.js version` | `NODE_VERSION=24.15.0` en variables de entorno (Production y Preview) y Retry deployment. |
+| `Output directory "frontend/dist/cloudflare" not found` | El preset Angular trae un output por defecto incorrecto. Pon `dist/frontend/browser` en Build output directory. |
 | Recargar ruta Angular da 404 | Hay un `404.html` en output; elimínalo. |
 | Fotos de OT desaparecen | Disco efímero de Render. Migrar a Supabase Storage o plan con disco persistente. |
 | Chat IA falla | Falta `NVIDIA_API_KEY` en Render. Ojo: `/api/health/llm` solo revisa `DEEPSEEK_API_KEY` y reportará `degraded` aunque nvidia funcione. |
