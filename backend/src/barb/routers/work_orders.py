@@ -11,6 +11,7 @@ from starlette.datastructures import UploadFile as StarletteUploadFile
 from barb.core.config import settings
 from barb.core.db import fetch_all, fetch_one, transaction
 from barb.core.permissions import get_sesion_actual, require_action, require_auth, resolver_empresa
+from barb.core.work_order_states import ETIQUETA_ES, rol_puede_ir_a, transiciones_permitidas, transiciones_posibles
 from barb.schemas.work_orders import WorkOrderStatusRequest
 from barb.services.files import delete_ot_files, save_ot_photos
 from barb.utils import (
@@ -27,7 +28,13 @@ logger = logging.getLogger("barb.work_orders")
 router = APIRouter()
 
 
-def row_to_work_order(row: dict, photos: list[dict] | None = None) -> dict:
+def row_to_work_order(
+    row: dict,
+    photos: list[dict] | None = None,
+    rol: str | None = None,
+    history: list[dict] | None = None,
+) -> dict:
+    """`rol` habilita `allowed_transitions` (destinos que ese rol puede aplicar); `history` agrega `status_history`."""
     photo_list = photos or row.get("photos") or []
     return {
         "id": str(row["numero_ot"]),
@@ -64,6 +71,8 @@ def row_to_work_order(row: dict, photos: list[dict] | None = None) -> dict:
         "downtime_minutes": int(row.get("downtime_minutes")) if row.get("downtime_minutes") is not None else None,
         "reporte_id": row.get("reporte_id"),
         "diagnostico_id": row.get("diagnostico_id"),
+        "allowed_transitions": transiciones_permitidas(str(row.get("estado") or "pending"), rol),
+        **({"status_history": history} if history is not None else {}),
     }
 
 
@@ -122,6 +131,34 @@ async def fetch_work_order_photos(ot_id: int) -> list[dict]:
     ]
 
 
+async def fetch_status_history(ot_id: int) -> list[dict]:
+    """Auditoría de cambios de estado de una OT, del más reciente al más antiguo."""
+    rows = await fetch_all(
+        """
+        SELECT a.audit_id, a.estado_anterior, a.estado_nuevo, a.comentario, a."timestamp" AS changed_at,
+               a.usuario_id, u.nombre AS usuario_nombre, u.rol AS usuario_rol
+        FROM ot_audit_log a
+        LEFT JOIN usuario u ON u.usuario_id = a.usuario_id
+        WHERE a.ot_id = %(ot_id)s
+        ORDER BY a."timestamp" DESC, a.audit_id DESC
+        """,
+        {"ot_id": ot_id},
+    )
+    return [
+        {
+            "id": int(r["audit_id"]),
+            "from_status": r["estado_anterior"],
+            "to_status": r["estado_nuevo"],
+            "comment": r["comentario"],
+            "user_id": int(r["usuario_id"]),
+            "user_name": str(r.get("usuario_nombre") or ""),
+            "user_role": r.get("usuario_rol"),
+            "changed_at": iso_z(r["changed_at"]),
+        }
+        for r in rows
+    ]
+
+
 @router.get("/api/work-orders", dependencies=[Depends(require_auth)])
 @router.get("/api/work_orders", dependencies=[Depends(require_auth)])
 async def get_work_orders(empresa_id: int | None = Query(default=None), sesion: dict = Depends(get_sesion_actual)):
@@ -131,7 +168,7 @@ async def get_work_orders(empresa_id: int | None = Query(default=None), sesion: 
             f"{_WORK_ORDER_SELECT} WHERE {_EMPRESA_FILTER} ORDER BY ot.fecha_creacion DESC, ot.ot_id DESC",
             {"empresa_id": scope},
         )
-        return [row_to_work_order(row) for row in rows]
+        return [row_to_work_order(row, rol=sesion["rol"]) for row in rows]
     except Exception:
         logger.exception("Error al listar órdenes de trabajo")
         return []
@@ -144,52 +181,108 @@ async def get_work_order(numero_ot: str, sesion: dict = Depends(get_sesion_actua
     if not row:
         raise HTTPException(status_code=404, detail="OT no encontrada.")
     photos = await fetch_work_order_photos(int(row["ot_id"]))
-    return row_to_work_order(row, photos=photos)
+    history = await fetch_status_history(int(row["ot_id"]))
+    return row_to_work_order(row, photos=photos, rol=sesion["rol"], history=history)
 
 
+@router.patch("/api/work-orders/{numero_ot}/status", dependencies=[Depends(require_action("cambiar_estado_ot"))])
+@router.patch("/api/work_orders/{numero_ot}/status", dependencies=[Depends(require_action("cambiar_estado_ot"))])
+# PUT se mantiene por compatibilidad con el contrato anterior; mismo comportamiento.
 @router.put("/api/work-orders/{numero_ot}/status", dependencies=[Depends(require_action("cambiar_estado_ot"))])
 @router.put("/api/work_orders/{numero_ot}/status", dependencies=[Depends(require_action("cambiar_estado_ot"))])
 async def update_work_order_status(numero_ot: str, payload: WorkOrderStatusRequest, sesion: dict = Depends(get_sesion_actual)):
+    """Cambia el estado de una OT respetando la máquina de estados (`core/work_order_states.py`) y deja auditoría."""
     desired_status = parse_work_order_status(payload.status)
-    current = await fetch_work_order_row(numero_ot, resolver_empresa(sesion))
-    if not current:
-        raise HTTPException(status_code=404, detail="OT no encontrada.")
-
-    next_fecha_inicio = current["fecha_inicio"]
-    next_fecha_cierre = current["fecha_cierre"]
-
-    if desired_status == "in_progress" and next_fecha_inicio is None:
-        next_fecha_inicio = datetime.now(UTC)
-    if desired_status == "completed":
-        next_fecha_cierre = datetime.now(UTC)
-        if next_fecha_inicio is None:
-            next_fecha_inicio = datetime.now(UTC)
+    comment = safe_text(payload.comment) or None
+    rol = sesion["rol"]
+    now = datetime.now(UTC)
 
     try:
         async with transaction() as cur:
+            # FOR UPDATE: serializa cambios simultáneos sobre la misma OT (la transición se valida contra el estado vigente).
+            await cur.execute(
+                f"""
+                SELECT ot.ot_id, ot.estado::text AS estado, ot.fecha_inicio, ot.fecha_cierre
+                FROM orden_trabajo ot
+                JOIN maquina m ON m.maquina_id = ot.maquina_id
+                LEFT JOIN planta p ON p.planta_id = m.planta_id
+                WHERE ot.numero_ot = %(numero_ot)s AND {_EMPRESA_FILTER}
+                FOR UPDATE OF ot
+                """,
+                {"numero_ot": numero_ot, "empresa_id": resolver_empresa(sesion)},
+            )
+            current = await cur.fetchone()
+            if not current:
+                raise HTTPException(status_code=404, detail="OT no encontrada.")
+
+            previous_status = str(current["estado"])
+            if desired_status == previous_status:
+                raise HTTPException(status_code=409, detail=f"La OT ya está en estado '{ETIQUETA_ES[previous_status]}'.")
+            if desired_status not in transiciones_posibles(previous_status):
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"Transición no permitida: una OT '{ETIQUETA_ES[previous_status]}' "
+                        f"no puede pasar a '{ETIQUETA_ES[desired_status]}'."
+                    ),
+                )
+            if not rol_puede_ir_a(rol, desired_status):
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"El rol '{rol}' no puede cambiar una OT a '{ETIQUETA_ES[desired_status]}'.",
+                )
+
+            next_fecha_inicio = current["fecha_inicio"]
+            next_fecha_cierre = current["fecha_cierre"]
+            if desired_status == "in_progress" and next_fecha_inicio is None:
+                next_fecha_inicio = now
+            if desired_status == "completed":
+                next_fecha_cierre = now
+                if next_fecha_inicio is None:
+                    next_fecha_inicio = now
+
             await cur.execute(
                 """
                 UPDATE orden_trabajo SET estado = %(estado)s, fecha_inicio = %(fecha_inicio)s, fecha_cierre = %(fecha_cierre)s
-                WHERE numero_ot = %(numero_ot)s RETURNING numero_ot
+                WHERE ot_id = %(ot_id)s
                 """,
                 {
                     "estado": desired_status,
                     "fecha_inicio": next_fecha_inicio,
                     "fecha_cierre": next_fecha_cierre,
-                    "numero_ot": numero_ot,
+                    "ot_id": current["ot_id"],
                 },
             )
-            row = await cur.fetchone()
-        if not row:
-            raise HTTPException(status_code=404, detail="OT no encontrada.")
+            await cur.execute(
+                """
+                INSERT INTO ot_audit_log (ot_id, usuario_id, estado_anterior, estado_nuevo, comentario, "timestamp")
+                VALUES (%(ot_id)s, %(usuario_id)s, %(anterior)s, %(nuevo)s, %(comentario)s, %(ts)s)
+                """,
+                {
+                    "ot_id": current["ot_id"],
+                    "usuario_id": sesion["usuario_id"],
+                    "anterior": previous_status,
+                    "nuevo": desired_status,
+                    "comentario": comment,
+                    "ts": now,
+                },
+            )
+
         updated = await fetch_work_order_row(numero_ot)
-        photos = await fetch_work_order_photos(int(updated["ot_id"])) if updated else []
-        return row_to_work_order(updated, photos=photos) if updated else {"status": "ok"}
+        if not updated:
+            return {"status": "ok"}
+        ot_id = int(updated["ot_id"])
+        return row_to_work_order(
+            updated,
+            photos=await fetch_work_order_photos(ot_id),
+            rol=rol,
+            history=await fetch_status_history(ot_id),
+        )
     except HTTPException:
         raise
     except Exception as e:
         logger.exception("Error al actualizar estado de OT")
-        raise HTTPException(status_code=500, detail=f"Error al actualizar estado de OT: {str(e)}") from e
+        raise HTTPException(status_code=500, detail="Error interno al actualizar el estado de la OT.") from e
 
 
 @router.delete("/api/work-orders/{numero_ot}", status_code=204, dependencies=[Depends(require_action("eliminar_ot"))])
@@ -380,7 +473,11 @@ async def create_work_order(request: Request, sesion: dict = Depends(get_sesion_
 
     created = await fetch_work_order_row(clean_numero_ot, empresa_maquina)
     photos = await fetch_work_order_photos(ot_id)
-    response_data = row_to_work_order(created, photos=photos) if created else {"numero_ot": clean_numero_ot, "ot_id": ot_id}
+    response_data = (
+        row_to_work_order(created, photos=photos, rol=sesion["rol"])
+        if created
+        else {"numero_ot": clean_numero_ot, "ot_id": ot_id}
+    )
     response_data["photos"] = photos
     response_data["photo_count"] = len(photos)
     return response_data

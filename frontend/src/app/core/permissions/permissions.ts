@@ -39,6 +39,7 @@ export type RutaKey =
 export type AccionKey =
   | 'crear_ot'
   | 'cambiar_estado_ot'
+  | 'cancelar_ot'
   | 'eliminar_ot'
   | 'subir_documentos'
   | 'gestionar_usuarios'
@@ -71,7 +72,8 @@ export const RUTAS: Record<RutaKey, Record<string, PermisoValor>> = {
 
 export const ACCIONES: Record<AccionKey, Record<string, boolean>> = {
   crear_ot:           { operador: false, tecnico: false, supervisor: false, engineer: false, gerente: true, admin: true, visitante: false , super_usuario: true },
-  cambiar_estado_ot:  { operador: false, tecnico: true,  supervisor: true,  engineer: true,  gerente: true, admin: true, visitante: false , super_usuario: true },
+  cambiar_estado_ot:  { operador: false, tecnico: false, supervisor: true,  engineer: true,  gerente: true, admin: true, visitante: false , super_usuario: true },
+  cancelar_ot:        { operador: false, tecnico: false, supervisor: true,  engineer: false, gerente: true, admin: true, visitante: false , super_usuario: true },
   eliminar_ot:        { operador: false, tecnico: false, supervisor: true,  engineer: true,  gerente: true, admin: true, visitante: false , super_usuario: true },
   subir_documentos:   { operador: false, tecnico: false, supervisor: false, engineer: true,  gerente: true, admin: true, visitante: false , super_usuario: true },
   gestionar_usuarios: { operador: false, tecnico: false, supervisor: false, engineer: false, gerente: false, admin: true, visitante: false , super_usuario: true },
