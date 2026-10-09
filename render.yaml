@@ -33,3 +33,18 @@ services:
       # Disco efimero en plan free: fotos de OT se pierden al redeploy/reposo.
       - key: UPLOAD_DIR
         value: /tmp/uploads
+      # Correo de OTs atrasadas (SMTP generico) + token del cron externo.
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      - key: JOB_TOKEN
+        sync: false
+      - key: FRONTEND_URL
+        value: https://capstone-barb.pages.dev

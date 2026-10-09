@@ -58,11 +58,11 @@ uv run python scripts/seed.py      # admin@barb.com / admin123 + datos demo (ide
 
 (En Git Bash: `export DATABASE_URL="..."`.) La variable de entorno tiene prioridad sobre `.env`, así no tocas tu config local.
 
-> Usa `heads` (plural). Mientras el repo tenga dos migraciones `0003` sin unir, `upgrade head` falla con `Multiple head revisions`. `heads` funciona siempre, también cuando ya haya un solo head (migración `0005_merge_heads`).
+> Desde la migración `0005_merge_heads` el repo tiene **un solo head**, así que `upgrade head` funciona. `upgrade heads` (plural) también sirve y es seguro si algún día vuelven a aparecer dos.
 
 Verifica la versión aplicada: `uv run alembic current` debe terminar en el último head del repo (`uv run alembic heads`).
 
-> Cambia la password del admin `admin123` después de sembrar si la URL será pública.
+> **`seed.py` crea usuarios DEMO con contraseñas conocidas**, incluido un `super_usuario` (`super@barb.com` / `super123`) que ve toda la plataforma. Si la URL será pública, cambia o elimina esos usuarios (sección 9.4). Para una instalación real, no corras el seed (sección 9.4, opción B).
 
 ### 2.3 Verificar
 
@@ -128,6 +128,11 @@ Cuenta en <https://render.com> con GitHub. Dale acceso al repo del monorepo.
 | `CORS_ORIGINS` | `https://capstone-barb.pages.dev` (URL exacta del front, sin `/` final) |
 | `CORS_ORIGIN_REGEX` | `https://([a-z0-9-]+\.)?capstone-barb\.pages\.dev` (cubre previews; cambia `capstone-barb` por el nombre de tu proyecto Pages) |
 | `UPLOAD_DIR` | `/tmp/uploads` |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | SMTP para el correo de OTs atrasadas (ver `docs/NOTIFICACIONES.md`) |
+| `JOB_TOKEN` | secreto del cron externo (header `X-Job-Token`); vacío = job deshabilitado |
+| `FRONTEND_URL` | URL del front (link en el correo, opcional) |
+
+Cron del correo de OTs atrasadas: `.github/workflows/overdue-report.yml` (cada hora). Requiere secrets del repo `API_URL` (URL de Render, sin `/` final) y `JOB_TOKEN` (el mismo de Render).
 
 Otros proveedores LLM: ver `backend/.env.example`.
 
@@ -197,7 +202,7 @@ SPA: Pages sirve `index.html` como fallback cuando no hay `404.html`; las rutas 
 - [ ] `CORS_ORIGINS`/`CORS_ORIGIN_REGEX` con dominio `pages.dev`
 - [ ] Login en la URL `pages.dev` funciona
 - [ ] Chat IA responde (streaming)
-- [ ] Cambiada password admin demo
+- [ ] Usuarios demo del seed cambiados o eliminados (en especial `super@barb.com` y `admin@barb.com`)
 
 ## 8. Troubleshooting
 
@@ -217,6 +222,108 @@ SPA: Pages sirve `index.html` como fallback cuando no hay `404.html`; las rutas 
 | Recargar ruta Angular da 404 | Hay un `404.html` en output; elimínalo. |
 | Fotos de OT desaparecen | Disco efímero de Render. Migrar a Supabase Storage o plan con disco persistente. |
 | Chat IA falla | Falta `NVIDIA_API_KEY` en Render. Ojo: `/api/health/llm` solo revisa `DEEPSEEK_API_KEY` y reportará `degraded` aunque nvidia funcione. |
+
+## 9. Primera instalación desde cero / otra nube
+
+Todo lo anterior describe este despliegue concreto (Supabase + Render + Pages). Si una empresa levanta BARB en otra infraestructura (AWS, Azure, GCP, VPS propio, etc.), **las migraciones se ejecutan completas desde cero**: Alembic parte de una base vacía y aplica `0001 → 0005` en orden (30 tablas, tipos enum, índices, extensión `pgvector`). No se copia nada desde Supabase; el esquema vive en `backend/migrations/` y los datos se crean aparte.
+
+### 9.1 Requisitos de la infraestructura
+
+| Pieza | Requisito |
+|---|---|
+| **PostgreSQL** | Versión 17 (la usada en desarrollo, imagen `pgvector/pgvector:pg17`) con la extensión **pgvector** disponible. |
+| Permisos de la DB | El usuario de migraciones debe poder ejecutar `CREATE EXTENSION vector`. En servicios gestionados (RDS, Cloud SQL, Azure) la extensión se habilita primero desde su consola o con un rol admin. Sin ella, la migración `0003_pgvector_embeddings` falla. |
+| **Backend** | Python 3.12, `uv`. Build: `uv sync --frozen --no-dev`. Start: `uvicorn barb.main:app --app-dir src --host 0.0.0.0 --port $PORT`. |
+| **Disco de archivos** | Las fotos de OT se guardan en `UPLOAD_DIR`. Con disco efímero se pierden; en otra nube monta un volumen persistente y apunta `UPLOAD_DIR` ahí. |
+| **Frontend** | Cualquier hosting estático con fallback SPA a `index.html`. Build con Node `^22.22.3` o `^24.15.0`. |
+| **Redis** | Opcional. Sin Redis todo funciona, solo no hay caché. |
+| **Proveedor LLM** | Una API key (`NVIDIA_API_KEY` u otra de `backend/.env.example`) para el chat. |
+
+### 9.2 Orden de la primera instalación
+
+1. **Crear la base de datos** Postgres 17 con pgvector habilitado.
+2. **Obtener la `DATABASE_URL`** (formato libpq: `postgresql://usuario:password@host:5432/base`). Para migrar usa conexión directa o Session pooler, no el pooler en modo transaction. La app en runtime sí soporta pooler transaction (`prepare_threshold=None`).
+3. **Aplicar el esquema** desde una máquina con acceso a la DB:
+   ```powershell
+   cd backend
+   uv sync
+   $env:DATABASE_URL = "postgresql://..."
+   uv run alembic upgrade head
+   uv run alembic current        # debe decir: 0005_merge_heads (head)
+   ```
+   Es idempotente: repetirlo cuando ya está al día no hace nada.
+4. **Crear los datos iniciales** (sección 9.4). Aquí se elige entre demo y producción real.
+5. **Desplegar el backend** con las variables de entorno (sección 3) y comprobar `/health` → `online`.
+6. **Desplegar el frontend**: editar `frontend/src/environments/environment.prod.ts` con la URL del backend (`https://<backend>/api`), compilar con `npm run build` y publicar `dist/frontend/browser`.
+7. **Configurar CORS** en el backend: `CORS_ORIGINS` = URL exacta del frontend; `CORS_ORIGIN_REGEX` solo si hay dominios de preview.
+8. **Probar**: login, un listado (órdenes de trabajo), chat.
+
+> En una instalación nueva la base está vacía, así que no hay riesgo de "migrar al revés": el orden "migrar primero, desplegar después" de la sección 2.4 se cumple por construcción.
+
+### 9.3 Qué hace cada migración
+
+| Migración | Contenido |
+|---|---|
+| `0001_initial_schema` | Tipos enum y tablas del dominio: máquinas, plantas, OT, repuestos, topología, etc. |
+| `0002_runtime_tables` | `sesion`, `documento`, adjuntos de debug, feedback, preferencias de usuario. |
+| `0003_work_order_indexes` | Índices de órdenes de trabajo. |
+| `0003_pgvector_embeddings` | Extensión `vector` y tabla `documento_embedding` (RAG). |
+| `0004_multiempresa_documentos` | Multi-empresa: `empresa_id` en documentos, `documento_chunk` con búsqueda de texto completo en español, rol `super_usuario`. |
+| `0005_merge_heads` | Une las dos ramas anteriores. No cambia el esquema. |
+
+### 9.4 Datos iniciales: demo o producción real
+
+El esquema por sí solo deja la base **sin ningún usuario**, así que nadie puede entrar. Hay dos caminos.
+
+**Opción A — Demo / pruebas (con datos de ejemplo)**
+
+```powershell
+uv run python scripts/seed.py
+```
+
+Crea 4 empresas ficticias, órdenes de trabajo, documentos y estos usuarios con **contraseñas conocidas, públicas en el repo**:
+
+| Usuario | Contraseña | Rol |
+|---|---|---|
+| `super@barb.com` | `super123` | `super_usuario` (ve toda la plataforma) |
+| `admin@barb.com` | `admin123` | `admin` (Planta Demo BARB) |
+| `admin@mineranorte.cl` | `minera123` | `admin` |
+| `admin@trialcorp.cl` | `trial123` | `admin` |
+| `admin@constructorasur.cl` | `sur12345` | `admin` (empresa suspendida) |
+
+El seed también crea otros usuarios de ejemplo (técnicos, operadores, etc.). Es idempotente. **Nunca lo uses en una instalación expuesta a internet sin cambiar o borrar esas cuentas.**
+
+**Opción B — Producción real (sin datos demo)**
+
+No corras `seed.py`. Crea solo el primer `super_usuario` y, desde la aplicación, ese usuario crea las empresas y sus administradores.
+
+1. Genera el hash bcrypt de la contraseña (la app nunca guarda texto plano):
+   ```powershell
+   cd backend
+   $env:PYTHONPATH = "src"
+   uv run python -c "from barb.core.security import hash_password; print(hash_password('TU_CLAVE_SEGURA'))"
+   ```
+2. Inserta el usuario en la base (por `psql` o el SQL editor de tu proveedor). Pega el hash completo, que empieza con `$2b$`:
+   ```sql
+   INSERT INTO usuario (empresa_id, nombre, email, password_hash, rol)
+   VALUES (NULL, 'Super Usuario', 'tu-correo@empresa.com', '<HASH_AQUI>', 'super_usuario');
+   ```
+   `empresa_id` va en `NULL`: solo el rol `super_usuario` puede no pertenecer a una empresa (lo exige un `CHECK` de la migración `0004`).
+3. Entra a la aplicación con ese usuario y crea las empresas y los administradores de cada una desde la gestión de empresas y usuarios.
+
+**Cambiar o borrar usuarios demo en una base que ya tiene el seed**
+
+Cambiar una contraseña:
+```sql
+UPDATE usuario SET password_hash = '<HASH_NUEVO>' WHERE lower(email) = 'super@barb.com';
+```
+Para borrar los usuarios demo conviene hacerlo desde la aplicación o revisando antes las referencias (órdenes de trabajo, documentos y sesiones apuntan a `usuario`); un `DELETE` directo puede fallar por claves foráneas.
+
+### 9.5 Qué NO se migra
+
+- **Datos de Supabase**: la base nueva empieza vacía. Si necesitas llevar datos, usa `pg_dump` / `pg_restore` de las tablas de datos, con el esquema ya creado por Alembic.
+- **Fotos de OT**: viven en disco, no en la base. Hay que copiarlas al nuevo `UPLOAD_DIR`.
+- **Variables de entorno y secretos**: se configuran de nuevo en la plataforma destino. Nunca los copies a archivos del repo.
 
 ## Referencias
 

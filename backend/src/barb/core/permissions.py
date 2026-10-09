@@ -52,6 +52,8 @@ RUTAS: dict[str, dict[str, bool | str]] = {
     "empresas":   {"operador": False, "tecnico": False, "supervisor": False, "engineer": False, "gerente": False, "admin": False, "visitante": False, "super_usuario": True},
     "usuarios":   {"operador": False, "tecnico": False, "supervisor": False, "engineer": False, "gerente": False, "admin": True, "visitante": False, "super_usuario": True},
     "documentos": {"operador": "ver", "tecnico": "ver", "supervisor": "ver", "engineer": True, "gerente": True, "admin": True, "visitante": False, "super_usuario": True},
+    # notificaciones: configuración del correo de OTs atrasadas (supervisor hacia arriba).
+    "notificaciones": {"operador": False, "tecnico": False, "supervisor": True, "engineer": False, "gerente": True, "admin": True, "visitante": False, "super_usuario": True},
     "history":    {"operador": False, "tecnico": False, "supervisor": True, "engineer": False, "gerente": True, "admin": True, "visitante": False, "super_usuario": True},
 }
 
@@ -77,6 +79,7 @@ ACCIONES: dict[str, dict[str, bool]] = {
     "eliminar_documentos": {"operador": False, "tecnico": False, "supervisor": False, "engineer": True,  "gerente": True, "admin": True, "visitante": False, "super_usuario": True},
     # Alta/edición/baja de empresas: solo super_usuario.
     "gestionar_empresas":  {"operador": False, "tecnico": False, "supervisor": False, "engineer": False, "gerente": False, "admin": False, "visitante": False, "super_usuario": True},
+    "configurar_notificaciones": {"operador": False, "tecnico": False, "supervisor": True, "engineer": False, "gerente": True, "admin": True, "visitante": False, "super_usuario": True},
     "ver_usuarios":        {"operador": False, "tecnico": False, "supervisor": False, "engineer": False, "gerente": False, "admin": True, "visitante": False, "super_usuario": True},
 }
 
