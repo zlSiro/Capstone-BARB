@@ -7,3 +7,4 @@ export * from './message.model';
 export * from './report.model';
 export * from './stats.model';
 export * from './app-state.model';
+export * from './topology.model';

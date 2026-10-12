@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, Query
+import psycopg
+from fastapi import APIRouter, Depends, HTTPException, Query
+from psycopg_pool import PoolTimeout
 
 from barb.core.db import fetch_all
 from barb.core.permissions import get_sesion_actual, require_route, resolver_empresa
@@ -58,8 +60,19 @@ async def get_topologia(empresa_id: int | None = Query(default=None), sesion: di
         nodos = []
         conexiones = []
 
+        # --- A-2 / A-3 (CGBIDA-355): el mapa solo muestra actividad real ---------
+        # Los nodos visibles se derivan de las MAQUINAS, no del catálogo completo:
+        #   A-2: una planta sin máquinas no se dibuja (sugeriría actividad inexistente).
+        #   A-3: una disciplina pertenece a la EMPRESA, no a una planta, así que se dibuja
+        #        UNA vez y se conecta a cada planta donde tenga máquinas.
+        # Una disciplina sin máquinas en las plantas visibles tampoco se dibuja: sería un
+        # nodo huérfano, el mismo problema que A-2 evita en el nivel superior.
+        ids_planta_visibles = {m["planta_id"] for m in maquinas}
+
         x_offset_planta = 500
         for p in plantas:
+            if p["planta_id"] not in ids_planta_visibles:
+                continue  # A-2: planta sin máquinas, no se dibuja
             nodos.append({
                 "nodo_id": f"p_{p['planta_id']}",
                 "nombre_visual": p["nombre"],
@@ -71,9 +84,20 @@ async def get_topologia(empresa_id: int | None = Query(default=None), sesion: di
             })
             x_offset_planta += 300
 
+        maquinas_por_disciplina: dict[int, list[dict]] = {}
+        for m in maquinas:
+            # `maquinas` ya viene acotada por empresa, así que toda planta aquí es visible.
+            if m.get("disciplina_id"):
+                maquinas_por_disciplina.setdefault(m["disciplina_id"], []).append(m)
+
         x_offset_disc = 200
         for d in disciplinas:
-            n_id = f"d_{d['disciplina_id']}"
+            disc_id = d["disciplina_id"]
+            maquinas_disc = maquinas_por_disciplina.get(disc_id)
+            if not maquinas_disc:
+                continue  # sin máquinas en las plantas visibles: no se dibuja
+
+            n_id = f"d_{disc_id}"
             nodos.append({
                 "nodo_id": n_id,
                 "nombre_visual": d["nombre"],
@@ -83,10 +107,11 @@ async def get_topologia(empresa_id: int | None = Query(default=None), sesion: di
                 "pos_y": 300,
                 "estado_actual": "operativo"
             })
-            if plantas:
+            # Una arista por cada planta donde esta disciplina tenga máquinas.
+            for planta_id in sorted({m["planta_id"] for m in maquinas_disc}):
                 conexiones.append({
-                    "conexion_id": f"conn_p{plantas[0]['planta_id']}_{n_id}",
-                    "origen_nodo_id": f"p_{plantas[0]['planta_id']}",
+                    "conexion_id": f"conn_p{planta_id}_{n_id}",
+                    "origen_nodo_id": f"p_{planta_id}",
                     "destino_nodo_id": n_id,
                     "tipo_relacion": "jerarquia"
                 })
@@ -116,6 +141,20 @@ async def get_topologia(empresa_id: int | None = Query(default=None), sesion: di
 
         return {"nodos": nodos, "conexiones": conexiones}
 
-    except Exception:
+    except HTTPException:
+        # Errores deliberados (permisos, validación) no se enmascaran como fallo de BD.
+        raise
+    except (psycopg.OperationalError, PoolTimeout) as e:
+        # Dependencia caída o inalcanzable: no se pudo consultar la base.
+        logger.warning("Topología: base de datos inalcanzable: %s", e)
+        raise HTTPException(
+            status_code=503,
+            detail="No se pudo consultar la topología: la base de datos no está disponible.",
+        ) from e
+    except Exception as e:
+        # Cualquier otro fallo inesperado se propaga como 500.
         logger.exception("Error generando topología automática")
-        return {"nodos": [], "conexiones": []}
+        raise HTTPException(
+            status_code=500,
+            detail="Error interno al generar la topología.",
+        ) from e

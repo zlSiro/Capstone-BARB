@@ -65,6 +65,24 @@ export const translations = {
       sessionHistoryTitle: 'Historial de Sesiones',
       sessionHistoryDescription: 'Revisa conversaciones y diagnósticos anteriores'
     },
+    topology: {
+      title: 'Topología de planta',
+      subtitle: 'Mapa de equipos por estado',
+      zoomIn: 'Acercar',
+      zoomOut: 'Alejar',
+      resetView: 'Vista inicial',
+      stateOperativo: 'Operativo',
+      stateAlerta: 'Alerta',
+      stateFalla: 'Falla',
+      stateDesconectado: 'Desconectado',
+      loading: 'Cargando topología…',
+      loadError: 'No se pudo cargar la topología. Intenta nuevamente más tarde.',
+      empty: 'No hay equipos para mostrar en tu empresa.',
+      detailName: 'Equipo',
+      detailType: 'Tipo',
+      detailStatus: 'Estado',
+      closePanel: 'Cerrar'
+    },
     financial: {
       roiTitle: 'Impacto Anual Proyectado (Modelo BARB v1.0)',
       roiSubtitle: 'Basado en US$2.000/min de inactividad operativa.',
@@ -198,6 +216,24 @@ export const translations = {
       uploadHint: 'The file will be stored in the document repository.',
       sessionHistoryTitle: 'Session History',
       sessionHistoryDescription: 'Review previous conversations and diagnostics'
+    },
+    topology: {
+      title: 'Plant Topology',
+      subtitle: 'Equipment map by status',
+      zoomIn: 'Zoom in',
+      zoomOut: 'Zoom out',
+      resetView: 'Reset view',
+      stateOperativo: 'Operational',
+      stateAlerta: 'Warning',
+      stateFalla: 'Failure',
+      stateDesconectado: 'Offline',
+      loading: 'Loading topology…',
+      loadError: 'The topology could not be loaded. Please try again later.',
+      empty: 'There is no equipment to show for your company.',
+      detailName: 'Equipment',
+      detailType: 'Type',
+      detailStatus: 'Status',
+      closePanel: 'Close'
     },
     financial: {
       roiTitle: 'Projected Annual Impact (BARB v1.0 Model)',
