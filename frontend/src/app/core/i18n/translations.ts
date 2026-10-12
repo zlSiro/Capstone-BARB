@@ -81,7 +81,23 @@ export const translations = {
       detailName: 'Equipo',
       detailType: 'Tipo',
       detailStatus: 'Estado',
-      closePanel: 'Cerrar'
+      closePanel: 'Cerrar',
+      // --- HU-377: órdenes de trabajo e hijos por nodo (CGBIDA-382 a 385) ---
+      ordersTitle: 'Órdenes de trabajo',
+      ordersLoading: 'Cargando órdenes…',
+      ordersError: 'No se pudieron cargar las órdenes.',
+      ordersEmpty: 'Este equipo no tiene órdenes de trabajo.',
+      groupPendientes: 'Pendientes',
+      groupEnCurso: 'En curso',
+      groupCerradas: 'Cerradas',
+      groupCanceladas: 'Canceladas',
+      overdueBadge: 'Vencida',
+      viewOrderDetail: 'Ver detalle',
+      childrenTitle: 'Contiene',
+      childrenLoading: 'Cargando contenido…',
+      childrenError: 'No se pudo cargar el contenido del nodo.',
+      childrenEmpty: 'Este nodo no contiene equipos.',
+      detailBack: 'Volver'
     },
     financial: {
       roiTitle: 'Impacto Anual Proyectado (Modelo BARB v1.0)',
@@ -233,7 +249,23 @@ export const translations = {
       detailName: 'Equipment',
       detailType: 'Type',
       detailStatus: 'Status',
-      closePanel: 'Close'
+      closePanel: 'Close',
+      // --- HU-377: work orders and children per node (CGBIDA-382 to 385) ---
+      ordersTitle: 'Work orders',
+      ordersLoading: 'Loading work orders…',
+      ordersError: 'The work orders could not be loaded.',
+      ordersEmpty: 'This equipment has no work orders.',
+      groupPendientes: 'Pending',
+      groupEnCurso: 'In progress',
+      groupCerradas: 'Closed',
+      groupCanceladas: 'Cancelled',
+      overdueBadge: 'Overdue',
+      viewOrderDetail: 'View detail',
+      childrenTitle: 'Contains',
+      childrenLoading: 'Loading contents…',
+      childrenError: 'The node contents could not be loaded.',
+      childrenEmpty: 'This node contains no equipment.',
+      detailBack: 'Back'
     },
     financial: {
       roiTitle: 'Projected Annual Impact (BARB v1.0 Model)',

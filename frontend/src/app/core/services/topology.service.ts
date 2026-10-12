@@ -1,6 +1,6 @@
 import { Service, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Topology } from '../models';
+import { Topology, TopologyNodoDetalle } from '../models';
 import { environment } from '../../../environments/environment';
 
 /** Topología de planta: plantas, disciplinas y máquinas de la empresa del usuario. */
@@ -15,5 +15,15 @@ export class TopologyService {
    */
   get() {
     return this.http.get<Topology>(this.url);
+  }
+
+  /**
+   * Un nodo del mapa con sus órdenes de trabajo y sus hijos (CGBIDA-379).
+   *
+   * Un nodo de otra empresa devuelve 404, no 403: el backend no revela si existe
+   * (`docs/contrato_api_topologia.md`, sección "Aislamiento multi-empresa").
+   */
+  getNodo(nodoId: string) {
+    return this.http.get<TopologyNodoDetalle>(`${this.url}/${encodeURIComponent(nodoId)}`);
   }
 }

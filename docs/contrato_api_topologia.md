@@ -1,13 +1,21 @@
-# Contrato API `/api/topology` (HU-07)
+# Contrato API `/api/topology` (HU-07 y HU-377)
 
 > Mapa navegable de la planta en tres niveles — plantas, disciplinas y máquinas — con el
 > estado de cada equipo derivado de sus órdenes de trabajo.
 > Decisiones de diseño: ver CGBIDA-355. Aislamiento multi-empresa: CGBIDA-356.
+> Detalle por nodo (OTs e hijos): CGBIDA-379, documentado aquí en CGBIDA-381.
+>
+> **Dos endpoints:**
+> - `GET /api/topology` — el mapa completo (HU-07, CGBIDA-358).
+> - `GET /api/topology/{nodo_id}` — un nodo con sus órdenes de trabajo y sus hijos (HU-377).
+
+Un solo documento para los dos: el segundo es un subrecurso del primero y comparte base,
+permisos y códigos de error. Separarlos obligaría a duplicar la mitad del contenido.
 
 ## Base
 
 - **Rutas:** `GET /api/topology` · alias `GET /api/topologia`
-  (`backend/src/barb/routers/topology.py:17-18`)
+  (`backend/src/barb/routers/topology.py:167-168`)
 - **Autenticación:** ✅ **requerida**. Header `Authorization: Bearer <token>`.
   El token se obtiene en `POST /api/auth/login` y se valida contra la tabla `sesion`.
 - **Content-Type response:** `application/json`
@@ -72,7 +80,7 @@ Sería un nodo sin ninguna arista, el mismo problema que A-2 evita en el nivel s
 **Consecuencia:** el grafo ya no es un árbol estricto de tres niveles: un nodo de disciplina
 puede tener más de un padre. El cliente debe soportarlo.
 
-`backend/src/barb/routers/topology.py:63-118`
+`backend/src/barb/routers/topology.py:67-150`
 
 ### Efecto medido (seed de desarrollo)
 
@@ -172,7 +180,7 @@ Una misma disciplina `d_<n>` puede aparecer como `destino_nodo_id` en **varias**
 ### Estados de un nodo
 
 Vocabulario canónico de **tres** valores, derivado **en vivo** de las órdenes de trabajo
-(`backend/src/barb/routers/topology.py:39-57`), no de una columna de estado del equipo:
+(`backend/src/barb/routers/topology.py:46-65`), no de una columna de estado del equipo:
 
 | Valor | Regla |
 |---|---|
@@ -194,8 +202,8 @@ emite, el valor esperado es `desconectado`.
 
 Medido contra la base de datos de desarrollo (empresa 1, 21 nodos):
 `alerta`, `falla`, `operativo`. Los nodos de Planta y Disciplina se emiten siempre como
-`operativo` (`topology.py:83,107`); solo las Máquinas reciben estado derivado
-(`topology.py:131`).
+`operativo` (`topology.py:90,113`); solo las Máquinas reciben estado derivado
+(`topology.py:138`).
 
 ---
 
@@ -204,7 +212,7 @@ Medido contra la base de datos de desarrollo (empresa 1, 21 nodos):
 El endpoint aísla por `empresa_id` (CGBIDA-356). El aislamiento se aplica a **las cuatro**
 consultas: `planta` y `disciplina` filtran por su propia columna `empresa_id`, `maquina` filtra
 por la empresa de su planta, y el cálculo de estado de OT se acota a las máquinas ya filtradas
-(`backend/src/barb/routers/topology.py:22-49`).
+(`backend/src/barb/routers/topology.py:24-49`).
 
 ### Regla del parámetro `empresa_id`
 
@@ -227,6 +235,193 @@ por la empresa de su planta, y el cálculo de estado de OT se acota a las máqui
 
 ---
 
+## `GET /api/topology/{nodo_id}` — detalle de un nodo
+
+Alias: `GET /api/topologia/{nodo_id}`. Devuelve **un nodo del mapa** junto con lo que
+contiene. Existe para que el panel de detalle no tenga que pedir el mapa entero ni cruzar
+listas en el cliente.
+
+**Ruta y línea:** `backend/src/barb/routers/topology.py:195-196` (rutas) y `:197-226` (handler).
+
+### Parámetros
+
+| Nombre | Dónde | Tipo | Obligatorio | Descripción |
+|---|---|---|---|---|
+| `nodo_id` | path | string | ✅ | Identificador del nodo, tal como lo emite el mapa |
+| `empresa_id` | query | int | ❌ | Solo tiene efecto para el `super_usuario`. Igual que en el mapa |
+
+El `nodo_id` sigue el formato `<prefijo>_<id>`: `p_<planta_id>`, `d_<disciplina_id>`,
+`m_<maquina_id>`.
+
+### Response `200`
+
+```json
+{
+  "nodo":   { ... },
+  "ordenes": [ ... ],
+  "hijos":  [ ... ]
+}
+```
+
+| Campo | Tipo | Contenido |
+|---|---|---|
+| `nodo` | objeto | **Exactamente el mismo objeto** que el mapa emite para ese `nodo_id` (mismos campos y mismas coordenadas) |
+| `ordenes` | array | Órdenes de trabajo de la máquina. **Vacío** si el nodo no es Máquina |
+| `hijos` | array | Nodos que este nodo contiene directamente. **Vacío** en una Máquina |
+
+**`nodo` y `hijos` usan los campos de la sección "Campos de un nodo"** más abajo: no se
+redefinen aquí.
+
+#### Qué contiene cada tipo de nodo
+
+| Tipo de nodo | `ordenes` | `hijos` |
+|---|---|---|
+| **Máquina** | Sus órdenes de trabajo | `[]` — una máquina no contiene otras máquinas |
+| **Planta** | `[]` | Sus **disciplinas** |
+| **Disciplina** | `[]` | Sus **máquinas** |
+
+Los hijos se derivan de **las aristas del propio grafo** (`_hijos_de`,
+`topology.py:152-164`), no de una consulta aparte. Así el panel y el mapa no pueden discrepar
+sobre quién contiene a quién, y se heredan las reglas A-2/A-3 sin volver a implementarlas.
+
+En una disciplina repartida en varias plantas (regla A-3), `hijos` lista **todas** sus
+máquinas, sin duplicados.
+
+#### Los `estado` de `nodo` son los mismos del mapa
+
+`operativo` · `alerta` · `falla` (ver "Estados de un nodo"). El endpoint **no introduce
+estados nuevos**. Solo las Máquinas reciben estado derivado; Planta y Disciplina van siempre
+como `operativo`.
+
+#### Campos de `ordenes`
+
+**No se documentan aquí.** Cada elemento es la misma OT que devuelve el listado de órdenes de
+trabajo, con su contrato completo (campos, significados y `allowed_transitions`):
+
+> **Ver `docs/WORK_ORDERS.md`, sección 2 "Contrato API"**.
+
+Se reutiliza el mismo serializador del backend (`row_to_work_order`), así que reescribir los
+campos aquí garantizaría que los dos documentos se separen con el primer cambio.
+
+Lo que sí importa para el panel: `estado` llega en **crudo** (`pending`, `assigned`,
+`in_progress`, `overdue`, `completed`, `cancelled`), que es lo que la UI necesita para agrupar.
+
+### Ejemplos de respuesta
+
+#### Nodo Máquina — `GET /api/topology/m_13`
+
+```json
+{
+  "nodo": {
+    "nodo_id": "m_13",
+    "maquina_id": 13,
+    "nombre_visual": "Sistema Lubricación Molino",
+    "tipo": "Máquina",
+    "icono": "🤖",
+    "pos_x": 50, "pos_y": 500,
+    "estado_actual": "alerta"
+  },
+  "ordenes": [
+    {
+      "numero_ot": "OT-2026-106",
+      "estado": "assigned",
+      "status": "Asignada",
+      "priority": "low",
+      "title": "Cambio de aceite y filtros del molino",
+      "machine_id": 13,
+      "allowed_transitions": ["in_progress", "cancelled"]
+    }
+  ],
+  "hijos": []
+}
+```
+
+> La OT se muestra recortada a los campos que el panel usa. El objeto real trae el contrato
+> completo de `docs/WORK_ORDERS.md`.
+
+#### Nodo Planta — `GET /api/topology/p_4`
+
+```json
+{
+  "nodo": {
+    "nodo_id": "p_4", "nombre_visual": "Faena Chancado Norte",
+    "tipo": "Planta", "icono": "🏭", "pos_x": 500, "pos_y": 100,
+    "estado_actual": "operativo"
+  },
+  "ordenes": [],
+  "hijos": [
+    { "nodo_id": "d_13", "nombre_visual": "Eléctrica",  "tipo": "Disciplina", "estado_actual": "operativo", "pos_x": 200, "pos_y": 300 },
+    { "nodo_id": "d_14", "nombre_visual": "Mecánica",   "tipo": "Disciplina", "estado_actual": "operativo", "pos_x": 450, "pos_y": 300 }
+  ]
+}
+```
+
+#### Nodo Disciplina — `GET /api/topology/d_13`
+
+```json
+{
+  "nodo": {
+    "nodo_id": "d_13", "nombre_visual": "Eléctrica",
+    "tipo": "Disciplina", "icono": "⚙️", "pos_x": 200, "pos_y": 300,
+    "estado_actual": "operativo"
+  },
+  "ordenes": [],
+  "hijos": [
+    { "nodo_id": "m_16", "maquina_id": 16, "nombre_visual": "Celda de Flotación CF-2", "tipo": "Máquina", "estado_actual": "operativo" },
+    { "nodo_id": "m_17", "maquina_id": 17, "nombre_visual": "Subestación Eléctrica SE-4", "tipo": "Máquina", "estado_actual": "operativo" }
+  ]
+}
+```
+
+### Códigos de respuesta
+
+| Código | Causa | Detalle | Verificado |
+|---|---|---|---|
+| `200` | Nodo encontrado y visible para la empresa del usuario | `{nodo, ordenes, hijos}` | ✅ con comando |
+| `401` | Token inválido, expirado o header mal formado | Igual que el mapa | ✅ con comando |
+| `404` | El `nodo_id` no existe, **o existe pero es de otra empresa** | `{"detail": "Nodo de topología no encontrado."}` | ✅ con comando |
+| `422` | Falta el header `Authorization` | Array de errores de FastAPI | ✅ con comando |
+| `500` / `503` | Fallo inesperado / base de datos no disponible | Análogos al mapa | ⚠️ NO VERIFICABLE en vivo |
+
+### Aislamiento multi-empresa
+
+Un usuario de la empresa A **no puede abrir un nodo de la empresa B**: recibe **`404`**, no
+`403`. Es deliberado y es el mismo criterio que el mapa: **no se revela si el nodo no existe
+o si es de otro cliente.** Un `403` confirmaría la existencia del nodo ajeno.
+
+Verificado por comando: `admin@mineranorte.cl` (empresa 2) obtiene **404** en `p_1`, `m_1` y
+`d_1`, que son de la empresa 1; y **200** en `p_4` y `d_13`, que son suyos.
+
+Cubierto por `backend/tests/test_topology_nodo.py::test_empresa_no_ve_nodos_de_otra_empresa`
+(parametrizado en 3 nodos) y por `test_las_ordenes_no_cruzan_empresas`. La mutación de quitar
+el `empresa_id` del alcance hace **fallar 4 tests**, así que el aislamiento no está sin cubrir.
+
+**El `super_usuario` (empresa `NULL`) los ve todos**; con `?empresa_id=1` vuelve a quedar
+acotado.
+
+### Permisos
+
+`require_route("topology", solo_lectura=True)` — el mismo guard del mapa
+(`topology.py:195` y `:196`). **`visitante` puede leer** (`permissions.py:44` le da `"ver"`).
+
+La decisión (CGBIDA-378, D4) es deliberada: el endpoint es un **subrecurso** de la topología,
+así que exige su permiso y no uno más laxo. El listado de órdenes usa `require_auth`
+(`work_orders.py:162`), que **no consulta la matriz** — porque alimenta desplegables del
+formulario. Reutilizar esa laxitud aquí dejaría el subrecurso sin la comprobación que su
+endpoint padre sí hace, y retirarle a un rol el permiso de topología no le quitaría el acceso
+a los datos de la topología.
+
+**Efecto concreto:** quien puede ver el nodo en el mapa, puede ver qué contiene.
+
+### Ejemplo
+
+```bash
+curl -s http://localhost:9000/api/topology/m_13 \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+---
+
 ## Ejemplo completo
 
 ```bash
@@ -244,7 +439,7 @@ curl -s http://localhost:9000/api/topology \
 
 | # | Qué | Por qué |
 |---|---|---|
-| 1 | Los códigos `500` y `503` en vivo | Provocarlos exige tumbar la base de datos de desarrollo. Están implementados (`topology.py:124-137`) y cubiertos por test (`test_topology.py:35,46,54`), pero no observados en vivo |
+| 1 | Los códigos `500` y `503` en vivo | Provocarlos exige tumbar la base de datos de desarrollo. Están implementados (`topology.py:179-190` para el mapa, `:230-241` para el detalle) y cubiertos por test (`test_topology.py:35,46,54`), pero no observados en vivo |
 | 2 | Que `403` sea **imposible** en toda configuración | Verificado que no ocurre con los 7 roles definidos. Si se añadiera un rol nuevo sin entrada en la matriz, el código devolvería `500`, no `403`; no se probó ese escenario |
 | 3 | Comportamiento con **tres o más** plantas por disciplina | El seed solo tiene disciplinas repartidas en **2** plantas (empresa 2). Que funcione con 2 es lo verificado (`test_topology.py::test_a3_disciplina_con_maquinas_en_varias_plantas_se_conecta_a_todas`); el caso de 3+ no tiene datos |
 

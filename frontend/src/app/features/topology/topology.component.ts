@@ -1,10 +1,20 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { catchError, map, of } from 'rxjs';
 
-import { Topology, TopologyConnection, TopologyNode, TopologyNodeState } from '../../core/models';
+import {
+  Topology,
+  TopologyConnection,
+  TopologyNode,
+  TopologyNodeState,
+  TopologyNodoDetalle,
+  WorkOrder,
+  WorkOrderStatus,
+} from '../../core/models';
 import { I18nService } from '../../core/i18n/i18n.service';
 import { TopologyService } from '../../core/services/topology.service';
+import { OtDetailSheetComponent } from '../work-orders/components/ot-detail-sheet/ot-detail-sheet.component';
+import { filterGroup } from '../work-orders/utils/work-order-labels';
 
 /** Dimensiones de la tarjeta de cada nodo, en unidades del viewBox. */
 const NODE_W = 130;
@@ -42,9 +52,70 @@ const CLAVE_ESTADO: Record<TopologyNodeState, string> = {
   desconectado: 'stateDesconectado',
 };
 
+// --- HU-377 · CGBIDA-383: agrupación de los 6 estados de OT -------------------
+//
+// La agrupación NO se decide aquí: se reutiliza `filterGroup()`
+// (`features/work-orders/utils/work-order-labels.ts`), que ya unifica `assigned` y
+// `overdue` bajo `pending`. El backend aplica la misma regla en
+// `core/work_order_states.py` (los tres estados comparten transiciones).
+// Duplicarla aquí haría que el panel de topología y el listado de OTs discreparan.
+//
+// `overdue` se agrupa con Pendientes por ciclo de vida, pero se marca con un badge
+// rojo (decisión de CGBIDA-378) para que el supervisor lo distinga sin cambiar de grupo.
+
+type GrupoOt = 'groupPendientes' | 'groupEnCurso' | 'groupCerradas' | 'groupCanceladas';
+
+/** Orden de presentación de los grupos; el usuario ve primero lo que exige acción. */
+const ORDEN_GRUPOS: GrupoOt[] = ['groupPendientes', 'groupEnCurso', 'groupCerradas', 'groupCanceladas'];
+
+/**
+ * Estado ya normalizado por `filterGroup()` -> grupo del panel.
+ * Las claves son los 4 estados que devuelve `filterGroup`, no los 6 del backend.
+ */
+const CLAVE_GRUPO: Record<string, GrupoOt> = {
+  pending: 'groupPendientes',
+  in_progress: 'groupEnCurso',
+  completed: 'groupCerradas',
+  cancelled: 'groupCanceladas',
+};
+
+/** Etiqueta por estado, para el badge de cada tarjeta. */
+const ETIQUETA_OT: Record<string, string> = {
+  pending: 'Pendiente',
+  assigned: 'Asignada',
+  in_progress: 'En curso',
+  overdue: 'Vencida',
+  completed: 'Cerrada',
+  cancelled: 'Cancelada',
+};
+
+/** Color del badge por estado, coherente con `work-order-labels.ts`. */
+const COLOR_OT: Record<string, string> = {
+  pending: 'bg-amber-100 text-amber-900',
+  assigned: 'bg-indigo-100 text-indigo-900',
+  in_progress: 'bg-blue-100 text-blue-900',
+  overdue: 'bg-red-100 text-red-900',
+  completed: 'bg-green-100 text-green-900',
+  cancelled: 'bg-gray-200 text-gray-800',
+};
+
+interface OtEnPanel {
+  orden: WorkOrder;
+  /** `overdue` lleva badge rojo dentro de su grupo (CGBIDA-378). */
+  vencida: boolean;
+  etiqueta: string;
+  color: string;
+}
+
+interface GrupoEnPanel {
+  nombre: GrupoOt;
+  ordenes: OtEnPanel[];
+}
+
 @Component({
   selector: 'app-topology',
   standalone: true,
+  imports: [OtDetailSheetComponent],
   template: `
     <div class="flex flex-col gap-4">
       <div class="flex items-center justify-between">
@@ -77,7 +148,7 @@ const CLAVE_ESTADO: Record<TopologyNodeState, string> = {
       </div>
 
       <!-- Leyenda de estados -->
-      <div class="flex flex-wrap gap-4 text-sm text-gray-600">
+      <div class="flex flex-wrap gap-4 text-sm text-gray-600 dark:text-gray-300">
         @for (e of estados; track e) {
           <span class="inline-flex items-center gap-2">
             <span
@@ -185,14 +256,14 @@ const CLAVE_ESTADO: Record<TopologyNodeState, string> = {
             @if (seleccionado(); as n) {
               <div
                 data-testid="panel-detalle"
-                class="absolute top-3 right-3 w-64 rounded-lg border border-gray-200 bg-white p-4 shadow-lg"
+                class="absolute top-3 right-3 w-72 max-h-[85%] overflow-y-auto rounded-lg border border-gray-200 bg-white p-4 shadow-lg dark:border-gray-700 dark:bg-gray-900"
               >
                 <div class="flex items-start justify-between gap-2">
                   <div class="min-w-0">
-                    <p class="font-semibold text-gray-800 truncate" data-testid="panel-nombre">
+                    <p class="font-semibold text-gray-800 truncate dark:text-gray-100" data-testid="panel-nombre">
                       {{ n.nombre_visual }}
                     </p>
-                    <p class="text-xs text-gray-500" data-testid="panel-tipo">{{ n.tipo }}</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400" data-testid="panel-tipo">{{ n.tipo }}</p>
                   </div>
                   <span class="text-xl" aria-hidden="true">{{ n.icono }}</span>
                 </div>
@@ -202,16 +273,154 @@ const CLAVE_ESTADO: Record<TopologyNodeState, string> = {
                     class="inline-block w-3 h-3 rounded-full"
                     [style.background-color]="colorDe(n.estado_actual)"
                   ></span>
-                  <span class="text-sm text-gray-700">{{ etiquetaDe(n.estado_actual) }}</span>
+                  <span class="text-sm text-gray-700 dark:text-gray-200">{{ etiquetaDe(n.estado_actual) }}</span>
                 </div>
+
+                @if (esBotonVolver()) {
+                  <button
+                    type="button"
+                    data-testid="panel-volver"
+                    (click)="volver()"
+                    class="mt-3 text-xs text-blue-700 underline hover:text-blue-900 dark:text-blue-200 dark:hover:text-white"
+                  >&larr; {{ t().detailBack }}</button>
+                }
+
+                <!-- CGBIDA-383: órdenes de trabajo, solo en nodos Máquina -->
+                @if (n.tipo === 'Máquina') {
+                  <div class="mt-4 border-t border-gray-100 pt-3 dark:border-gray-700">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                      {{ t().ordersTitle }}
+                    </p>
+
+                    @switch (estadoDetalle()) {
+                      @case ('cargando') {
+                        <p class="mt-2 text-sm text-gray-500 dark:text-gray-400" data-testid="ordenes-cargando">
+                          {{ t().ordersLoading }}
+                        </p>
+                      }
+                      @case ('error') {
+                        <p class="mt-2 text-sm text-red-700 dark:text-red-300" data-testid="ordenes-error">
+                          {{ t().ordersError }}
+                        </p>
+                      }
+                      @default {
+                        @if (gruposDeOrdenes().length) {
+                          @for (grupo of gruposDeOrdenes(); track grupo.nombre) {
+                            <p
+                              class="sticky top-0 z-10 -mx-1 mt-3 bg-white px-1 text-xs font-medium text-gray-700 dark:bg-gray-900 dark:text-gray-200"
+                              [attr.data-testid]="'grupo-' + grupo.nombre"
+                            >{{ t()[grupo.nombre] }} ({{ grupo.ordenes.length }})</p>
+                            <ul class="mt-1 flex flex-col gap-1">
+                              @for (item of grupo.ordenes; track item.orden.numero_ot) {
+                                <li
+                                  class="rounded border border-gray-200 px-2 py-1 dark:border-gray-700"
+                                  data-testid="orden-item"
+                                >
+                                  <div class="flex items-center gap-1">
+                                    <span
+                                      class="truncate text-xs font-medium text-gray-800 dark:text-gray-100"
+                                      data-testid="orden-numero"
+                                    >{{ item.orden.numero_ot }}</span>
+                                    <span
+                                      class="ml-auto shrink-0 rounded px-1 text-[10px]"
+                                      [class]="item.color"
+                                      data-testid="orden-estado"
+                                    >{{ item.etiqueta }}</span>
+                                  </div>
+                                  <!-- Badge rojo de vencida (CGBIDA-378) -->
+                                  @if (item.vencida) {
+                                    <span
+                                      class="mt-1 inline-block rounded bg-red-600 px-1 text-[10px] font-semibold text-white"
+                                      data-testid="orden-vencida"
+                                    >{{ t().overdueBadge }}</span>
+                                  }
+                                  <button
+                                    type="button"
+                                    data-testid="orden-ver-detalle"
+                                    (click)="abrirDetalleOt(item.orden)"
+                                    class="mt-1 block text-[11px] text-blue-700 underline hover:text-blue-900 dark:text-blue-200 dark:hover:text-white"
+                                  >{{ t().viewOrderDetail }}</button>
+                                </li>
+                              }
+                            </ul>
+                          }
+                        } @else {
+                          <p class="mt-2 text-sm text-gray-500 dark:text-gray-400" data-testid="ordenes-vacio">
+                            {{ t().ordersEmpty }}
+                          </p>
+                        }
+                      }
+                    }
+                  </div>
+                }
+
+                <!-- CGBIDA-384: hijos del nodo, para Planta y Disciplina -->
+                @if (n.tipo !== 'Máquina') {
+                  <div class="mt-4 border-t border-gray-100 pt-3 dark:border-gray-700">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                      {{ t().childrenTitle }}
+                    </p>
+
+                    @switch (estadoDetalle()) {
+                      @case ('cargando') {
+                        <p class="mt-2 text-sm text-gray-500 dark:text-gray-400" data-testid="hijos-cargando">
+                          {{ t().childrenLoading }}
+                        </p>
+                      }
+                      @case ('error') {
+                        <p class="mt-2 text-sm text-red-700 dark:text-red-300" data-testid="hijos-error">
+                          {{ t().childrenError }}
+                        </p>
+                      }
+                      @default {
+                        @if (hijos().length) {
+                          <ul class="mt-2 flex flex-col gap-1">
+                            @for (hijo of hijos(); track hijo.nodo_id) {
+                              <li>
+                                <button
+                                  type="button"
+                                  data-testid="hijo-item"
+                                  [attr.data-nodo-id]="hijo.nodo_id"
+                                  (click)="seleccionarHijo(hijo)"
+                                  class="flex w-full items-center gap-2 rounded border border-gray-200 px-2 py-1 text-left hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800"
+                                >
+                                  <span
+                                    class="inline-block w-2 h-2 shrink-0 rounded-full"
+                                    [style.background-color]="colorDe(hijo.estado_actual)"
+                                  ></span>
+                                  <span class="truncate text-xs text-gray-800 dark:text-gray-100">{{ hijo.nombre_visual }}</span>
+                                  <span class="ml-auto shrink-0 text-[10px] text-gray-500 dark:text-gray-400">{{ hijo.tipo }}</span>
+                                </button>
+                              </li>
+                            }
+                          </ul>
+                        } @else {
+                          <p class="mt-2 text-sm text-gray-500 dark:text-gray-400" data-testid="hijos-vacio">
+                            {{ t().childrenEmpty }}
+                          </p>
+                        }
+                      }
+                    }
+                  </div>
+                }
 
                 <button
                   type="button"
                   data-testid="panel-cerrar"
                   (click)="cerrarPanel()"
-                  class="mt-4 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50"
+                  class="mt-4 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50 dark:border-gray-600 dark:text-gray-100 dark:hover:bg-gray-800"
                 >{{ t().closePanel }}</button>
               </div>
+            }
+
+            <!-- CGBIDA-385: el detalle de una OT es un sheet, no una ruta.
+                 Se reutiliza el componente que ya usa el listado de OTs. -->
+            @if (otEnDetalle(); as ot) {
+              <app-ot-detail-sheet
+                [order]="ot"
+                (closed)="cerrarDetalleOt()"
+                (changeRequested)="cerrarDetalleOt()"
+              />
             }
           }
         }
@@ -332,10 +541,130 @@ export class TopologyComponent {
     // Sin esto, el clic burbujearía al <svg> y arrancaría un paneo.
     event.stopPropagation();
     this.seleccionado.set(nodo);
+    this.pila.set([nodo]);
   }
 
   protected cerrarPanel(): void {
     this.seleccionado.set(null);
+    this.pila.set([]);
+    this.otEnDetalle.set(null);
+  }
+
+  // --- CGBIDA-384: navegación por la jerarquía -------------------------------
+
+  /**
+   * Pila de nodos visitados, para poder volver al padre.
+   * DEBE ser una señal: `esBotonVolver` es un `computed` y con un array plano se
+   * memorizaría con el valor de la primera lectura (no hay señal que lo invalide).
+   */
+  private readonly pila = signal<TopologyNode[]>([]);
+
+  protected readonly esBotonVolver = computed(() => this.pila().length > 1);
+
+  /** Cambia el nodo del panel a uno de sus hijos (CGBIDA-384). */
+  protected seleccionarHijo(hijo: TopologyNode): void {
+    this.seleccionado.set(hijo);
+    this.pila.update((p) => [...p, hijo]);
+  }
+
+  protected volver(): void {
+    this.pila.update((p) => p.slice(0, -1));
+    const pila = this.pila();
+    this.seleccionado.set(pila[pila.length - 1] ?? null);
+  }
+
+  // --- CGBIDA-382/383: detalle del nodo, órdenes e hijos ---------------------
+
+  /**
+   * Detalle del nodo seleccionado. Se recarga cada vez que cambia la selección,
+   * así que navegar a un hijo pide el detalle de ese hijo.
+   */
+  private readonly detalle = signal<TopologyNodoDetalle | null>(null);
+
+  private readonly cargandoDetalle = signal(false);
+  private readonly errorDetalle = signal(false);
+
+  constructor() {
+    effect((onCleanup) => {
+      const nodo = this.seleccionado();
+      if (!nodo) {
+        this.detalle.set(null);
+        this.errorDetalle.set(false);
+        return;
+      }
+      this.cargandoDetalle.set(true);
+      const sub = this.topologyService.getNodo(nodo.nodo_id).subscribe({
+        next: (d) => {
+          this.detalle.set(d);
+          this.errorDetalle.set(false);
+          this.cargandoDetalle.set(false);
+        },
+        error: () => {
+          this.errorDetalle.set(true);
+          this.cargandoDetalle.set(false);
+        },
+      });
+      onCleanup(() => sub.unsubscribe());
+    });
+  }
+
+  /** `listo` solo cuando el detalle cargado corresponde al nodo seleccionado. */
+  private readonly detalleDelSeleccionado = computed(() => {
+    const d = this.detalle();
+    const n = this.seleccionado();
+    return d && n && d.nodo.nodo_id === n.nodo_id ? d : null;
+  });
+
+  protected readonly estadoDetalle = computed<'cargando' | 'error' | 'listo'>(() => {
+    if (this.errorDetalle()) return 'error';
+    return this.detalleDelSeleccionado() ? 'listo' : 'cargando';
+  });
+
+  protected readonly hijos = computed<TopologyNode[]>(
+    () => this.detalleDelSeleccionado()?.hijos ?? [],
+  );
+
+  /**
+   * Órdenes agrupadas para el panel. La agrupación la decide `filterGroup()`, no este
+   * componente: si se reimplementara aquí, el panel y el listado de OTs podrían
+   * discrepar sobre en qué grupo cae `assigned` u `overdue` (CGBIDA-378, D1).
+   */
+  protected readonly gruposDeOrdenes = computed<GrupoEnPanel[]>(() => {
+    const ordenes = this.detalleDelSeleccionado()?.ordenes ?? [];
+    const porGrupo = new Map<GrupoOt, OtEnPanel[]>();
+
+    for (const orden of ordenes) {
+      const clave = CLAVE_GRUPO[filterGroup(orden.estado as WorkOrderStatus)] ?? 'groupPendientes';
+      const lista = porGrupo.get(clave) ?? [];
+      lista.push({
+        orden,
+        // `overdue` va en Pendientes pero con badge rojo (CGBIDA-378).
+        vencida: orden.estado === 'overdue',
+        etiqueta: ETIQUETA_OT[orden.estado] ?? orden.estado,
+        color: COLOR_OT[orden.estado] ?? COLOR_OT['pending'],
+      });
+      porGrupo.set(clave, lista);
+    }
+
+    // El Map conserva el orden de inserción, así que se recorren los grupos en el
+    // orden de presentación y se descartan los vacíos.
+    return ORDEN_GRUPOS.filter((g) => porGrupo.has(g)).map((nombre) => ({
+      nombre,
+      ordenes: porGrupo.get(nombre)!,
+    }));
+  });
+
+  // --- CGBIDA-385: detalle de una OT -----------------------------------------
+
+  /** OT abierta en el sheet de detalle. El sheet se reutiliza, no se reimplementa. */
+  protected readonly otEnDetalle = signal<WorkOrder | null>(null);
+
+  protected abrirDetalleOt(orden: WorkOrder): void {
+    this.otEnDetalle.set(orden);
+  }
+
+  protected cerrarDetalleOt(): void {
+    this.otEnDetalle.set(null);
   }
 
   // --- helpers de presentación ----------------------------------------------

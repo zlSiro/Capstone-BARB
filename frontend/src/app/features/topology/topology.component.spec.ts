@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
-import { Subject, of, throwError } from 'rxjs';
+import { Observable, Subject, of, throwError } from 'rxjs';
 
-import { Topology, TopologyNode } from '../../core/models';
+import { Topology, TopologyNode, TopologyNodoDetalle, WorkOrder } from '../../core/models';
 import { TopologyService } from '../../core/services/topology.service';
 import { TopologyComponent } from './topology.component';
 
@@ -39,12 +39,66 @@ const TOPOLOGIA: Topology = {
   ],
 };
 
+/** OT mínima válida para el panel; el sheet de detalle la recibe entera. */
+function ot(overrides: Partial<WorkOrder> = {}): WorkOrder {
+  return {
+    id: 'OT-1',
+    numero_ot: 'OT-1',
+    ot_id: 1,
+    title: 'Cambio de aceite',
+    machine: 'Compressor A1',
+    machine_name: 'Compressor A1',
+    machine_id: 1,
+    plant: 'Planta Central',
+    plant_name: 'Planta Central',
+    plant_id: 1,
+    discipline: 'Mecánica',
+    discipline_name: 'Mecánica',
+    priority: 'high',
+    status: 'Pendiente',
+    estado: 'pending',
+    age_minutes: 10,
+    created_at: '2026-10-12T10:00:00Z',
+    photo_count: 0,
+    photos: [],
+    tecnico_nombre: 'Técnico',
+    tipo: 'corrective',
+    costo_estimado: 0,
+    costo_real: 0,
+    ...overrides,
+  } as WorkOrder;
+}
+
+/**
+ * `getNodo` falso coherente con la topología: devuelve el nodo pedido tal como lo
+ * emite el mapa, sus órdenes y sus hijos derivados de las aristas.
+ *
+ * `ordenesPorNodo` permite inyectar órdenes distintas por nodo; por defecto, ninguna.
+ */
+function getNodoDe(topo: Topology, ordenesPorNodo: Record<string, WorkOrder[]> = {}) {
+  return vi.fn((nodoId: string): Observable<TopologyNodoDetalle> => {
+    const nodo = topo.nodos.find((n) => n.nodo_id === nodoId)!;
+    // Los hijos se derivan de las aristas, igual que hace el backend (`_hijos_de`).
+    const hijos = nodoId.startsWith('m_')
+      ? []
+      : topo.conexiones
+          .filter((c) => c.origen_nodo_id === nodoId)
+          .map((c) => topo.nodos.find((n) => n.nodo_id === c.destino_nodo_id))
+          .filter((n): n is TopologyNode => Boolean(n));
+    return of<TopologyNodoDetalle>({
+      nodo,
+      ordenes: ordenesPorNodo[nodoId] ?? [],
+      hijos,
+    });
+  });
+}
+
 /** Servicio falso: cada test decide qué responde `get()`. */
 function setup(respuesta: Topology | Error) {
   const get = vi.fn(() => (respuesta instanceof Error ? throwError(() => respuesta) : of(respuesta)));
   TestBed.configureTestingModule({
     imports: [TopologyComponent],
-    providers: [{ provide: TopologyService, useValue: { get } }],
+    providers: [{ provide: TopologyService, useValue: { get, getNodo: getNodoDe(TOPOLOGIA) } }],
   });
   const fixture = TestBed.createComponent(TopologyComponent);
   fixture.detectChanges();
@@ -60,7 +114,7 @@ function setupConFuentePendiente() {
   const fuente = new Subject<Topology>();
   TestBed.configureTestingModule({
     imports: [TopologyComponent],
-    providers: [{ provide: TopologyService, useValue: { get: () => fuente.asObservable() } }],
+    providers: [{ provide: TopologyService, useValue: { get: () => fuente.asObservable(), getNodo: getNodoDe(TOPOLOGIA) } }],
   });
   const fixture = TestBed.createComponent(TopologyComponent);
   fixture.detectChanges();
@@ -81,7 +135,7 @@ function setupEnIdioma(lang: 'es' | 'en', respuesta: Topology | Error = TOPOLOGI
   const get = vi.fn(() => (respuesta instanceof Error ? throwError(() => respuesta) : of(respuesta)));
   TestBed.configureTestingModule({
     imports: [TopologyComponent],
-    providers: [{ provide: TopologyService, useValue: { get } }],
+    providers: [{ provide: TopologyService, useValue: { get, getNodo: getNodoDe(TOPOLOGIA) } }],
   });
   const fixture = TestBed.createComponent(TopologyComponent);
   fixture.detectChanges();
@@ -94,7 +148,7 @@ function setupConFuentePendienteEnIdioma(lang: 'es' | 'en') {
   const fuente = new Subject<Topology>();
   TestBed.configureTestingModule({
     imports: [TopologyComponent],
-    providers: [{ provide: TopologyService, useValue: { get: () => fuente.asObservable() } }],
+    providers: [{ provide: TopologyService, useValue: { get: () => fuente.asObservable(), getNodo: getNodoDe(TOPOLOGIA) } }],
   });
   const fixture = TestBed.createComponent(TopologyComponent);
   fixture.detectChanges();
@@ -379,7 +433,7 @@ describe('TopologyComponent', () => {
       const fuente = new Subject<Topology>();
       TestBed.configureTestingModule({
         imports: [TopologyComponent],
-        providers: [{ provide: TopologyService, useValue: { get: () => fuente.asObservable() } }],
+        providers: [{ provide: TopologyService, useValue: { get: () => fuente.asObservable(), getNodo: getNodoDe(TOPOLOGIA) } }],
       });
       const fixture = TestBed.createComponent(TopologyComponent);
       fixture.detectChanges();
@@ -406,6 +460,414 @@ describe('TopologyComponent', () => {
       nodo.dispatchEvent(new Event('click'));
       fixture.detectChanges();
       expect(el.querySelector('[data-testid="panel-nombre"]')?.textContent).toContain('Compressor A1');
+    });
+  });
+
+  // --- CGBIDA-383: órdenes de trabajo en el panel ------------------------------
+
+  describe('órdenes de trabajo (CGBIDA-383)', () => {
+    /** Monta el componente con órdenes concretas para la máquina `m_1`. */
+    function setupConOrdenes(ordenes: WorkOrder[]) {
+      const get = vi.fn(() => of(TOPOLOGIA));
+      TestBed.configureTestingModule({
+        imports: [TopologyComponent],
+        providers: [
+          {
+            provide: TopologyService,
+            useValue: { get, getNodo: getNodoDe(TOPOLOGIA, { m_1: ordenes }) },
+          },
+        ],
+      });
+      const fixture = TestBed.createComponent(TopologyComponent);
+      fixture.detectChanges();
+      return { fixture, el: fixture.nativeElement as HTMLElement };
+    }
+
+    function abrirMaquina(fixture: ReturnType<typeof TestBed.createComponent>, el: HTMLElement) {
+      (el.querySelector('g[data-nodo-id="m_1"]') as SVGGElement).dispatchEvent(new Event('click'));
+      fixture.detectChanges();
+    }
+
+    it('agrupa los 6 estados en Pendientes, En curso, Cerradas y Canceladas', () => {
+      const { fixture, el } = setupConOrdenes([
+        ot({ numero_ot: 'OT-P', estado: 'pending' }),
+        ot({ numero_ot: 'OT-A', estado: 'assigned' }),
+        ot({ numero_ot: 'OT-V', estado: 'overdue' }),
+        ot({ numero_ot: 'OT-C', estado: 'in_progress' }),
+        ot({ numero_ot: 'OT-F', estado: 'completed' }),
+        ot({ numero_ot: 'OT-X', estado: 'cancelled' }),
+      ]);
+      abrirMaquina(fixture, el);
+
+      // `assigned` y `overdue` caen en Pendientes: lo decide filterGroup(), no el componente.
+      expect(el.querySelector('[data-testid="grupo-groupPendientes"]')?.textContent).toContain('(3)');
+      expect(el.querySelector('[data-testid="grupo-groupEnCurso"]')?.textContent).toContain('(1)');
+      expect(el.querySelector('[data-testid="grupo-groupCerradas"]')?.textContent).toContain('(1)');
+      expect(el.querySelector('[data-testid="grupo-groupCanceladas"]')?.textContent).toContain('(1)');
+    });
+
+    it('cancelled va en su propio grupo y no se mezcla con completed', () => {
+      const { fixture, el } = setupConOrdenes([
+        ot({ numero_ot: 'OT-F', estado: 'completed' }),
+        ot({ numero_ot: 'OT-X', estado: 'cancelled' }),
+      ]);
+      abrirMaquina(fixture, el);
+      expect(el.querySelector('[data-testid="grupo-groupCerradas"]')?.textContent).toContain('(1)');
+      expect(el.querySelector('[data-testid="grupo-groupCanceladas"]')?.textContent).toContain('(1)');
+      // El grupo de cerradas no debe contener la cancelada.
+      expect(el.querySelector('[data-testid="grupo-groupCerradas"]')?.textContent).not.toContain('Cancelada');
+    });
+
+    it('overdue lleva badge rojo dentro del grupo Pendientes (CGBIDA-378)', () => {
+      const { fixture, el } = setupConOrdenes([
+        ot({ numero_ot: 'OT-V', estado: 'overdue' }),
+        ot({ numero_ot: 'OT-P', estado: 'pending' }),
+      ]);
+      abrirMaquina(fixture, el);
+
+      // Sigue en Pendientes...
+      expect(el.querySelector('[data-testid="grupo-groupPendientes"]')?.textContent).toContain('(2)');
+      // ...y además se marca en rojo.
+      const badge = el.querySelector('[data-testid="orden-vencida"]');
+      expect(badge).not.toBeNull();
+      expect(badge?.textContent).toContain('Vencida');
+      expect(badge?.className).toContain('bg-red-600');
+      // Solo la vencida lo lleva.
+      expect(el.querySelectorAll('[data-testid="orden-vencida"]').length).toBe(1);
+    });
+
+    it('una máquina sin órdenes muestra un mensaje explícito, no un panel vacío', () => {
+      const { fixture, el } = setupConOrdenes([]);
+      abrirMaquina(fixture, el);
+
+      const vacio = el.querySelector('[data-testid="ordenes-vacio"]');
+      expect(vacio).not.toBeNull();
+      expect(vacio?.textContent).toContain('no tiene órdenes');
+      expect(el.querySelector('[data-testid="orden-item"]')).toBeNull();
+    });
+
+    it('no muestra la sección de órdenes en una planta', () => {
+      const { fixture, el } = setupConOrdenes([]);
+      (el.querySelector('g[data-nodo-id="p_1"]') as SVGGElement).dispatchEvent(new Event('click'));
+      fixture.detectChanges();
+      // La planta no tiene órdenes propias: esa sección no debe existir.
+      expect(el.querySelector('[data-testid="ordenes-vacio"]')).toBeNull();
+      expect(el.querySelector('[data-testid="ordenes-cargando"]')).toBeNull();
+      // Y sí muestra su contenido (en TOPOLOGIA, la planta 1 tiene la disciplina d_1).
+      expect(el.querySelectorAll('[data-testid="hijo-item"]').length).toBe(1);
+    });
+
+    // --- Volumen: una máquina con muchas OTs -----------------------------------
+    //
+    // El seed solo tiene 1-2 OTs por máquina, así que este caso no se ejerce con
+    // datos reales. Se sintetizan 20 para comprobar que el panel no se rompe.
+
+    /** 20 OTs repartidas en los 4 grupos: 8 pendientes, 5 en curso, 6 cerradas, 1 cancelada. */
+    const ORDENES_VOLUMEN: WorkOrder[] = [
+      ...Array.from({ length: 4 }, (_, i) => ot({ numero_ot: `OT-PEND-${i}`, estado: 'pending' })),
+      ...Array.from({ length: 3 }, (_, i) => ot({ numero_ot: `OT-ASIG-${i}`, estado: 'assigned' })),
+      ot({ numero_ot: 'OT-VENC-0', estado: 'overdue' }),
+      ...Array.from({ length: 5 }, (_, i) => ot({ numero_ot: `OT-CURS-${i}`, estado: 'in_progress' })),
+      ...Array.from({ length: 6 }, (_, i) => ot({ numero_ot: `OT-CERR-${i}`, estado: 'completed' })),
+      ot({ numero_ot: 'OT-CANC-0', estado: 'cancelled' }),
+    ];
+
+    it('renderiza 20 OTs repartidas en los 4 grupos sin perder ninguna', () => {
+      const { fixture, el } = setupConOrdenes(ORDENES_VOLUMEN);
+      abrirMaquina(fixture, el);
+
+      // Los 4 encabezados existen, con su conteo.
+      expect(el.querySelector('[data-testid="grupo-groupPendientes"]')?.textContent).toContain('(8)');
+      expect(el.querySelector('[data-testid="grupo-groupEnCurso"]')?.textContent).toContain('(5)');
+      expect(el.querySelector('[data-testid="grupo-groupCerradas"]')?.textContent).toContain('(6)');
+      expect(el.querySelector('[data-testid="grupo-groupCanceladas"]')?.textContent).toContain('(1)');
+
+      // Hoy no hay límite: se renderizan TODAS.
+      expect(el.querySelectorAll('[data-testid="orden-item"]').length).toBe(20);
+
+      // Cada grupo tiene exactamente sus tarjetas, sin mezclarse.
+      const grupo = (nombre: string) => {
+        const cabecera = el.querySelector(`[data-testid="grupo-${nombre}"]`)!;
+        return cabecera.nextElementSibling?.querySelectorAll('[data-testid="orden-item"]').length ?? 0;
+      };
+      expect(grupo('groupPendientes')).toBe(8);
+      expect(grupo('groupEnCurso')).toBe(5);
+      expect(grupo('groupCerradas')).toBe(6);
+      expect(grupo('groupCanceladas')).toBe(1);
+    });
+
+    it('con volumen, el badge de vencida aparece solo en la OT vencida', () => {
+      const { fixture, el } = setupConOrdenes(ORDENES_VOLUMEN);
+      abrirMaquina(fixture, el);
+
+      expect(el.querySelectorAll('[data-testid="orden-vencida"]').length).toBe(1);
+      // Y esa vencida está dentro del grupo de pendientes, no en otro.
+      const pendientes = el.querySelector('[data-testid="grupo-groupPendientes"]')!.nextElementSibling!;
+      expect(pendientes.querySelectorAll('[data-testid="orden-vencida"]').length).toBe(1);
+    });
+
+    it('con volumen, todas las OTs tienen su enlace de detalle', () => {
+      const { fixture, el } = setupConOrdenes(ORDENES_VOLUMEN);
+      abrirMaquina(fixture, el);
+
+      // Un enlace por tarjeta: si alguno faltara, habría OTs inaccesibles.
+      expect(el.querySelectorAll('[data-testid="orden-ver-detalle"]').length).toBe(20);
+    });
+
+    it('el panel tiene scroll propio y altura acotada, para no desbordar el lienzo', () => {
+      const { fixture, el } = setupConOrdenes(ORDENES_VOLUMEN);
+      abrirMaquina(fixture, el);
+
+      const panel = el.querySelector('[data-testid="panel-detalle"]') as HTMLElement;
+      expect(panel.className).toContain('overflow-y-auto');
+      expect(panel.className).toContain('max-h-');
+    });
+
+    // --- Encabezados de grupo fijos (CGBIDA-386) --------------------------------
+    //
+    // jsdom no tiene layout, así que no puede comprobar que `sticky` funcione de
+    // verdad. Lo que sí detecta este test es que alguien quite las clases por
+    // accidente: `bg-white` es imprescindible, porque sin fondo el contenido que
+    // pasa por debajo se transparenta a través del encabezado.
+
+    it('los encabezados de grupo son sticky y llevan fondo opaco', () => {
+      const { fixture, el } = setupConOrdenes(ORDENES_VOLUMEN);
+      abrirMaquina(fixture, el);
+
+      const cabeceras = Array.from(
+        el.querySelectorAll<HTMLElement>('[data-testid^="grupo-group"]'),
+      );
+      expect(cabeceras.length).toBe(4);
+
+      for (const cabecera of cabeceras) {
+        expect(cabecera.className).toContain('sticky');
+        expect(cabecera.className).toContain('top-0');
+        // Sin `bg-white` el encabezado sería transparente al fijarse.
+        expect(cabecera.className).toContain('bg-white');
+        // Sin `z-10` el contenido posterior podría pintarse encima.
+        expect(cabecera.className).toContain('z-10');
+        // Modo oscuro: `bg-white` solo no basta. El fondo debe seguir al del panel,
+        // que en oscuro es `dark:bg-gray-900` (CGBIDA-386).
+        expect(cabecera.className).toContain('dark:bg-gray-900');
+      }
+    });
+
+    it('el encabezado y el panel comparten fondo en modo oscuro', () => {
+      const { fixture, el } = setupConOrdenes(ORDENES_VOLUMEN);
+      abrirMaquina(fixture, el);
+
+      const panel = el.querySelector('[data-testid="panel-detalle"]') as HTMLElement;
+      const cabecera = el.querySelector<HTMLElement>('[data-testid^="grupo-group"]')!;
+      // Si los fondos oscuros no coinciden, el encabezado se ve como una banda
+      // de otro color al desplazarse.
+      expect(panel.className).toContain('dark:bg-gray-900');
+      expect(cabecera.className).toContain('dark:bg-gray-900');
+    });
+
+    // --- Texto del panel en modo oscuro -----------------------------------------
+    //
+    // El fondo oscuro se arregló en CGBIDA-386, pero el texto interior se quedó con
+    // colores claros sobre un fondo oscuro. Estos tests detectan si se vuelve a
+    // introducir un texto sin variante `dark:`.
+
+    it('cada tarjeta de OT lleva al menos una clase dark:text-*', () => {
+      const { fixture, el } = setupConOrdenes(ORDENES_VOLUMEN);
+      abrirMaquina(fixture, el);
+
+      const tarjetas = Array.from(el.querySelectorAll<HTMLElement>('[data-testid="orden-item"]'));
+      expect(tarjetas.length).toBe(20);
+
+      for (const tarjeta of tarjetas) {
+        // El número de la OT es el texto identificativo de la tarjeta.
+        const numero = tarjeta.querySelector<HTMLElement>('[data-testid="orden-numero"]')!;
+        expect(numero).not.toBeNull();
+        expect(numero.className).toContain('dark:text-');
+        // Y el enlace al detalle también debe leerse en oscuro.
+        const enlace = tarjeta.querySelector<HTMLElement>('[data-testid="orden-ver-detalle"]')!;
+        expect(enlace.className).toContain('dark:text-');
+      }
+    });
+
+    it('la cabecera del panel y sus etiquetas se leen en modo oscuro', () => {
+      const { fixture, el } = setupConOrdenes(ORDENES_VOLUMEN);
+      abrirMaquina(fixture, el);
+
+      for (const sel of ['panel-nombre', 'panel-tipo', 'panel-estado', 'ordenes-cargando']) {
+        const nodo = el.querySelector<HTMLElement>(`[data-testid="${sel}"]`);
+        if (!nodo) continue;
+        const tieneDark = nodo.className.includes('dark:text-')
+          || Boolean(nodo.querySelector('[class*="dark:text-"]'));
+        expect(tieneDark).toBe(true);
+      }
+    });
+
+    it('los mensajes de vacío y error del panel tienen variante oscura', () => {
+      const get = vi.fn(() => of(TOPOLOGIA));
+      const getNodo = vi.fn(() => throwError(() => new Error('500')));
+      TestBed.configureTestingModule({
+        imports: [TopologyComponent],
+        providers: [{ provide: TopologyService, useValue: { get, getNodo } }],
+      });
+      const fixture = TestBed.createComponent(TopologyComponent);
+      fixture.detectChanges();
+      const el = fixture.nativeElement as HTMLElement;
+
+      (el.querySelector('g[data-nodo-id="m_1"]') as SVGGElement).dispatchEvent(new Event('click'));
+      fixture.detectChanges();
+
+      const err = el.querySelector<HTMLElement>('[data-testid="ordenes-error"]')!;
+      expect(err.className).toContain('dark:text-red-300');
+    });
+
+    it('el mensaje de equipo sin órdenes tiene variante oscura', () => {
+      const { fixture, el } = setupConOrdenes([]);
+      abrirMaquina(fixture, el);
+
+      const vacio = el.querySelector<HTMLElement>('[data-testid="ordenes-vacio"]')!;
+      expect(vacio.className).toContain('dark:text-gray-400');
+    });
+
+    it('un nodo sin hijos muestra un mensaje explícito', () => {
+      const get = vi.fn(() => of(TOPOLOGIA));
+      // Planta sin aristas salientes: no contiene nada.
+      const getNodo = vi.fn(
+        (nodoId: string): Observable<TopologyNodoDetalle> =>
+          of<TopologyNodoDetalle>({
+            nodo: TOPOLOGIA.nodos.find((n) => n.nodo_id === nodoId)!,
+            ordenes: [],
+            hijos: [],
+          }),
+      );
+      TestBed.configureTestingModule({
+        imports: [TopologyComponent],
+        providers: [{ provide: TopologyService, useValue: { get, getNodo } }],
+      });
+      const fixture = TestBed.createComponent(TopologyComponent);
+      fixture.detectChanges();
+      const el = fixture.nativeElement as HTMLElement;
+
+      (el.querySelector('g[data-nodo-id="p_1"]') as SVGGElement).dispatchEvent(new Event('click'));
+      fixture.detectChanges();
+
+      const vacio = el.querySelector('[data-testid="hijos-vacio"]');
+      expect(vacio).not.toBeNull();
+      expect(vacio?.textContent).toContain('no contiene equipos');
+      expect(el.querySelector('[data-testid="hijo-item"]')).toBeNull();
+    });
+  });
+
+  // --- CGBIDA-384: hijos por nivel del nodo ------------------------------------
+
+  describe('jerarquía por nodo (CGBIDA-384)', () => {
+    it('una planta lista sus disciplinas', () => {
+      const { fixture, el } = setup(TOPOLOGIA);
+      (el.querySelector('g[data-nodo-id="p_1"]') as SVGGElement).dispatchEvent(new Event('click'));
+      fixture.detectChanges();
+
+      const hijos = Array.from(el.querySelectorAll('[data-testid="hijo-item"]'));
+      expect(hijos.length).toBe(1);
+      expect(hijos[0].textContent).toContain('Mecánica');
+      expect(hijos[0].getAttribute('data-nodo-id')).toBe('d_1');
+    });
+
+    it('una disciplina lista sus máquinas', () => {
+      const { fixture, el } = setup(TOPOLOGIA);
+      (el.querySelector('g[data-nodo-id="d_1"]') as SVGGElement).dispatchEvent(new Event('click'));
+      fixture.detectChanges();
+
+      const hijos = Array.from(el.querySelectorAll('[data-testid="hijo-item"]'));
+      expect(hijos.length).toBe(1);
+      expect(hijos[0].textContent).toContain('Compressor A1');
+    });
+
+    it('un hijo es clickeable y cambia el nodo del panel', () => {
+      const { fixture, el } = setup(TOPOLOGIA);
+      (el.querySelector('g[data-nodo-id="p_1"]') as SVGGElement).dispatchEvent(new Event('click'));
+      fixture.detectChanges();
+      expect(el.querySelector('[data-testid="panel-nombre"]')?.textContent).toContain('Planta Central');
+
+      (el.querySelector('[data-testid="hijo-item"]') as HTMLButtonElement).click();
+      fixture.detectChanges();
+
+      // El panel ahora muestra la disciplina hija.
+      expect(el.querySelector('[data-testid="panel-nombre"]')?.textContent).toContain('Mecánica');
+      expect(el.querySelector('[data-testid="panel-tipo"]')?.textContent).toContain('Disciplina');
+    });
+
+    it('al bajar a un hijo aparece el botón para volver al padre', () => {
+      const { fixture, el } = setup(TOPOLOGIA);
+      (el.querySelector('g[data-nodo-id="p_1"]') as SVGGElement).dispatchEvent(new Event('click'));
+      fixture.detectChanges();
+      expect(el.querySelector('[data-testid="panel-volver"]')).toBeNull();
+
+      (el.querySelector('[data-testid="hijo-item"]') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      expect(el.querySelector('[data-testid="panel-volver"]')).not.toBeNull();
+
+      (el.querySelector('[data-testid="panel-volver"]') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      expect(el.querySelector('[data-testid="panel-nombre"]')?.textContent).toContain('Planta Central');
+    });
+
+    it('una máquina no muestra sección de hijos', () => {
+      const { fixture, el } = setup(TOPOLOGIA);
+      (el.querySelector('g[data-nodo-id="m_1"]') as SVGGElement).dispatchEvent(new Event('click'));
+      fixture.detectChanges();
+      expect(el.querySelector('[data-testid="hijo-item"]')).toBeNull();
+      expect(el.querySelector('[data-testid="hijos-vacio"]')).toBeNull();
+    });
+
+    it('si el detalle falla, lo informa en vez de quedarse cargando', () => {
+      const get = vi.fn(() => of(TOPOLOGIA));
+      const getNodo = vi.fn(() => throwError(() => new Error('500')));
+      TestBed.configureTestingModule({
+        imports: [TopologyComponent],
+        providers: [{ provide: TopologyService, useValue: { get, getNodo } }],
+      });
+      const fixture = TestBed.createComponent(TopologyComponent);
+      fixture.detectChanges();
+      const el = fixture.nativeElement as HTMLElement;
+
+      (el.querySelector('g[data-nodo-id="p_1"]') as SVGGElement).dispatchEvent(new Event('click'));
+      fixture.detectChanges();
+
+      expect(el.querySelector('[data-testid="hijos-error"]')).not.toBeNull();
+      expect(el.querySelector('[data-testid="hijos-cargando"]')).toBeNull();
+    });
+  });
+
+  // --- CGBIDA-385: enlace al detalle de la OT ----------------------------------
+
+  describe('detalle de una OT (CGBIDA-385)', () => {
+    it('abre el sheet de detalle al pulsar "Ver detalle"', () => {
+      const orden = ot({ numero_ot: 'OT-2026-999', estado: 'in_progress' });
+      const get = vi.fn(() => of(TOPOLOGIA));
+      TestBed.configureTestingModule({
+        imports: [TopologyComponent],
+        providers: [
+          {
+            provide: TopologyService,
+            useValue: { get, getNodo: getNodoDe(TOPOLOGIA, { m_1: [orden] }) },
+          },
+        ],
+      });
+      const fixture = TestBed.createComponent(TopologyComponent);
+      fixture.detectChanges();
+      const el = fixture.nativeElement as HTMLElement;
+
+      (el.querySelector('g[data-nodo-id="m_1"]') as SVGGElement).dispatchEvent(new Event('click'));
+      fixture.detectChanges();
+
+      expect(el.querySelector('[data-testid="sheet-detalle-ot"]')).toBeNull();
+      (el.querySelector('[data-testid="orden-ver-detalle"]') as HTMLButtonElement).click();
+      fixture.detectChanges();
+
+      // El sheet reutilizado del listado de OTs recibe la OT seleccionada: el
+      // `numero_ot` viaja como título del modal que el sheet envuelve.
+      expect(el.querySelector('[data-testid="sheet-detalle-ot"]')).not.toBeNull();
+      const dialogo = el.querySelector('[role="dialog"]');
+      expect(dialogo).not.toBeNull();
+      expect(dialogo?.textContent).toContain('OT-2026-999');
     });
   });
 });

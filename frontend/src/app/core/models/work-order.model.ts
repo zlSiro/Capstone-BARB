@@ -78,6 +78,8 @@ export interface WorkOrder {
   machine: string;
   machine_name: string;
   machine_id: number;
+  /** Alias en snake_case del mismo id. El backend lo emite; útil al cruzar con la topología. */
+  maquina_id?: number;
 
   // Planta
   plant: string;
