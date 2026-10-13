@@ -13,7 +13,7 @@ import { OtStatusSelectComponent, StatusChangeRequest } from '../ot-status-selec
   imports: [DatePipe, ModalComponent, OtStatusBadgeComponent, OtStatusSelectComponent],
   template: `
     <app-modal size="lg" [title]="order().numero_ot" [subtitle]="order().title" (closed)="closed.emit()">
-      <div class="flex flex-col gap-6 text-slate-200">
+      <div class="flex flex-col gap-6 text-slate-200" data-testid="sheet-detalle-ot">
         <dl class="grid grid-cols-1 gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
           <div>
             <dt class="text-xs uppercase tracking-wide text-slate-400">Estado</dt>
