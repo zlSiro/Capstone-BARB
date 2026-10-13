@@ -18,7 +18,6 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
 
-from barb.core.config import settings
 from barb.core.db import fetch_all, fetch_one, transaction
 from barb.core.permissions import (
     ROL_SUPER,
@@ -29,6 +28,7 @@ from barb.core.permissions import (
     resolver_empresa,
 )
 from barb.services import document_service as docs
+from barb.services.document_storage import StorageError, delete_document_file, save_document_file
 
 logger = logging.getLogger("barb.documents_router")
 
@@ -116,12 +116,9 @@ async def upload_document(
 
     file_id = uuid.uuid4().hex
     stored_name = f"{file_id}{Path(original_name).suffix.lower()}"
-    target_dir = settings.upload_dir / "documentos" / str(empresa)
-    target_dir.mkdir(parents=True, exist_ok=True)
-    target = target_dir / stored_name
 
     try:
-        await asyncio.to_thread(target.write_bytes, data)
+        await save_document_file(empresa, stored_name, data, content_type=file.content_type)
         async with transaction() as cur:
             await cur.execute(
                 """
@@ -146,8 +143,18 @@ async def upload_document(
             )
             documento_id = int((await cur.fetchone())["documento_id"])
             await docs.index_chunks(cur, documento_id, empresa, chunks)
+    except StorageError as e:
+        logger.error("Almacenamiento externo no disponible: %s", e)
+        raise HTTPException(
+            status_code=503,
+            detail="El almacenamiento de documentos no está disponible. Intenta más tarde.",
+        ) from e
     except Exception as e:
-        target.unlink(missing_ok=True)  # no dejar archivos huérfanos si falla la BD
+        # No dejar archivos huérfanos si falló la BD tras subir el archivo.
+        try:
+            await delete_document_file(empresa, stored_name)
+        except Exception:
+            logger.exception("No se pudo revertir el archivo subido: %s", stored_name)
         logger.exception("Error al guardar documento")
         raise HTTPException(status_code=500, detail="Error interno al guardar el documento.") from e
 
@@ -175,6 +182,10 @@ async def delete_document(documento_id: int, sesion: dict = Depends(get_sesion_a
         # documento_chunk se elimina en cascada.
         await cur.execute("DELETE FROM documento WHERE documento_id = %(id)s", {"id": documento_id})
     if stored:
-        path = settings.upload_dir / "documentos" / str(row["empresa_id"]) / stored["stored_name"]
-        await asyncio.to_thread(path.unlink, True)
+        try:
+            await delete_document_file(int(row["empresa_id"]), stored["stored_name"])
+        except StorageError:
+            # El documento ya se eliminó de la BD; el archivo huérfano se limpia
+            # manualmente o con el ciclo de vida del storage. No debe bloquear el 204.
+            logger.exception("Archivo físico no se pudo eliminar: %s", stored["stored_name"])
     return None
