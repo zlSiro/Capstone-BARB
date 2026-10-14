@@ -146,6 +146,13 @@ Otros proveedores LLM: ver `backend/.env.example`.
 
 UptimeRobot o cron-job.org: GET a `/health` cada 10-14 min. Útil el día de la presentación.
 
+### Canal SSE de OTs en tiempo real (HU-10)
+
+- `GET /api/work-orders/stream` es una conexión HTTP larga. El servicio responde con `X-Accel-Buffering: no` y un `: ping` cada 15 s para que el proxy de Render no la corte por inactividad ni la bufferice.
+- **Sin sticky sessions**: el plan gratis corre 1 sola instancia y el broker de eventos vive en memoria. Cloudflare Pages solo sirve el front; el navegador abre el stream directo contra Render (CORS ya cubierto).
+- Si el servicio duerme o se reinicia, los clientes reconectan solos y reciben `resync` (recargar listado).
+- Con más de una instancia el fan-out en memoria deja de ser válido (el evento solo llegaría a los clientes de la instancia que lo originó). Sticky sessions no lo arreglan: habría que mover el broker a Redis pub/sub. Detalle en `docs/REALTIME_OT.md`.
+
 ## 4. Cloudflare Pages (frontend)
 
 Cuenta en <https://dash.cloudflare.com>.
