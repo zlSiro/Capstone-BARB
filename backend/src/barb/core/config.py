@@ -87,6 +87,12 @@ class Settings(BaseSettings):
     # --- Constantes de negocio ---
     sla_target_minutes: int = 24 * 60
     downtime_cost_per_minute: int = 2000
+    # Tiempo medio de resolución SIN BARB, en minutos. Origen:
+    # `Barb_Documento_de_Negocio.docx` §8.2 "Proyección de ahorro económico", que
+    # proyecta 180 min sin el sistema y 45 con él.
+    # Es un SUPUESTO DE NEGOCIO, no un dato medido: por eso vive aquí y no
+    # hardcodeado en el router. El escenario "sin BARB" del impacto anual lo usa.
+    impact_without_barb_minutes: int = 180
     debug_history_limit: int = 5
 
     # --- Prompt del sistema ---
