@@ -18,6 +18,7 @@ from barb.routers import (
     health,
     notifications,
     preferences,
+    realtime,
     stats,
     topology,
     users,
@@ -82,6 +83,8 @@ app.include_router(documents.router)
 app.include_router(catalog.router)
 app.include_router(topology.router)
 app.include_router(stats.router)
+# Antes que work_orders: `/api/work-orders/stream` no debe caer en `/{numero_ot}`.
+app.include_router(realtime.router)
 app.include_router(work_orders.router)
 app.include_router(preferences.router)
 app.include_router(chat.router)

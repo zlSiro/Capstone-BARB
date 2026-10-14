@@ -14,6 +14,7 @@ from barb.core.permissions import get_sesion_actual, require_action, require_aut
 from barb.core.work_order_states import ETIQUETA_ES, rol_puede_ir_a, transiciones_permitidas, transiciones_posibles
 from barb.schemas.work_orders import WorkOrderStatusRequest
 from barb.services.files import delete_ot_files, save_ot_photos
+from barb.services.realtime import EVENT_OT_CREATED, EVENT_OT_DELETED, EVENT_OT_STATUS_CHANGED, publish_safe
 from barb.utils import (
     humanize_status,
     iso_z,
@@ -202,7 +203,7 @@ async def update_work_order_status(numero_ot: str, payload: WorkOrderStatusReque
             # FOR UPDATE: serializa cambios simultáneos sobre la misma OT (la transición se valida contra el estado vigente).
             await cur.execute(
                 f"""
-                SELECT ot.ot_id, ot.estado::text AS estado, ot.fecha_inicio, ot.fecha_cierre
+                SELECT ot.ot_id, ot.estado::text AS estado, ot.fecha_inicio, ot.fecha_cierre, p.empresa_id
                 FROM orden_trabajo ot
                 JOIN maquina m ON m.maquina_id = ot.maquina_id
                 LEFT JOIN planta p ON p.planta_id = m.planta_id
@@ -268,6 +269,18 @@ async def update_work_order_status(numero_ot: str, payload: WorkOrderStatusReque
                 },
             )
 
+        publish_safe(
+            EVENT_OT_STATUS_CHANGED,
+            {
+                "numero_ot": numero_ot,
+                "ot_id": int(current["ot_id"]),
+                "estado_anterior": previous_status,
+                "estado_nuevo": desired_status,
+                "usuario_id": sesion["usuario_id"],
+            },
+            current["empresa_id"],
+        )
+
         updated = await fetch_work_order_row(numero_ot)
         if not updated:
             return {"status": "ok"}
@@ -300,6 +313,11 @@ async def delete_work_order(numero_ot: str, sesion: dict = Depends(get_sesion_ac
             deleted = cur.rowcount
         if deleted == 0:
             raise HTTPException(status_code=404, detail="OT no encontrada para eliminar.")
+        publish_safe(
+            EVENT_OT_DELETED,
+            {"numero_ot": numero_ot, "ot_id": ot_id, "usuario_id": sesion["usuario_id"]},
+            current.get("empresa_id"),
+        )
         return None
     except HTTPException:
         raise
@@ -470,6 +488,12 @@ async def create_work_order(request: Request, sesion: dict = Depends(get_sesion_
         if isinstance(e, HTTPException):
             raise
         raise HTTPException(status_code=500, detail="Error al guardar las fotos de la OT.") from e
+
+    publish_safe(
+        EVENT_OT_CREATED,
+        {"numero_ot": clean_numero_ot, "ot_id": ot_id, "estado": estado, "usuario_id": sesion["usuario_id"]},
+        empresa_maquina,
+    )
 
     created = await fetch_work_order_row(clean_numero_ot, empresa_maquina)
     photos = await fetch_work_order_photos(ot_id)
