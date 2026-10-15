@@ -1,11 +1,12 @@
 import { Component, inject, input, linkedSignal, output, signal } from '@angular/core';
 import { FormField, email, form, min, required, validate } from '@angular/forms/signals';
 
-import { Empresa, EmpresaPayload, EstadoEmpresa, PlanEmpresa } from '../../core/models';
+import { Empresa, EmpresaCreada, EmpresaPayload, EstadoEmpresa, PlanEmpresa } from '../../core/models';
 import { EmpresasService } from '../../core/services/empresas.service';
 import { ToastService } from '../../core/services/toast.service';
 import { apiErrorMessage } from '../../core/utils/http-error';
 import { ModalComponent } from '../../shared/components/ui/modal/modal.component';
+import { BienvenidaUsuario, UsuarioBienvenidaModalComponent } from '../usuarios/usuario-bienvenida-modal.component';
 
 interface EmpresaFormModel {
   nombre: string;
@@ -69,8 +70,11 @@ function toModel(e: Empresa | null): EmpresaFormModel {
 /** Alta y edición de una empresa (con administrador inicial opcional al crear). */
 @Component({
   selector: 'app-empresa-form-modal',
-  imports: [FormField, ModalComponent],
+  imports: [FormField, ModalComponent, UsuarioBienvenidaModalComponent],
   template: `
+    @if (bienvenida(); as b) {
+      <app-usuario-bienvenida-modal [datos]="b" (closed)="finalizar()" />
+    } @else {
     <app-modal
       [title]="isEdit() ? 'Editar empresa' : 'Nueva empresa'"
       [subtitle]="isEdit() ? 'Actualiza los datos y la licencia de la empresa.' : 'Registra una empresa cliente en la solución.'"
@@ -214,6 +218,7 @@ function toModel(e: Empresa | null): EmpresaFormModel {
         </div>
       </form>
     </app-modal>
+    }
   `,
 })
 export class EmpresaFormModalComponent {
@@ -228,6 +233,14 @@ export class EmpresaFormModalComponent {
   protected readonly planes = PLANES;
   protected readonly estados = ESTADOS;
   protected readonly submitting = signal(false);
+  /** Aviso de bienvenida del gerente creado junto con la empresa (incluye su contraseña). */
+  protected readonly bienvenida = signal<BienvenidaUsuario | null>(null);
+  private creada: Empresa | null = null;
+
+  /** Cierra el aviso de bienvenida y devuelve el control al listado. */
+  protected finalizar(): void {
+    if (this.creada) this.saved.emit(this.creada);
+  }
   protected readonly isEdit = () => this.empresa() !== null;
 
   protected readonly model = linkedSignal(() => toModel(this.empresa()));
@@ -290,8 +303,21 @@ export class EmpresaFormModalComponent {
 
     this.submitting.set(true);
     request$.subscribe({
-      next: (saved) => {
+      next: (saved: EmpresaCreada) => {
         this.toast.success(current ? 'Empresa actualizada.' : 'Empresa creada.');
+        // Si se creó un gerente junto con la empresa, se muestra su aviso de bienvenida antes de cerrar.
+        if (!current && saved.gerente && saved.creado_por) {
+          this.creada = saved;
+          this.bienvenida.set({
+            nombre: saved.gerente.nombre,
+            rol: 'Gerente',
+            fecha: saved.gerente.created_at,
+            password: m.adminPassword,
+            creadorNombre: saved.creado_por.nombre,
+            creadorEmail: saved.creado_por.email,
+          });
+          return;
+        }
         this.saved.emit(saved);
       },
       error: (err) => {

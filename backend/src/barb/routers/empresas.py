@@ -13,9 +13,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from psycopg import errors as pg_errors
 
 from barb.core.db import fetch_all, fetch_one, transaction
-from barb.core.permissions import require_action
+from barb.core.permissions import get_sesion_actual, require_action
 from barb.core.security import hash_password
 from barb.schemas.empresas import EmpresaCreateRequest, EmpresaUpdateRequest
+from barb.utils import fetch_creador
 
 logger = logging.getLogger("barb.empresas")
 
@@ -84,9 +85,10 @@ async def get_empresa(empresa_id: int):
 
 
 @router.post("/api/empresas", status_code=201)
-async def create_empresa(payload: EmpresaCreateRequest):
+async def create_empresa(payload: EmpresaCreateRequest, sesion: dict = Depends(get_sesion_actual)):
     data = payload.model_dump(exclude={"gerente"})
     data["rut"] = (data["rut"] or "").strip() or None  # '' -> NULL para no chocar con UNIQUE(rut)
+    gerente = None
     try:
         async with transaction() as cur:
             await cur.execute(
@@ -109,6 +111,7 @@ async def create_empresa(payload: EmpresaCreateRequest):
                     """
                     INSERT INTO usuario (empresa_id, nombre, email, password_hash, rol)
                     VALUES (%(empresa_id)s, %(nombre)s, %(email)s, %(password_hash)s, 'gerente')
+                    RETURNING nombre, rol, created_at
                     """,
                     {
                         "empresa_id": empresa_id,
@@ -117,13 +120,23 @@ async def create_empresa(payload: EmpresaCreateRequest):
                         "password_hash": hash_password(payload.gerente.password),
                     },
                 )
+                gerente = await cur.fetchone()
     except pg_errors.UniqueViolation as e:
         campo = "email del gerente" if "usuario" in str(e) else "RUT"
         raise HTTPException(status_code=409, detail=f"Ya existe un registro con ese {campo}.") from e
     except Exception as e:
         logger.exception("Error al crear empresa")
         raise HTTPException(status_code=500, detail="Error interno al crear la empresa.") from e
-    return await _get_empresa(empresa_id)
+    empresa = await _get_empresa(empresa_id)
+    if gerente:
+        # Datos para el aviso de bienvenida del gerente que se creó junto con la empresa.
+        empresa["gerente"] = {
+            "nombre": str(gerente["nombre"]),
+            "rol": str(gerente["rol"]),
+            "created_at": gerente["created_at"].isoformat() if gerente["created_at"] else None,
+        }
+        empresa["creado_por"] = await fetch_creador(sesion["usuario_id"])
+    return empresa
 
 
 @router.put("/api/empresas/{empresa_id}")

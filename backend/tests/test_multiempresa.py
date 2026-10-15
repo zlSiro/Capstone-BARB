@@ -319,6 +319,9 @@ async def test_super_solo_crea_y_gestiona_gerentes(client):
     nuevo = r.json()
     try:
         assert nuevo["rol"] == "gerente" and nuevo["empresa_id"] == e2
+        # El aviso de bienvenida necesita quién creó el usuario y cuándo
+        assert nuevo["creado_por"]["email"] == SUPER[0] and nuevo["creado_por"]["nombre"]
+        assert nuevo["created_at"]
         # Solo ve gerentes; no puede editar a un técnico de la empresa
         assert {u["rol"] for u in (await client.get("/api/usuarios", headers=hs)).json()} == {"gerente"}
         h2 = await _login(client, ADMIN_E2)

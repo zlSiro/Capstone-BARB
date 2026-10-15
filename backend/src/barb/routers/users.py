@@ -27,7 +27,7 @@ from barb.core.permissions import (
 )
 from barb.core.security import hash_password
 from barb.schemas.users import UserCreateRequest, UserUpdateRequest
-from barb.utils import serialize_user
+from barb.utils import fetch_creador, serialize_user
 
 logger = logging.getLogger("barb.users")
 
@@ -146,7 +146,8 @@ async def create_user(payload: UserCreateRequest, sesion: dict = Depends(get_ses
         raise HTTPException(status_code=500, detail="Error interno al crear el usuario.") from e
 
     row = await fetch_one(f"{_USER_SELECT} WHERE u.usuario_id = %(id)s", {"id": nuevo_id})
-    return serialize_user(row)
+    # `creado_por` alimenta el aviso de bienvenida que el frontend muestra tras crear el usuario.
+    return {**serialize_user(row), "creado_por": await fetch_creador(sesion["usuario_id"])}
 
 
 @router.put("/api/usuarios/{usuario_id}", dependencies=[Depends(require_action("gestionar_usuarios"))])

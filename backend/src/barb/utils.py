@@ -5,6 +5,7 @@ from typing import Any
 
 from fastapi import HTTPException
 
+from barb.core.db import fetch_one
 from barb.core.security import hash_password
 
 
@@ -39,6 +40,12 @@ def serialize_user(user: dict) -> dict:
         "empresa_nombre": user.get("empresa_nombre"),
         "ultimo_login": user["ultimo_login"].isoformat() if user.get("ultimo_login") else None,
     }
+
+
+async def fetch_creador(usuario_id: int) -> dict:
+    """Nombre y correo de quien crea un usuario: el aviso de bienvenida los indica como contacto."""
+    row = await fetch_one("SELECT nombre, email FROM usuario WHERE usuario_id = %(id)s", {"id": usuario_id})
+    return {"nombre": str(row["nombre"]), "email": str(row["email"])} if row else {"nombre": "", "email": ""}
 
 
 def normalize_priority(value: str | None) -> str:

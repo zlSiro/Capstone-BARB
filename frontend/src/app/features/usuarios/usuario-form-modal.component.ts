@@ -1,11 +1,12 @@
 import { Component, computed, inject, input, linkedSignal, output, signal } from '@angular/core';
 import { FormField, email, form, required, validate } from '@angular/forms/signals';
 
-import { Empresa, Role, UserCreateRequest, UserUpdateRequest, UsuarioPerfil } from '../../core/models';
+import { Empresa, Role, UserCreateRequest, UserUpdateRequest, UsuarioCreado, UsuarioPerfil } from '../../core/models';
 import { ToastService } from '../../core/services/toast.service';
 import { UsersAdminService } from '../../core/services/users-admin.service';
 import { apiErrorMessage } from '../../core/utils/http-error';
 import { ModalComponent } from '../../shared/components/ui/modal/modal.component';
+import { BienvenidaUsuario, UsuarioBienvenidaModalComponent } from './usuario-bienvenida-modal.component';
 
 export const ROLE_OPTIONS: { value: Role; label: string }[] = [
   { value: 'admin', label: 'Administrador de empresa' },
@@ -33,8 +34,11 @@ interface UsuarioFormModel {
 /** Alta y edición del perfil de un usuario. */
 @Component({
   selector: 'app-usuario-form-modal',
-  imports: [FormField, ModalComponent],
+  imports: [FormField, ModalComponent, UsuarioBienvenidaModalComponent],
   template: `
+    @if (bienvenida(); as b) {
+      <app-usuario-bienvenida-modal [datos]="b" (closed)="finalizar()" />
+    } @else {
     <app-modal
       [title]="isEdit() ? 'Editar usuario' : 'Nuevo usuario'"
       [subtitle]="isEdit() ? 'Modifica el perfil, el rol o la contraseña.' : isSuper() ? 'Crea el usuario gerente de la empresa.' : 'Crea el perfil de un miembro de la empresa.'"
@@ -106,6 +110,7 @@ interface UsuarioFormModel {
         </div>
       </form>
     </app-modal>
+    }
   `,
 })
 export class UsuarioFormModalComponent {
@@ -124,6 +129,9 @@ export class UsuarioFormModalComponent {
   readonly saved = output<UsuarioPerfil>();
 
   protected readonly submitting = signal(false);
+  /** Aviso de bienvenida (con la contraseña) que se muestra tras crear un usuario. */
+  protected readonly bienvenida = signal<BienvenidaUsuario | null>(null);
+  private creado: UsuarioPerfil | null = null;
   protected readonly isEdit = computed(() => this.usuario() !== null);
   // El super_usuario solo asigna gerente; el resto de la empresa nunca puede asignar super_usuario
   // (el backend también lo rechaza).
@@ -168,20 +176,42 @@ export class UsuarioFormModalComponent {
     const current = this.usuario();
     this.submitting.set(true);
 
-    const request$ = current
-      ? this.users.update(current.usuario_id, this.buildUpdate(m, current))
-      : this.users.create(this.buildCreate(m));
+    if (current) {
+      this.users.update(current.usuario_id, this.buildUpdate(m, current)).subscribe({
+        next: (saved) => {
+          this.toast.success('Usuario actualizado.');
+          this.saved.emit(saved);
+        },
+        error: (err) => this.onError(err),
+      });
+      return;
+    }
 
-    request$.subscribe({
-      next: (saved) => {
-        this.toast.success(current ? 'Usuario actualizado.' : 'Usuario creado.');
-        this.saved.emit(saved);
+    this.users.create(this.buildCreate(m)).subscribe({
+      next: (creado: UsuarioCreado) => {
+        this.toast.success('Usuario creado.');
+        this.creado = creado;
+        this.bienvenida.set({
+          nombre: creado.nombre,
+          rol: ROLE_OPTIONS.find(r => r.value === creado.rol)?.label ?? creado.rol,
+          fecha: creado.created_at,
+          password: m.password,
+          creadorNombre: creado.creado_por.nombre,
+          creadorEmail: creado.creado_por.email,
+        });
       },
-      error: (err) => {
-        this.submitting.set(false);
-        this.toast.error(apiErrorMessage(err, 'No se pudo guardar el usuario.'));
-      },
+      error: (err) => this.onError(err),
     });
+  }
+
+  /** Cierra el aviso de bienvenida y devuelve el control al listado. */
+  protected finalizar(): void {
+    if (this.creado) this.saved.emit(this.creado);
+  }
+
+  private onError(err: unknown): void {
+    this.submitting.set(false);
+    this.toast.error(apiErrorMessage(err, 'No se pudo guardar el usuario.'));
   }
 
   private buildCreate(m: UsuarioFormModel): UserCreateRequest {

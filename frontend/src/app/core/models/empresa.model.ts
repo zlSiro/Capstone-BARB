@@ -37,6 +37,12 @@ export interface GerenteInicial {
   password: string;
 }
 
+/** Respuesta de POST /api/empresas; con gerente inicial incluye los datos de su aviso de bienvenida. */
+export interface EmpresaCreada extends Empresa {
+  gerente?: { nombre: string; rol: string; created_at: string | null };
+  creado_por?: { nombre: string; email: string };
+}
+
 export interface EmpresaPayload {
   nombre: string;
   rut: string | null;
