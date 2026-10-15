@@ -49,7 +49,7 @@ export const translations = {
       machineDebug: 'Diagnóstico de máquina', plantTopology: 'Topología de planta',
       machineMemory: 'Memoria de máquina', debugReport: 'Reporte de sesión',
       mainMenu: 'Menú principal', maintenance: 'Mantenimiento de planta',
-      logout: 'Salir', settings: 'Configuración', helpGuide: 'Guía de esta pantalla'
+      logout: 'Salir', logoutConfirm: '¿Seguro que quieres salir del sistema?', settings: 'Configuración', helpGuide: 'Guía de esta pantalla'
     },
     menu: {
       title: 'Menú principal',
@@ -216,7 +216,7 @@ export const translations = {
       machineDebug: 'Machine Debug', plantTopology: 'Plant Topology',
       machineMemory: 'Machine Memory', debugReport: 'Session Report',
       mainMenu: 'Main Menu', maintenance: 'Plant Maintenance',
-      logout: 'Log out', settings: 'Settings', helpGuide: 'Guide for this screen'
+      logout: 'Log out', logoutConfirm: 'Are you sure you want to log out?', settings: 'Settings', helpGuide: 'Guide for this screen'
     },
     menu: {
       title: 'Main Menu',
