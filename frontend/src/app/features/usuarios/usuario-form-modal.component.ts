@@ -18,6 +18,9 @@ export const ROLE_OPTIONS: { value: Role; label: string }[] = [
   { value: 'super_usuario', label: 'Super usuario (plataforma BARB)' },
 ];
 
+/** El super_usuario (contraparte comercial de BARB) solo crea usuarios con perfil gerente. */
+const SUPER_ROLE_OPTIONS = ROLE_OPTIONS.filter(r => r.value === 'gerente');
+
 interface UsuarioFormModel {
   nombre: string;
   email: string;
@@ -34,10 +37,10 @@ interface UsuarioFormModel {
   template: `
     <app-modal
       [title]="isEdit() ? 'Editar usuario' : 'Nuevo usuario'"
-      [subtitle]="isEdit() ? 'Modifica el perfil, el rol o la contraseña.' : 'Crea el perfil de un miembro de la empresa.'"
+      [subtitle]="isEdit() ? 'Modifica el perfil, el rol o la contraseña.' : isSuper() ? 'Crea el usuario gerente de la empresa.' : 'Crea el perfil de un miembro de la empresa.'"
       (closed)="closed.emit()">
       <form class="grid gap-4" (submit)="$event.preventDefault(); submit()" novalidate>
-        @if (isSuper() && !isEdit() && !esSuperRol()) {
+        @if (isSuper() && !isEdit()) {
           <div>
             <label for="usr-empresa" class="fld-label">Empresa *</label>
             <select id="usr-empresa" class="fld-input" [formField]="f.empresa_id">
@@ -122,9 +125,10 @@ export class UsuarioFormModalComponent {
 
   protected readonly submitting = signal(false);
   protected readonly isEdit = computed(() => this.usuario() !== null);
-  // Un admin de empresa no puede asignar el rol super_usuario (el backend también lo rechaza).
+  // El super_usuario solo asigna gerente; el resto de la empresa nunca puede asignar super_usuario
+  // (el backend también lo rechaza).
   protected readonly roles = computed(() =>
-    this.isSuper() ? ROLE_OPTIONS : ROLE_OPTIONS.filter(r => r.value !== 'super_usuario'));
+    this.isSuper() ? SUPER_ROLE_OPTIONS : ROLE_OPTIONS.filter(r => r.value !== 'super_usuario'));
 
   protected readonly model = linkedSignal<UsuarioFormModel>(() => {
     const u = this.usuario();
@@ -132,12 +136,11 @@ export class UsuarioFormModalComponent {
       nombre: u?.nombre ?? '',
       email: u?.email ?? '',
       password: '',
-      rol: u?.rol ?? 'tecnico',
+      rol: u?.rol ?? (this.isSuper() ? 'gerente' : 'tecnico'),
       activo: u?.activo ?? true,
       empresa_id: this.defaultEmpresaId() ? String(this.defaultEmpresaId()) : '',
     };
   });
-  protected readonly esSuperRol = computed(() => this.model().rol === 'super_usuario');
 
   protected readonly f = form(this.model, (p) => {
     required(p.nombre, { message: 'Ingresa el nombre.' });
@@ -150,8 +153,8 @@ export class UsuarioFormModalComponent {
       if (!this.isEdit() && !pass) return { kind: 'required', message: 'Ingresa una contraseña.' };
       return pass && pass.length < 6 ? { kind: 'minlength', message: 'Mínimo 6 caracteres.' } : undefined;
     });
-    validate(p.empresa_id, ({ value, valueOf }) =>
-      this.isSuper() && !this.isEdit() && valueOf(p.rol) !== 'super_usuario' && !value()
+    validate(p.empresa_id, ({ value }) =>
+      this.isSuper() && !this.isEdit() && !value()
         ? { kind: 'required', message: 'Selecciona una empresa.' }
         : undefined);
   });
@@ -189,8 +192,8 @@ export class UsuarioFormModalComponent {
       rol: m.rol,
       activo: m.activo,
     };
-    // Solo el super_usuario elige empresa; para el admin el backend usa la suya.
-    if (this.isSuper() && m.rol !== 'super_usuario') payload.empresa_id = Number(m.empresa_id);
+    // Solo el super_usuario elige empresa; para el resto el backend usa la suya.
+    if (this.isSuper()) payload.empresa_id = Number(m.empresa_id);
     return payload;
   }
 

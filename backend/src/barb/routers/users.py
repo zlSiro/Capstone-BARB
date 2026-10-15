@@ -2,9 +2,10 @@
 Mantenedor de usuarios (perfiles de los miembros de cada empresa).
 
 Reglas multi-empresa (migración 0004):
-- El admin de una empresa solo ve y administra usuarios de SU empresa.
-- El super_usuario ve todas las empresas (o filtra con ?empresa_id=) y es el
-  único que puede crear/editar otros super_usuario o asignar la empresa.
+- El gerente/admin de una empresa solo ve y administra usuarios de SU empresa.
+- El super_usuario es la contraparte comercial de BARB: solo crea, ve, edita y elimina
+  usuarios con perfil GERENTE (el contacto de la empresa contratante), y es el único que
+  elige la empresa. No puede crear otros super_usuario ni perfiles operativos.
 - Se respeta el límite de licencia `empresa.max_usuarios`.
 """
 
@@ -40,13 +41,20 @@ _USER_SELECT = """
 """
 
 
+ROL_GERENTE = "gerente"
+
+
 def _validar_rol(rol: str, sesion: dict) -> str:
     rol = (rol or "").strip().lower()
     if rol not in ROLES:
         raise HTTPException(status_code=422, detail=f"Rol inválido '{rol}'. Permitidos: {', '.join(ROLES)}.")
-    # Escalamiento de privilegios: solo un super_usuario puede crear otro super_usuario.
-    if rol == ROL_SUPER and sesion["rol"] != ROL_SUPER:
-        raise HTTPException(status_code=403, detail="Solo un super_usuario puede asignar el rol super_usuario.")
+    # El super_usuario solo puede asignar el perfil gerente.
+    if sesion["rol"] == ROL_SUPER:
+        if rol != ROL_GERENTE:
+            raise HTTPException(status_code=403, detail="El super_usuario solo puede crear usuarios con perfil gerente.")
+    # Escalamiento de privilegios: un usuario de empresa nunca puede asignar super_usuario.
+    elif rol == ROL_SUPER:
+        raise HTTPException(status_code=403, detail="No puedes asignar el rol super_usuario.")
     return rol
 
 
@@ -59,9 +67,12 @@ async def _usuario_visible(usuario_id: int, sesion: dict) -> dict:
     # 404 (y no 403) para no revelar la existencia de usuarios de otras empresas.
     if not row:
         raise HTTPException(status_code=404, detail="Usuario no encontrado.")
-    if sesion["rol"] != ROL_SUPER:
-        if row["empresa_id"] != sesion["empresa_id"] or str(row["rol"]).lower() == ROL_SUPER:
+    if sesion["rol"] == ROL_SUPER:
+        # El super_usuario solo administra gerentes.
+        if str(row["rol"]).lower() != ROL_GERENTE:
             raise HTTPException(status_code=404, detail="Usuario no encontrado.")
+    elif row["empresa_id"] != sesion["empresa_id"] or str(row["rol"]).lower() == ROL_SUPER:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado.")
     return row
 
 
@@ -72,7 +83,7 @@ async def list_users(empresa_id: int | None = Query(default=None), sesion: dict 
         f"""
         {_USER_SELECT}
         WHERE (%(empresa_id)s::int IS NULL OR u.empresa_id = %(empresa_id)s)
-          AND (%(es_super)s OR u.rol <> 'super_usuario')
+          AND (CASE WHEN %(es_super)s THEN u.rol = 'gerente' ELSE u.rol <> 'super_usuario' END)
         ORDER BY e.nombre NULLS FIRST, u.usuario_id
         """,
         {"empresa_id": scope, "es_super": sesion["rol"] == ROL_SUPER},
@@ -85,33 +96,30 @@ async def create_user(payload: UserCreateRequest, sesion: dict = Depends(get_ses
     rol = _validar_rol(payload.rol, sesion)
     email = payload.email.strip().lower()
 
-    # El super_usuario no pertenece a ninguna empresa; el resto, siempre a una.
-    if rol == ROL_SUPER:
-        empresa_id = None
-    else:
-        empresa_id = empresa_obligatoria(sesion, payload.empresa_id)
+    # Nunca se crean super_usuario por API; todo usuario pertenece a una empresa
+    # (el super_usuario debe indicarla, el resto usa la suya).
+    empresa_id = empresa_obligatoria(sesion, payload.empresa_id)
 
     try:
         async with transaction() as cur:
-            if empresa_id is not None:
-                # Límite de licencia (empresa.max_usuarios) sobre usuarios activos.
-                # FOR UPDATE evita que dos altas simultáneas excedan el cupo.
-                await cur.execute(
-                    "SELECT max_usuarios, estado FROM empresa WHERE empresa_id = %(id)s FOR UPDATE",
-                    {"id": empresa_id},
+            # Límite de licencia (empresa.max_usuarios) sobre usuarios activos.
+            # FOR UPDATE evita que dos altas simultáneas excedan el cupo.
+            await cur.execute(
+                "SELECT max_usuarios, estado FROM empresa WHERE empresa_id = %(id)s FOR UPDATE",
+                {"id": empresa_id},
+            )
+            empresa = await cur.fetchone()
+            if not empresa:
+                raise HTTPException(status_code=404, detail="La empresa indicada no existe.")
+            await cur.execute(
+                "SELECT COUNT(*) AS total FROM usuario WHERE empresa_id = %(id)s AND activo",
+                {"id": empresa_id},
+            )
+            if int((await cur.fetchone())["total"]) >= int(empresa["max_usuarios"]):
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"La empresa alcanzó el máximo de usuarios de su licencia ({empresa['max_usuarios']}).",
                 )
-                empresa = await cur.fetchone()
-                if not empresa:
-                    raise HTTPException(status_code=404, detail="La empresa indicada no existe.")
-                await cur.execute(
-                    "SELECT COUNT(*) AS total FROM usuario WHERE empresa_id = %(id)s AND activo",
-                    {"id": empresa_id},
-                )
-                if int((await cur.fetchone())["total"]) >= int(empresa["max_usuarios"]):
-                    raise HTTPException(
-                        status_code=409,
-                        detail=f"La empresa alcanzó el máximo de usuarios de su licencia ({empresa['max_usuarios']}).",
-                    )
 
             await cur.execute(
                 """

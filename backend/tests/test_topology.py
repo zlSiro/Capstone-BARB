@@ -299,28 +299,11 @@ async def test_usuario_normal_no_puede_espiar_otra_empresa_con_empresa_id(client
         assert r.json() == base, f"{intento} cambió la respuesta de un usuario de empresa 2"
 
 
-async def test_super_usuario_ve_todas_las_empresas_y_puede_filtrar(client):
-    """El super_usuario (empresa NULL) ve todo; con `empresa_id` se acota a una.
-
-    El test de aislamiento de `test_multiempresa.py` no cubre este caso opuesto.
-    """
+async def test_super_usuario_no_accede_a_la_topologia(client):
+    """El super_usuario (contraparte comercial, sin empresa) no tiene acceso a la topología."""
     h = await _login(client, ("super@barb.com", "super123"))
-    sin_filtro = await _topologia(client, h)
-    con_filtro = await _topologia(client, h, "?empresa_id=1")
-
-    ids_sin = {n["nodo_id"] for n in sin_filtro["nodos"]}
-    ids_con = {n["nodo_id"] for n in con_filtro["nodos"]}
-    assert ids_con < ids_sin, (
-        "el super_usuario sin filtro debe ver un superconjunto estricto de lo que ve "
-        f"acotado a la empresa 1 (sin filtro={len(ids_sin)}, filtrado={len(ids_con)})"
-    )
-    # Y sin filtro debe haber plantas de más de una empresa
-    def _plantas(cuerpo):
-        return {n["nombre_visual"] for n in cuerpo["nodos"] if n["tipo"] == "Planta"}
-
-    assert _plantas(con_filtro) < _plantas(sin_filtro), (
-        "sin filtro deberían aparecer plantas de otras empresas"
-    )
+    for url in ("/api/topology", "/api/topology?empresa_id=1"):
+        assert (await client.get(url, headers=h)).status_code == 403
 
 
 # =============================================================================

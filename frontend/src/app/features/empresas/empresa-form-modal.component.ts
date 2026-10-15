@@ -22,7 +22,7 @@ interface EmpresaFormModel {
   licencia_inicio: string;
   licencia_fin: string;
   notas: string;
-  // Solo al crear: primer administrador de la empresa
+  // Solo al crear: primer usuario (gerente) de la empresa
   crearAdmin: boolean;
   adminNombre: string;
   adminEmail: string;
@@ -170,10 +170,10 @@ function toModel(e: Empresa | null): EmpresaFormModel {
 
         @if (!isEdit()) {
           <fieldset class="md:col-span-2 rounded-lg border border-slate-700 p-4">
-            <legend class="px-2 text-xs font-semibold uppercase tracking-wide text-slate-300">Administrador inicial</legend>
+            <legend class="px-2 text-xs font-semibold uppercase tracking-wide text-slate-300">Gerente de la empresa</legend>
             <label class="mb-3 flex items-center gap-2 text-sm text-slate-200">
               <input type="checkbox" [formField]="f.crearAdmin" class="h-4 w-4" />
-              Crear un administrador para la empresa
+              Crear el usuario gerente de la empresa (administra a los demás usuarios)
             </label>
             @if (model().crearAdmin) {
               <div class="grid gap-3 md:grid-cols-2">
@@ -244,9 +244,9 @@ export class EmpresaFormModalComponent {
         ? { kind: 'range', message: 'La licencia no puede terminar antes de empezar.' }
         : undefined;
     });
-    // Admin inicial: solo se valida si se eligió crearlo
-    required(p.adminNombre, { message: 'Ingresa el nombre del administrador.', when: ({ valueOf }) => valueOf(p.crearAdmin) });
-    required(p.adminEmail, { message: 'Ingresa el email del administrador.', when: ({ valueOf }) => valueOf(p.crearAdmin) });
+    // Gerente inicial: solo se valida si se eligió crearlo
+    required(p.adminNombre, { message: 'Ingresa el nombre del gerente.', when: ({ valueOf }) => valueOf(p.crearAdmin) });
+    required(p.adminEmail, { message: 'Ingresa el email del gerente.', when: ({ valueOf }) => valueOf(p.crearAdmin) });
     email(p.adminEmail, { message: 'Email inválido.' });
     validate(p.adminPassword, ({ value, valueOf }) =>
       valueOf(p.crearAdmin) && value().length < 6
@@ -283,7 +283,7 @@ export class EmpresaFormModalComponent {
       ? this.empresas.update(current.empresa_id, payload)
       : this.empresas.create({
           ...payload,
-          admin: m.crearAdmin
+          gerente: m.crearAdmin
             ? { nombre: m.adminNombre.trim(), email: m.adminEmail.trim(), password: m.adminPassword }
             : null,
         });

@@ -85,7 +85,7 @@ async def get_empresa(empresa_id: int):
 
 @router.post("/api/empresas", status_code=201)
 async def create_empresa(payload: EmpresaCreateRequest):
-    data = payload.model_dump(exclude={"admin"})
+    data = payload.model_dump(exclude={"gerente"})
     data["rut"] = (data["rut"] or "").strip() or None  # '' -> NULL para no chocar con UNIQUE(rut)
     try:
         async with transaction() as cur:
@@ -102,23 +102,23 @@ async def create_empresa(payload: EmpresaCreateRequest):
             )
             empresa_id = int((await cur.fetchone())["empresa_id"])
 
-            # Admin inicial: queda en la misma transacción, así nunca existe una
-            # empresa creada "a medias" si el email del admin ya está en uso.
-            if payload.admin:
+            # Gerente inicial (único perfil que crea el super_usuario): queda en la misma
+            # transacción, así nunca existe una empresa creada "a medias" si su email ya está en uso.
+            if payload.gerente:
                 await cur.execute(
                     """
                     INSERT INTO usuario (empresa_id, nombre, email, password_hash, rol)
-                    VALUES (%(empresa_id)s, %(nombre)s, %(email)s, %(password_hash)s, 'admin')
+                    VALUES (%(empresa_id)s, %(nombre)s, %(email)s, %(password_hash)s, 'gerente')
                     """,
                     {
                         "empresa_id": empresa_id,
-                        "nombre": payload.admin.nombre.strip(),
-                        "email": payload.admin.email.strip().lower(),
-                        "password_hash": hash_password(payload.admin.password),
+                        "nombre": payload.gerente.nombre.strip(),
+                        "email": payload.gerente.email.strip().lower(),
+                        "password_hash": hash_password(payload.gerente.password),
                     },
                 )
     except pg_errors.UniqueViolation as e:
-        campo = "email del administrador" if "usuario" in str(e) else "RUT"
+        campo = "email del gerente" if "usuario" in str(e) else "RUT"
         raise HTTPException(status_code=409, detail=f"Ya existe un registro con ese {campo}.") from e
     except Exception as e:
         logger.exception("Error al crear empresa")

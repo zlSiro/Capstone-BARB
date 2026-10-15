@@ -23,7 +23,7 @@ const ESTADO_STYLE: Record<EstadoEmpresa, string> = {
   cancelled: 'bg-red-100 text-red-800',
 };
 
-/** Mantenedor de empresas: alta, edición, suspensión y acceso a sus usuarios/documentos. */
+/** Mantenedor de empresas (solo super_usuario): alta, edición, suspensión/reactivación y acceso a sus gerentes. */
 @Component({
   selector: 'app-empresas',
   imports: [DatePipe, EmpresaFormModalComponent],
@@ -35,7 +35,7 @@ const ESTADO_STYLE: Record<EstadoEmpresa, string> = {
             Empresas ({{ empresas().length }})
           </h1>
           <p class="text-sm text-gray-600 dark:text-gray-300">
-            Clientes de la plataforma. Cada empresa solo ve sus propias OTs, usuarios y documentación.
+            Clientes de la plataforma. Aquí se crean, suspenden y habilitan; cada empresa administra a sus propios usuarios.
           </p>
         </div>
         <button type="button" class="btn-primary" (click)="openCreate()">+ Nueva empresa</button>
@@ -97,8 +97,7 @@ const ESTADO_STYLE: Record<EstadoEmpresa, string> = {
                   <td class="px-4 py-2">
                     <div class="flex flex-wrap gap-1">
                       <button type="button" class="btn-secondary" (click)="openEdit(e)" [attr.aria-label]="'Editar ' + e.nombre">Editar</button>
-                      <button type="button" class="btn-secondary" (click)="goTo(e, '/usuarios')" [attr.aria-label]="'Usuarios de ' + e.nombre">Usuarios</button>
-                      <button type="button" class="btn-secondary" (click)="goTo(e, '/documentos')" [attr.aria-label]="'Documentos de ' + e.nombre">Documentos</button>
+                      <button type="button" class="btn-secondary" (click)="goToUsuarios(e)" [attr.aria-label]="'Gerentes de ' + e.nombre">Gerentes</button>
                       @if (e.estado === 'suspended' || e.estado === 'cancelled') {
                         <button type="button" class="btn-secondary" (click)="setEstado(e, 'active')" [attr.aria-label]="'Reactivar ' + e.nombre">Reactivar</button>
                       } @else {
@@ -185,10 +184,10 @@ export class EmpresasComponent {
     this.load();
   }
 
-  /** Fija la empresa como contexto activo del super_usuario y abre la página indicada. */
-  protected goTo(e: Empresa, path: '/usuarios' | '/documentos'): void {
+  /** Filtra el mantenedor de usuarios por la empresa y lo abre (el super_usuario solo gestiona gerentes). */
+  protected goToUsuarios(e: Empresa): void {
     this.tenant.select(e.empresa_id);
-    this.router.navigateByUrl(path);
+    this.router.navigateByUrl('/usuarios');
   }
 
   protected setEstado(e: Empresa, estado: EstadoEmpresa): void {

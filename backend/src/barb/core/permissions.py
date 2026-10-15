@@ -26,8 +26,10 @@ from barb.core.db import fetch_one
 # ROLES VÁLIDOS
 # =============================================================================
 
-# "super_usuario": operador de la plataforma BARB. No pertenece a ninguna empresa
-# (usuario.empresa_id es NULL) y ve/administra todas las empresas.
+# "super_usuario": contraparte comercial de BARB frente a la empresa cliente. No pertenece a
+# ninguna empresa (usuario.empresa_id es NULL). Solo administra empresas (alta/edición/suspensión)
+# y crea sus usuarios con perfil gerente; NO accede a datos operativos (dashboard, OTs,
+# topología, DocChat, documentos).
 ROLES = ("operador", "tecnico", "supervisor", "engineer", "gerente", "admin", "visitante", "super_usuario")
 
 # =============================================================================
@@ -38,23 +40,24 @@ ROLES = ("operador", "tecnico", "supervisor", "engineer", "gerente", "admin", "v
 # =============================================================================
 
 RUTAS: dict[str, dict[str, bool | str]] = {
-    "menu":       {"operador": True, "tecnico": True, "supervisor": True, "engineer": True, "gerente": True, "admin": True, "visitante": True, "super_usuario": True},
-    "docchat":    {"operador": True, "tecnico": True, "supervisor": True, "engineer": True, "gerente": True, "admin": True, "visitante": False, "super_usuario": True},
-    "debug":      {"operador": True, "tecnico": True, "supervisor": True, "engineer": True, "gerente": True, "admin": True, "visitante": False, "super_usuario": True},
-    "topology":   {"operador": True, "tecnico": True, "supervisor": True, "engineer": True, "gerente": True, "admin": True, "visitante": "ver", "super_usuario": True},
-    "memory":     {"operador": True, "tecnico": True, "supervisor": True, "engineer": True, "gerente": True, "admin": True, "visitante": "ver", "super_usuario": True},
-    "report":     {"operador": True, "tecnico": True, "supervisor": True, "engineer": True, "gerente": True, "admin": True, "visitante": False, "super_usuario": True},
-    "dashboard":  {"operador": False, "tecnico": False, "supervisor": True, "engineer": True, "gerente": True, "admin": True, "visitante": "ver", "super_usuario": True},
+    "menu":       {"operador": True, "tecnico": True, "supervisor": True, "engineer": True, "gerente": True, "admin": True, "visitante": True, "super_usuario": False},
+    "docchat":    {"operador": True, "tecnico": True, "supervisor": True, "engineer": True, "gerente": True, "admin": True, "visitante": False, "super_usuario": False},
+    "debug":      {"operador": True, "tecnico": True, "supervisor": True, "engineer": True, "gerente": True, "admin": True, "visitante": False, "super_usuario": False},
+    "topology":   {"operador": True, "tecnico": True, "supervisor": True, "engineer": True, "gerente": True, "admin": True, "visitante": "ver", "super_usuario": False},
+    "memory":     {"operador": True, "tecnico": True, "supervisor": True, "engineer": True, "gerente": True, "admin": True, "visitante": "ver", "super_usuario": False},
+    "report":     {"operador": True, "tecnico": True, "supervisor": True, "engineer": True, "gerente": True, "admin": True, "visitante": False, "super_usuario": False},
+    "dashboard":  {"operador": False, "tecnico": False, "supervisor": True, "engineer": True, "gerente": True, "admin": True, "visitante": "ver", "super_usuario": False},
     # --- Multi-empresa (migración 0004) ---
     # empresas: mantenedor de empresas, exclusivo del super_usuario.
-    # usuarios: mantenedor de perfiles; admin de empresa (solo su empresa) y super_usuario.
+    # usuarios: mantenedor de perfiles; gerente y admin de empresa (solo su empresa). El super_usuario
+    # solo puede crear/gestionar usuarios con perfil gerente (ver routers/users.py).
     # documentos: documentación de la empresa que consume el chat IA ("ver" = solo consulta).
     "empresas":   {"operador": False, "tecnico": False, "supervisor": False, "engineer": False, "gerente": False, "admin": False, "visitante": False, "super_usuario": True},
-    "usuarios":   {"operador": False, "tecnico": False, "supervisor": False, "engineer": False, "gerente": False, "admin": True, "visitante": False, "super_usuario": True},
-    "documentos": {"operador": "ver", "tecnico": "ver", "supervisor": "ver", "engineer": True, "gerente": True, "admin": True, "visitante": False, "super_usuario": True},
+    "usuarios":   {"operador": False, "tecnico": False, "supervisor": False, "engineer": False, "gerente": True, "admin": True, "visitante": False, "super_usuario": True},
+    "documentos": {"operador": "ver", "tecnico": "ver", "supervisor": "ver", "engineer": True, "gerente": True, "admin": True, "visitante": False, "super_usuario": False},
     # notificaciones: configuración del correo de OTs atrasadas (supervisor hacia arriba).
-    "notificaciones": {"operador": False, "tecnico": False, "supervisor": True, "engineer": False, "gerente": True, "admin": True, "visitante": False, "super_usuario": True},
-    "history":    {"operador": False, "tecnico": False, "supervisor": True, "engineer": False, "gerente": True, "admin": True, "visitante": False, "super_usuario": True},
+    "notificaciones": {"operador": False, "tecnico": False, "supervisor": True, "engineer": False, "gerente": True, "admin": True, "visitante": False, "super_usuario": False},
+    "history":    {"operador": False, "tecnico": False, "supervisor": True, "engineer": False, "gerente": True, "admin": True, "visitante": False, "super_usuario": False},
 }
 
 # =============================================================================
@@ -65,22 +68,23 @@ RUTAS: dict[str, dict[str, bool | str]] = {
 # =============================================================================
 
 ACCIONES: dict[str, dict[str, bool]] = {
-    "crear_ot":            {"operador": False, "tecnico": False, "supervisor": False, "engineer": False, "gerente": True, "admin": True, "visitante": False, "super_usuario": True},
+    "crear_ot":            {"operador": False, "tecnico": False, "supervisor": False, "engineer": False, "gerente": True, "admin": True, "visitante": False, "super_usuario": False},
     # Técnico y operador NO cambian estados de OT (solo supervisión hacia arriba).
-    "cambiar_estado_ot":   {"operador": False, "tecnico": False, "supervisor": True,  "engineer": True,  "gerente": True, "admin": True, "visitante": False, "super_usuario": True},
+    "cambiar_estado_ot":   {"operador": False, "tecnico": False, "supervisor": True,  "engineer": True,  "gerente": True, "admin": True, "visitante": False, "super_usuario": False},
     # Cancelar una OT (estado final) es más restrictivo que iniciarla/cerrarla: engineer no puede.
-    "cancelar_ot":         {"operador": False, "tecnico": False, "supervisor": True,  "engineer": False, "gerente": True, "admin": True, "visitante": False, "super_usuario": True},
-    "eliminar_ot":         {"operador": False, "tecnico": False, "supervisor": True,  "engineer": True,  "gerente": True, "admin": True, "visitante": False, "super_usuario": True},
-    "subir_documentos":    {"operador": False, "tecnico": False, "supervisor": False, "engineer": True,  "gerente": True, "admin": True, "visitante": False, "super_usuario": True},
+    "cancelar_ot":         {"operador": False, "tecnico": False, "supervisor": True,  "engineer": False, "gerente": True, "admin": True, "visitante": False, "super_usuario": False},
+    "eliminar_ot":         {"operador": False, "tecnico": False, "supervisor": True,  "engineer": True,  "gerente": True, "admin": True, "visitante": False, "super_usuario": False},
+    "subir_documentos":    {"operador": False, "tecnico": False, "supervisor": False, "engineer": True,  "gerente": True, "admin": True, "visitante": False, "super_usuario": False},
     # No estaba en la matriz original; gestión de usuarios (crear/editar/eliminar) queda
-    # restringida solo a admin por ser una acción sensible de administración del sistema.
-    "gestionar_usuarios":  {"operador": False, "tecnico": False, "supervisor": False, "engineer": False, "gerente": False, "admin": True, "visitante": False, "super_usuario": True},
-    # Ver el directorio de usuarios (con email) también se limita a admin.
-    "eliminar_documentos": {"operador": False, "tecnico": False, "supervisor": False, "engineer": True,  "gerente": True, "admin": True, "visitante": False, "super_usuario": True},
+    # restringida a gerente y admin de la empresa. El super_usuario solo puede operar sobre
+    # usuarios con perfil gerente (regla aplicada en routers/users.py).
+    "gestionar_usuarios":  {"operador": False, "tecnico": False, "supervisor": False, "engineer": False, "gerente": True, "admin": True, "visitante": False, "super_usuario": True},
+    # Ver el directorio de usuarios (con email) se limita a los mismos perfiles.
+    "eliminar_documentos": {"operador": False, "tecnico": False, "supervisor": False, "engineer": True,  "gerente": True, "admin": True, "visitante": False, "super_usuario": False},
     # Alta/edición/baja de empresas: solo super_usuario.
     "gestionar_empresas":  {"operador": False, "tecnico": False, "supervisor": False, "engineer": False, "gerente": False, "admin": False, "visitante": False, "super_usuario": True},
-    "configurar_notificaciones": {"operador": False, "tecnico": False, "supervisor": True, "engineer": False, "gerente": True, "admin": True, "visitante": False, "super_usuario": True},
-    "ver_usuarios":        {"operador": False, "tecnico": False, "supervisor": False, "engineer": False, "gerente": False, "admin": True, "visitante": False, "super_usuario": True},
+    "configurar_notificaciones": {"operador": False, "tecnico": False, "supervisor": True, "engineer": False, "gerente": True, "admin": True, "visitante": False, "super_usuario": False},
+    "ver_usuarios":        {"operador": False, "tecnico": False, "supervisor": False, "engineer": False, "gerente": True, "admin": True, "visitante": False, "super_usuario": True},
 }
 
 
@@ -218,9 +222,13 @@ def require_action(accion: str):
 
 async def require_auth(authorization: str = Header(..., alias="Authorization")) -> str:
     """
-    Dependencia liviana: solo exige un usuario autenticado y válido (cualquier
+    Dependencia liviana: exige un usuario de empresa autenticado y válido (cualquier
     rol, incluido visitante). Para datos de referencia de solo lectura que no
     aparecen en la matriz de rutas/acciones (máquinas, plantas, disciplinas,
-    técnicos, listado de OTs).
+    técnicos, listado de OTs). El super_usuario queda excluido: no accede a datos
+    operativos de las empresas.
     """
-    return await get_rol_actual(authorization)
+    rol = await get_rol_actual(authorization)
+    if rol == ROL_SUPER:
+        raise HTTPException(status_code=403, detail="El rol 'super_usuario' no tiene acceso a datos operativos de las empresas.")
+    return rol

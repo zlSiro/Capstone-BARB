@@ -55,13 +55,14 @@ async def get_current_user(
         raise HTTPException(status_code=401, detail="Token inválido o expirado.")
 
     role = str(row["rol"]).lower()
-    # Empresa suspendida/cancelada: sin acceso (el super_usuario no tiene empresa).
-    if role != "super_usuario" and row.get("empresa_estado") in ("suspended", "cancelled"):
+    # El super_usuario (contraparte comercial, sin empresa) no tiene acceso a DocChat.
+    if role == "super_usuario":
+        raise HTTPException(status_code=403, detail="Tu perfil no tiene acceso a DocChat.")
+    if row.get("empresa_estado") in ("suspended", "cancelled"):
         raise HTTPException(status_code=403, detail="La empresa está suspendida o cancelada. Contacta a BARB.")
 
     return {
         "id": int(row["usuario_id"]),
-        # None para el super_usuario (no pertenece a una empresa).
         "empresa_id": int(row["empresa_id"]) if row["empresa_id"] is not None else None,
         "name": str(row["nombre"]),
         "email": str(row["email"]),
