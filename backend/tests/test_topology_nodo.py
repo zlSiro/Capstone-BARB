@@ -7,7 +7,13 @@ CGBIDA-380 (endpoint implementado en CGBIDA-379). Decisiones en
   - D3: los hijos se derivan de las aristas del grafo, no de una consulta aparte
   - D4: permiso `require_route("topology", solo_lectura=True)`
 
-Solo lectura: estas pruebas no crean ni modifican filas.
+Solo lectura sobre el estado del sistema: las pruebas que necesitan una condicion
+concreta la CREAN y la revierten al terminar. Historicamente se apoyaban en que el seed
+dejara una maquina SIN ordenes (m_11), pero el historial sintetico del dashboard
+(CGBIDA-408) dio OTs a las 12 maquinas de la empresa 1. En vez de depender de que un seed
+ajeno deje una fila vacia, la prueba que necesita una maquina sin ordenes crea la suya y
+la borra.
+
 Contrato del mapa: `docs/contrato_api_topologia.md`.
 """
 
@@ -15,19 +21,47 @@ from __future__ import annotations
 
 import pytest
 
-from barb.core.db import fetch_all
+from barb.core.db import execute, fetch_all, fetch_one
 
 ADMIN_E1 = ("admin@barb.com", "admin123")
 ADMIN_E2 = ("admin@mineranorte.cl", "minera123")
 VISITANTE_E1 = ("visitante@planta.com", "visitante123")
 SUPER = ("super@barb.com", "super123")
 
-# Del seed: m_11 y m_12 son las únicas máquinas de la empresa 1 sin ninguna OT.
-MAQUINA_SIN_OTS = "m_11"
 MAQUINA_CON_OTS = "m_1"
 PLANTA_E1 = "p_1"
 PLANTA_E2 = "p_4"
 DISCIPLINA_E2 = "d_13"
+
+# Maquina temporal para la prueba de "sin ordenes". El nombre lleva un prefijo propio
+# para poder identificarla sin ambiguedad.
+MAQUINA_PRUEBA_NOMBRE = "ZZ Maquina sin OTs (prueba)"
+
+
+@pytest.fixture
+async def maquina_sin_ots(db_pool):
+    """Crea una maquina de la empresa 1 SIN ordenes de trabajo, y la borra al final.
+
+    Es la unica escritura del archivo y es reversible: la fila se elimina en el teardown
+    aunque la prueba falle. Reemplaza la dependencia del seed que quedo obsoleta.
+    """
+    fila = await fetch_one(
+        """
+        INSERT INTO maquina (planta_id, disciplina_id, nombre, codigo)
+        VALUES (1, NULL, %(nombre)s, %(codigo)s)
+        RETURNING maquina_id
+        """,
+        {"nombre": MAQUINA_PRUEBA_NOMBRE, "codigo": "ZZ-SIN-OTS"},
+    )
+    maquina_id = fila["maquina_id"]
+    try:
+        # El prefijo `m_` lo fija el contrato del mapa (topology.py:129).
+        yield f"m_{maquina_id}"
+    finally:
+        # En orden inverso: primero las OTs (ninguna, por construccion) y despues la
+        # maquina. Asi el teardown tambien funciona si algo llegara a crear una OT.
+        await execute("DELETE FROM orden_trabajo WHERE maquina_id = %(m)s", {"m": maquina_id})
+        await execute("DELETE FROM maquina WHERE maquina_id = %(m)s", {"m": maquina_id})
 
 
 async def _login(client, creds) -> dict:
@@ -88,14 +122,19 @@ async def test_las_ordenes_traen_el_contrato_de_ots(client):
     assert ot["machine_id"] == cuerpo["nodo"]["maquina_id"]
 
 
-async def test_maquina_sin_ots_devuelve_lista_vacia(client):
-    """Sin órdenes no es un error: es una lista vacía."""
+async def test_maquina_sin_ots_devuelve_lista_vacia(client, maquina_sin_ots):
+    """Sin órdenes no es un error: es una lista vacía.
+
+    Usa una maquina creada por el propio test en vez de depender de que el seed deje
+    alguna sin OTs. Antes se usaba `m_11` fijo; el historial sintetico del dashboard le
+    dio 15 OTs y la premisa dejo de ser cierta.
+    """
     h = await _login(client, ADMIN_E1)
-    r = await _nodo(client, h, MAQUINA_SIN_OTS)
+    r = await _nodo(client, h, maquina_sin_ots)
 
     assert r.status_code == 200, r.text
     cuerpo = r.json()
-    assert cuerpo["nodo"]["nodo_id"] == MAQUINA_SIN_OTS
+    assert cuerpo["nodo"]["nodo_id"] == maquina_sin_ots
     assert cuerpo["ordenes"] == []
     assert cuerpo["hijos"] == []
 
