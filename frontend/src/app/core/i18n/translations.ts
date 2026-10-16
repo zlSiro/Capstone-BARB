@@ -114,6 +114,10 @@ export const translations = {
       impactCardTitle: 'Impacto Anual Proyectado',
       impactCardSub: 'Comparativa de escenarios del modelo BARB.',
       impactNoData: 'Requiere al menos 90 dias de historial.',
+      // Nombres de las series del grafico de backlog (CGBIDA-393). El legacy mostraba las
+      // claves crudas del dataKey; aqui se traducen.
+      abiertas: 'Abiertas',
+      cerradas: 'Cerradas',
       withoutBarb: 'Escenario Sin BARB', withBarb: 'Escenario Con BARB',
       savingsGenerated: 'Ahorro Generado a la fecha',
       mttrGlobal: 'MTTR Global', mttrOptimal: '✓ Dentro de SLA',
@@ -291,6 +295,8 @@ export const translations = {
       impactCardTitle: 'Projected Annual Impact',
       impactCardSub: 'BARB model scenario comparison.',
       impactNoData: 'Requires at least 90 days of history.',
+      abiertas: 'Open',
+      cerradas: 'Closed',
       withoutBarb: 'Without BARB Scenario', withBarb: 'With BARB Scenario',
       savingsGenerated: 'Savings Generated to Date',
       mttrGlobal: 'Global MTTR', mttrOptimal: '✓ Within SLA',

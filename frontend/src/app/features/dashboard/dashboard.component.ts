@@ -3,12 +3,15 @@ import { CommonModule } from '@angular/common';
 import { StatsService } from '../../core/services/stats.service';
 import { FinancialStats } from '../../core/models';
 import { I18nService } from '../../core/i18n/i18n.service';
+import { BacklogChartComponent } from './components/backlog-chart/backlog-chart.component';
 
 /**
- * Dashboard de KPIs (HU-08 + HU-16 / CGBIDA-392).
+ * Dashboard de KPIs (HU-08 + HU-16 / CGBIDA-392 y 393).
  *
  * Los 6 indicadores en tarjetas, cada una con su valor y la descripcion de QUE mide.
- * El texto sale de i18n (es/en) y las tarjetas tienen variantes de modo oscuro.
+ * Debajo, el grafico de backlog de 14 dias.
+ *
+ * El texto sale de i18n (es/en) y todo tiene variantes de modo oscuro.
  *
  * Estados:
  *  - Cargando: texto explicito, nunca ceros.
@@ -18,7 +21,7 @@ import { I18nService } from '../../core/i18n/i18n.service';
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, BacklogChartComponent],
   template: `
     <div class="flex flex-col gap-6">
       <div>
@@ -52,6 +55,9 @@ import { I18nService } from '../../core/i18n/i18n.service';
             </div>
           }
         </div>
+
+        <!-- El gráfico se auto-oculta si no hay puntos, igual que el legacy. -->
+        <app-backlog-chart [puntos]="tendencia()" />
       }
     </div>
   `
@@ -66,6 +72,14 @@ export class DashboardComponent implements OnInit {
 
   /** Textos del bloque `financial`. Reactivo al cambio de idioma. */
   protected readonly t = computed(() => this.i18n.tree().financial);
+
+  /**
+   * Tendencia de 14 dias para el grafico de backlog.
+   *
+   * Sale tal cual del backend: son siempre 14 puntos y NO dependen del selector de rango
+   * temporal, porque el backend no parametriza esa serie (CGBIDA-391, decision (c)).
+   */
+  protected readonly tendencia = computed(() => this.stats()?.trend14Days ?? []);
 
   /**
    * Las 6 tarjetas de KPI, derivadas de la respuesta.
