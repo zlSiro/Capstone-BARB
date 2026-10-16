@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import logging
+import re
 import uuid
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sse_starlette.sse import EventSourceResponse
 
+from barb.core.config import settings
 from barb.core.rate_limit import chat_rate_limiter
 from barb.core.security import get_current_user
 from barb.core.token_limit import estimate_tokens, token_limiter
@@ -21,7 +25,12 @@ from barb.schemas.chat import (
 )
 from barb.services import chat_repository
 from barb.services.document_service import format_context, search_chunks
-from barb.services.llm_service import NO_DOCS_ANSWER, create_conversation_chain
+from barb.services.llm_service import (
+    MULTIMODAL_IMAGE_TOKENS,
+    NO_DOCS_ANSWER,
+    create_conversation_chain,
+    create_multimodal_chain,
+)
 
 logger = logging.getLogger("barb.chat")
 
@@ -146,6 +155,209 @@ async def stream_chat(
         finally:
             try:
                 ts = _now_ms()
+                nuevos = [
+                    {"role": "user", "content": request.message, "timestamp": ts},
+                    {
+                        "role": "assistant",
+                        "content": "".join(assistant_chunks),
+                        "timestamp": ts + 1,
+                    },
+                ]
+                await chat_repository.append_messages(session_id, user_id, nuevos)
+            except Exception:
+                logger.exception(
+                    "No se pudo persistir la conversación session_id=%s", session_id
+                )
+
+            output_tokens = max(0, output_chars // 4)
+            token_limiter.add(str(user_id), input_tokens + output_tokens)
+
+    return EventSourceResponse(event_generator())
+
+
+# =============================================================================
+# Chat multimodal (HU-05): POST /api/chat/multimedia
+# Contrato: docs/contrato_api_chat_multimedia.md · Diseño: docs/MULTIMODAL_ARCHITECTURE.md
+# =============================================================================
+
+# Formatos permitidos por el contrato (D4). muse-glimmer los soporta vía data URL
+# (verificado contra NIM: jpeg/png/webp responden en español).
+ALLOWED_IMAGE_MIME = {"image/jpeg", "image/png", "image/webp"}
+
+_DATA_URL_RE = re.compile(r"^data:([\w./+-]+);base64,(.*)$", re.DOTALL)
+
+# 400 del contrato: sin imagen o mensaje vacío (detalle exacto del contrato).
+_MULTIMEDIA_FALTA_INPUT = "Debes adjuntar una imagen y una pregunta."
+
+
+class MultimediaRequest(BaseModel):
+    session_id: str | None = None
+    # El vacío se rechaza con 400 en el endpoint (detalle del contrato que combina
+    # imagen+pregunta), no con min_length=1 como en el stream.
+    message: str = Field(
+        ...,
+        max_length=2000,
+        description="Pregunta del usuario sobre la imagen (1 a 2000 caracteres).",
+    )
+    image_base64: str = Field(
+        ...,
+        description="Imagen como data URL: data:image/{jpeg|png|webp};base64,... (≤ 5 MB decodificada).",
+    )
+    # Solo la usa el super_usuario (no tiene empresa propia): empresa a la que
+    # pertenece la conversación. Para el resto se ignora. Igual que ChatRequest.
+    empresa_id: int | None = None
+
+    @field_validator("image_base64")
+    @classmethod
+    def _formato_de_imagen_permitido(cls, v: str) -> str:
+        """Formato de imagen → 422 con array de errores Pydantic (contrato)."""
+        m = _DATA_URL_RE.match(v)
+        if m and m.group(1) not in ALLOWED_IMAGE_MIME:
+            raise ValueError(
+                f"Formato de imagen no permitido ({m.group(1)}). "
+                f"Solo se aceptan: {', '.join(sorted(ALLOWED_IMAGE_MIME))}."
+            )
+        return v
+
+
+def _validate_image(image_base64: str) -> None:
+    """Valida estructura del data URL (400) y tamaño decodificado (413).
+
+    El tamaño se mide sobre los bytes DECODIFICADOS (D4): el base64 infla ~33%
+    en tránsito, por eso el límite no aplica sobre el string.
+    """
+    m = _DATA_URL_RE.match(image_base64)
+    if not m:
+        raise HTTPException(status_code=400, detail=_MULTIMEDIA_FALTA_INPUT)
+
+    # Tolerante a saltos de línea en el base64 (encoders que hacen wrap).
+    payload = "".join(m.group(2).split())
+    if not payload:
+        raise HTTPException(status_code=400, detail=_MULTIMEDIA_FALTA_INPUT)
+    try:
+        raw = base64.b64decode(payload + "=" * (-len(payload) % 4), validate=True)
+    except (binascii.Error, ValueError):
+        raise HTTPException(status_code=400, detail=_MULTIMEDIA_FALTA_INPUT) from None
+
+    max_bytes = settings.multimodal_max_image_mb * 1024 * 1024
+    if len(raw) > max_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"La imagen supera el máximo de {settings.multimodal_max_image_mb} MB.",
+        )
+
+
+@router.post("/multimedia")
+async def stream_multimedia_chat(
+    request: MultimediaRequest,
+    user: dict = Depends(get_current_user),
+):
+    """
+    Análisis de imágenes en el chat IA (HU-05, CGBIDA-276/277).
+
+    La imagen viaja como data URL base64, se usa en memoria para la respuesta
+    y NO se persiste (D2): el historial guarda solo el texto del turno, igual
+    que cualquier otra conversación. Reutiliza la infra del stream textual:
+    JWT, rate limit, límite diario de tokens y los mismos eventos SSE.
+    """
+    # Feature apagada sin modelo/key (patrón 503 de documents.py).
+    if not settings.multimodal_configurado:
+        raise HTTPException(
+            status_code=503,
+            detail="El análisis de imágenes no está disponible (MULTIMODAL_MODEL).",
+        )
+
+    user_id = int(user["id"])
+    # La conversación pertenece a una empresa (chat_session.empresa_id NOT NULL):
+    # un usuario de empresa SIEMPRE conversa en la suya; el super_usuario elige.
+    empresa_id = user["empresa_id"]
+    if user["role"] == "super_usuario":
+        empresa_id = request.empresa_id
+    if empresa_id is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Selecciona una empresa para consultar.",
+        )
+    empresa_id = int(empresa_id)
+
+    # Validaciones del payload ANTES del rate limit: un request inválido no debe
+    # consumir cuota (el frontend igual valida antes de enviar; el backend
+    # revalida — nunca confiar solo en el cliente).
+    if not request.message.strip():
+        raise HTTPException(status_code=400, detail=_MULTIMEDIA_FALTA_INPUT)
+    _validate_image(request.image_base64)
+
+    chat_rate_limiter.check(str(user_id))
+
+    token_limiter.check(str(user_id))
+
+    if request.session_id:
+        try:
+            uuid.UUID(request.session_id)
+        except (ValueError, TypeError):
+            raise HTTPException(
+                status_code=422,
+                detail="session_id debe ser un UUID válido.",
+            ) from None
+
+        existing = await chat_repository.get_session(request.session_id, user_id)
+        if not existing:
+            raise HTTPException(
+                status_code=404,
+                detail="Sesión no encontrada o no te pertenece.",
+            )
+        session_id = request.session_id
+        history = await chat_repository.load_messages(session_id, user_id)
+    else:
+        session_id = await chat_repository.create_session(
+            usuario_id=user_id,
+            empresa_id=empresa_id,
+            primer_mensaje=request.message,
+        )
+        history = []
+
+    # Sin RAG en v1 (D5): el turno multimodal consulta solo imagen+texto.
+    chain = create_multimodal_chain()
+    # Contabilidad de tokens (D6): el presupuesto visual de la imagen (~4096)
+    # cuenta contra el límite diario del usuario.
+    input_tokens = estimate_tokens(request.message) + MULTIMODAL_IMAGE_TOKENS
+
+    async def event_generator():
+        output_chars = 0
+        assistant_chunks: list[str] = []
+
+        try:
+            yield {
+                "event": "session",
+                "data": json.dumps({"session_id": session_id}),
+            }
+
+            stream = chain.astream(
+                {"input": request.message, "history": history, "image": request.image_base64}
+            )
+
+            async for chunk in stream:
+                if chunk:
+                    output_chars += len(chunk)
+                    assistant_chunks.append(chunk)
+                    yield {
+                        "event": "token",
+                        "data": json.dumps({"text": chunk}),
+                    }
+
+            yield {"event": "done", "data": "{}"}
+
+        except Exception as e:
+            logger.exception("Error en chat multimedia (session_id=%s)", session_id)
+            yield {
+                "event": "error",
+                "data": json.dumps({"code": "internal_error", "message": str(e)}),
+            }
+
+        finally:
+            try:
+                ts = _now_ms()
+                # D2: se persiste SOLO el texto del turno; la imagen no se guarda (v1).
                 nuevos = [
                     {"role": "user", "content": request.message, "timestamp": ts},
                     {
