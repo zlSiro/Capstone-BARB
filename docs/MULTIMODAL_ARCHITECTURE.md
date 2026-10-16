@@ -81,7 +81,11 @@ historial como cualquier otra).
 - Mensaje: `content` como lista `[{type: "text", ...}, {type: "image_url",
   image_url: {url: "data:image/...;base64,..."}}]` — el estándar que muse-glimmer
   espera (verificado en el prototipo de su model card).
-- System prompt: el mismo BARB + instrucción de análisis visual.
+- System prompt: el mismo BARB + instrucción de análisis visual + la línea
+  `Reasoning strength: low` (mecanismo oficial de la model card para respuestas
+  directas). **Hallazgo validado contra NIM (15-10):** sin esa línea, el
+  razonamiento interno consume el `max_tokens` y `content` llega vacío — el
+  equivalente multimodal del `enable_thinking: false` de nemotron.
 - **Sin RAG en v1**: el turno multimodal consulta solo el modelo (imagen+texto);
   el RAG documental (HU-04) se mantiene en el flujo text-only. Integrar
   "imagen + contexto documental" es mejora futura.
@@ -114,10 +118,20 @@ MULTIMODAL_MAX_IMAGE_MB=5
 3. Si el endpoint responde como deepseek-flash (saturado), cambiar a
    `z-ai/glm-5-3-flash` y repetir.
 
+> **RESULTADO (15-10-2026):** ✅ validado contra NIM con el patrón exacto de
+> producción (ChatOpenAI + base_url NIM + data URL base64, streaming).
+> La misma `NVIDIA_API_KEY` del chat sirve para multimodal (no se requiere key
+> dedicada). JPEG/PNG/WebP responden en español con análisis visual correcto.
+> Latencia observada: 4–20 s por request (free tier) → `MULTIMODAL_TIMEOUT=120`.
+> Hallazgo crítico: sin `Reasoning strength: low` en el system prompt, el
+> razonamiento interno consume el `max_tokens` y la respuesta llega vacía (ver D5).
+
 ## 8. Orden de implementación
 
-1. **Fase 0:** 274 (este documento) + 275 (contrato)
-2. **Fase 1 (backend):** 276 endpoint + 277 integración del modelo multimodal
+1. **Fase 0:** 274 (este documento) + 275 (contrato) ✅
+2. **Fase 1 (backend):** 276 endpoint + 277 integración del modelo multimodal ✅
+   (`POST /api/chat/multimedia`, cadena multimodal en `llm_service.py`, tests en
+   `tests/test_chat_multimedia.py`, smoke test real con muse-glimmer OK)
 3. **Fase 2 (frontend):** 278 componente de carga + 279 preview/envío en el chat
 4. **Fase 3:** 280 tests + 281 E2E + 282 documentación final
 
