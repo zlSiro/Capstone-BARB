@@ -23,7 +23,7 @@ const ESTADO_STYLE: Record<EstadoEmpresa, string> = {
   cancelled: 'bg-red-100 text-red-800',
 };
 
-/** Mantenedor de empresas (solo super_usuario): alta, edición, suspensión/reactivación y acceso a sus gerentes. */
+/** Mantenedor de empresas (solo super_usuario): alta, edición, suspensión/reactivación y acceso a sus gerentes. Por auditoría no se eliminan. */
 @Component({
   selector: 'app-empresas',
   imports: [DatePipe, EmpresaFormModalComponent],
@@ -103,7 +103,6 @@ const ESTADO_STYLE: Record<EstadoEmpresa, string> = {
                       } @else {
                         <button type="button" class="btn-secondary" (click)="setEstado(e, 'suspended')" [attr.aria-label]="'Suspender ' + e.nombre">Suspender</button>
                       }
-                      <button type="button" class="btn-danger" (click)="remove(e)" [attr.aria-label]="'Eliminar ' + e.nombre">Eliminar</button>
                     </div>
                   </td>
                 </tr>
@@ -201,19 +200,6 @@ export class EmpresasComponent {
         this.load();
       },
       error: (err) => this.toast.error(apiErrorMessage(err, 'No se pudo cambiar el estado.')),
-    });
-  }
-
-  protected remove(e: Empresa): void {
-    if (!confirm(`¿Eliminar "${e.nombre}"? Solo es posible si no tiene datos asociados; de lo contrario, cancélala.`)) return;
-
-    this.service.delete(e.empresa_id).subscribe({
-      next: () => {
-        this.toast.success('Empresa eliminada.');
-        if (this.tenant.empresaId() === e.empresa_id) this.tenant.select(null);
-        this.load();
-      },
-      error: (err) => this.toast.error(apiErrorMessage(err, 'No se pudo eliminar la empresa.')),
     });
   }
 }

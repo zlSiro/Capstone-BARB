@@ -14,6 +14,7 @@ import { ROLE_OPTIONS, UsuarioFormModalComponent } from './usuario-form-modal.co
  * Mantenedor de perfiles de usuario.
  * - Gerente/admin de empresa: gestiona solo los usuarios de su empresa (lo garantiza el backend).
  * - super_usuario: solo crea y gestiona usuarios con perfil gerente de cualquier empresa.
+ * Por auditoría los usuarios no se eliminan: solo se activan o desactivan.
  */
 @Component({
   selector: 'app-usuarios',
@@ -100,7 +101,6 @@ import { ROLE_OPTIONS, UsuarioFormModalComponent } from './usuario-form-modal.co
                                 [attr.aria-label]="(u.activo ? 'Desactivar ' : 'Activar ') + u.nombre">
                           {{ u.activo ? 'Desactivar' : 'Activar' }}
                         </button>
-                        <button type="button" class="btn-danger" (click)="remove(u)" [attr.aria-label]="'Eliminar ' + u.nombre">Eliminar</button>
                       }
                     </div>
                   </td>
@@ -209,17 +209,6 @@ export class UsuariosComponent {
         this.load();
       },
       error: (err) => this.toast.error(apiErrorMessage(err, 'No se pudo cambiar el estado.')),
-    });
-  }
-
-  protected remove(u: UsuarioPerfil): void {
-    if (!confirm(`¿Eliminar a ${u.nombre}? Si tiene OTs asociadas deberás desactivarlo en su lugar.`)) return;
-    this.users.delete(u.usuario_id).subscribe({
-      next: () => {
-        this.toast.success('Usuario eliminado.');
-        this.load();
-      },
-      error: (err) => this.toast.error(apiErrorMessage(err, 'No se pudo eliminar el usuario.')),
     });
   }
 }

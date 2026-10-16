@@ -20,8 +20,4 @@ export class UsersAdminService {
   update(id: number, payload: UserUpdateRequest) {
     return this.http.put<UsuarioPerfil>(`${this.url}/${id}`, payload);
   }
-
-  delete(id: number) {
-    return this.http.delete<void>(`${this.url}/${id}`);
-  }
 }

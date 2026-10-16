@@ -20,8 +20,4 @@ export class EmpresasService {
   update(id: number, payload: Partial<EmpresaPayload>) {
     return this.http.put<Empresa>(`${this.url}/${id}`, payload);
   }
-
-  delete(id: number) {
-    return this.http.delete<void>(`${this.url}/${id}`);
-  }
 }
