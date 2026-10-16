@@ -100,8 +100,20 @@ export const translations = {
       detailBack: 'Volver'
     },
     financial: {
+      dashboardTitle: 'Dashboard KPI',
+      dashboardSubtitle: 'Impacto basado en US$2.000/min de inactividad operativa.',
+      loading: 'Cargando KPIs…',
+      loadError: 'No se pudieron cargar los KPIs. Vuelve a intentarlo en unos minutos.',
       roiTitle: 'Impacto Anual Proyectado (Modelo BARB v1.0)',
       roiSubtitle: 'Basado en US$2.000/min de inactividad operativa.',
+      // Descripciones de las tarjetas de KPI (CGBIDA-392). Las claves mttrGlobal,
+      // efficiency, directCost, mtbf y savingsGenerated ya existian; estas son los
+      // subtitulos que faltaban para que cada tarjeta diga QUE mide.
+      mttrSub: 'Tiempo medio de reparacion de las OTs completadas.',
+      savingsSub: 'Inactividad evitada por las OTs completadas, valorizada.',
+      impactCardTitle: 'Impacto Anual Proyectado',
+      impactCardSub: 'Comparativa de escenarios del modelo BARB.',
+      impactNoData: 'Requiere al menos 90 dias de historial.',
       withoutBarb: 'Escenario Sin BARB', withBarb: 'Escenario Con BARB',
       savingsGenerated: 'Ahorro Generado a la fecha',
       mttrGlobal: 'MTTR Global', mttrOptimal: '✓ Dentro de SLA',
@@ -268,8 +280,17 @@ export const translations = {
       detailBack: 'Back'
     },
     financial: {
+      dashboardTitle: 'KPI Dashboard',
+      dashboardSubtitle: 'Impact based on US$2,000/min of operational downtime.',
+      loading: 'Loading KPIs…',
+      loadError: 'The KPIs could not be loaded. Please try again in a few minutes.',
       roiTitle: 'Projected Annual Impact (BARB v1.0 Model)',
       roiSubtitle: 'Based on US$2,000/min of operational downtime.',
+      mttrSub: 'Average repair time of completed WOs.',
+      savingsSub: 'Downtime avoided by completed WOs, valued.',
+      impactCardTitle: 'Projected Annual Impact',
+      impactCardSub: 'BARB model scenario comparison.',
+      impactNoData: 'Requires at least 90 days of history.',
       withoutBarb: 'Without BARB Scenario', withBarb: 'With BARB Scenario',
       savingsGenerated: 'Savings Generated to Date',
       mttrGlobal: 'Global MTTR', mttrOptimal: '✓ Within SLA',
