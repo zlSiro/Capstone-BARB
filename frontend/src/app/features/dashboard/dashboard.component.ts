@@ -4,6 +4,7 @@ import { StatsService } from '../../core/services/stats.service';
 import { FinancialStats } from '../../core/models';
 import { I18nService } from '../../core/i18n/i18n.service';
 import { BacklogChartComponent } from './components/backlog-chart/backlog-chart.component';
+import { MachineRankingComponent } from './components/machine-ranking/machine-ranking.component';
 
 /**
  * Dashboard de KPIs (HU-08 + HU-16 / CGBIDA-392 y 393).
@@ -21,7 +22,7 @@ import { BacklogChartComponent } from './components/backlog-chart/backlog-chart.
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, BacklogChartComponent],
+  imports: [CommonModule, BacklogChartComponent, MachineRankingComponent],
   template: `
     <div class="flex flex-col gap-6">
       <div>
@@ -58,6 +59,9 @@ import { BacklogChartComponent } from './components/backlog-chart/backlog-chart.
 
         <!-- El gráfico se auto-oculta si no hay puntos, igual que el legacy. -->
         <app-backlog-chart [puntos]="tendencia()" />
+
+        <!-- El ranking muestra su propio estado vacío si no hay equipos. -->
+        <app-machine-ranking [maquinas]="equipos()" />
       }
     </div>
   `
@@ -80,6 +84,9 @@ export class DashboardComponent implements OnInit {
    * temporal, porque el backend no parametriza esa serie (CGBIDA-391, decision (c)).
    */
   protected readonly tendencia = computed(() => this.stats()?.trend14Days ?? []);
+
+  /** Equipos del ranking. El backend ya los limita a 5. */
+  protected readonly equipos = computed(() => this.stats()?.machines ?? []);
 
   /**
    * Las 6 tarjetas de KPI, derivadas de la respuesta.

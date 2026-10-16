@@ -118,6 +118,12 @@ export const translations = {
       // claves crudas del dataKey; aqui se traducen.
       abiertas: 'Abiertas',
       cerradas: 'Cerradas',
+      // Nombres de la metrica activa en el tooltip del ranking (CGBIDA-394). El legacy
+      // mostraba la clave cruda del dataKey ('ahorroGenerado').
+      rankingMetricOts: 'Volumen de OTs',
+      rankingMetricMttr: 'MTTR',
+      rankingMetricAhorro: 'Ahorro generado',
+      rankingEmpty: 'Sin datos de equipos en el período.',
       withoutBarb: 'Escenario Sin BARB', withBarb: 'Escenario Con BARB',
       savingsGenerated: 'Ahorro Generado a la fecha',
       mttrGlobal: 'MTTR Global', mttrOptimal: '✓ Dentro de SLA',
@@ -297,6 +303,10 @@ export const translations = {
       impactNoData: 'Requires at least 90 days of history.',
       abiertas: 'Open',
       cerradas: 'Closed',
+      rankingMetricOts: 'WO volume',
+      rankingMetricMttr: 'MTTR',
+      rankingMetricAhorro: 'Savings generated',
+      rankingEmpty: 'No machine data for this period.',
       withoutBarb: 'Without BARB Scenario', withBarb: 'With BARB Scenario',
       savingsGenerated: 'Savings Generated to Date',
       mttrGlobal: 'Global MTTR', mttrOptimal: '✓ Within SLA',
