@@ -48,9 +48,15 @@ async def _empresa_id(client, headers, nombre) -> int:
 # Permisos (unitarias)
 # =============================================================================
 
-def test_super_usuario_accede_a_todas_las_rutas_y_acciones():
-    assert all(puede_acceder_ruta("super_usuario", r) is True for r in RUTAS)
-    assert all(puede_ejecutar_accion("super_usuario", a) for a in ACCIONES)
+RUTAS_SUPER = {"empresas", "usuarios"}
+ACCIONES_SUPER = {"gestionar_empresas", "gestionar_usuarios", "ver_usuarios"}
+
+
+def test_super_usuario_solo_accede_a_empresas_y_usuarios():
+    assert {r for r in RUTAS if puede_acceder_ruta("super_usuario", r)} == RUTAS_SUPER
+    assert {a for a in ACCIONES if puede_ejecutar_accion("super_usuario", a)} == ACCIONES_SUPER
+    for ruta in ("dashboard", "menu", "topology", "docchat", "documentos", "history", "notificaciones"):
+        assert puede_acceder_ruta("super_usuario", ruta) is False
 
 
 def test_solo_super_usuario_gestiona_empresas():
@@ -165,14 +171,17 @@ async def test_stats_y_topologia_solo_de_la_empresa(client):
 # super_usuario
 # =============================================================================
 
-async def test_super_usuario_ve_todas_las_empresas_y_puede_filtrar(client):
+async def test_super_usuario_no_accede_a_datos_operativos(client):
     hs = await _login(client, SUPER)
-    todas = (await client.get("/api/work-orders", headers=hs)).json()
-    assert {o["empresa_nombre"] for o in todas} >= {"Planta Demo BARB", "Minera Norte S.A.", "Demo Trial Corp"}
-
-    e2 = await _empresa_id(client, hs, "Minera Norte S.A.")
-    solo2 = (await client.get(f"/api/work-orders?empresa_id={e2}", headers=hs)).json()
-    assert {o["empresa_nombre"] for o in solo2} == {"Minera Norte S.A."}
+    for url in (
+        "/api/work-orders", "/api/work-orders/OT-2026-101", "/api/machines", "/api/plants", "/api/disciplines",
+        "/api/technicians", "/api/topology", "/api/stats/financial-impact", "/api/documents",
+    ):
+        assert (await client.get(url, headers=hs)).status_code == 403, url
+    assert (await client.post("/api/work-orders/stream/ticket", headers=hs)).status_code == 403
+    assert (await client.post("/api/chat/stream", headers=hs, json={"message": "hola"})).status_code == 403
+    ok = {"file": ("a.txt", io.BytesIO(b"hola mundo"), "text/plain")}
+    assert (await client.post("/api/documents", headers=hs, files=ok)).status_code == 403
 
 
 async def test_login_devuelve_empresa_y_super_no_tiene(client):
@@ -197,10 +206,10 @@ async def test_mantenedor_de_empresas_es_exclusivo_del_super(client):
     assert (await client.get("/api/empresas", headers=hs)).status_code == 200
 
 
-async def test_super_crea_edita_suspende_y_elimina_empresa_con_admin_inicial(client):
+async def test_super_crea_edita_suspende_y_elimina_empresa_con_gerente_inicial(client):
     hs = await _login(client, SUPER)
     sufijo = uuid.uuid4().hex[:6]
-    email_admin = f"admin-{sufijo}@test.cl"
+    email_admin = f"gerente-{sufijo}@test.cl"
     r = await client.post(
         "/api/empresas",
         headers=hs,
@@ -209,7 +218,7 @@ async def test_super_crea_edita_suspende_y_elimina_empresa_con_admin_inicial(cli
             "rut": f"99.{sufijo}-K",
             "plan": "starter",
             "max_usuarios": 2,
-            "admin": {"nombre": "Admin Test", "email": email_admin, "password": "secreto123"},
+            "gerente": {"nombre": "Gerente Test", "email": email_admin, "password": "secreto123"},
         },
     )
     assert r.status_code == 201, r.text
@@ -222,7 +231,7 @@ async def test_super_crea_edita_suspende_y_elimina_empresa_con_admin_inicial(cli
         dup = await client.post("/api/empresas", headers=hs, json={"nombre": "Otra", "rut": empresa["rut"]})
         assert dup.status_code == 409
 
-        # El admin recién creado entra y solo ve su empresa (sin OTs)
+        # El gerente recién creado entra y solo ve su empresa (sin OTs)
         h_admin = await _login(client, (email_admin, "secreto123"))
         assert (await client.get("/api/work-orders", headers=h_admin)).json() == []
 
@@ -248,6 +257,13 @@ async def test_super_crea_edita_suspende_y_elimina_empresa_con_admin_inicial(cli
         # Con usuarios asociados no se puede eliminar
         assert (await client.delete(f"/api/empresas/{eid}", headers=hs)).status_code == 409
     finally:
+        # Limpieza: el super_usuario solo gestiona gerentes, así que el gerente (reactivada la
+        # empresa) elimina a los demás usuarios y luego el super elimina al gerente y la empresa.
+        await client.put(f"/api/empresas/{eid}", headers=hs, json={"estado": "active"})
+        h_gerente = await _login(client, (email_admin, "secreto123"))
+        for u in (await client.get("/api/usuarios", headers=h_gerente)).json():
+            if u["email"] != email_admin:
+                await client.delete(f"/api/usuarios/{u['usuario_id']}", headers=h_gerente)
         for u in (await client.get(f"/api/usuarios?empresa_id={eid}", headers=hs)).json():
             await client.delete(f"/api/usuarios/{u['usuario_id']}", headers=hs)
         assert (await client.delete(f"/api/empresas/{eid}", headers=hs)).status_code == 204
@@ -265,14 +281,64 @@ async def test_admin_solo_ve_usuarios_de_su_empresa(client):
 
 
 async def test_admin_no_puede_tocar_usuarios_de_otra_empresa_ni_crear_super(client):
-    h1, hs = await _login(client, ADMIN_E1), await _login(client, SUPER)
-    pedro = next(u for u in (await client.get("/api/usuarios", headers=hs)).json() if u["email"] == TECNICO_E2[0])
+    h1, h2 = await _login(client, ADMIN_E1), await _login(client, ADMIN_E2)
+    pedro = next(u for u in (await client.get("/api/usuarios", headers=h2)).json() if u["email"] == TECNICO_E2[0])
 
     assert (await client.put(f"/api/usuarios/{pedro['usuario_id']}", headers=h1, json={"nombre": "X Y"})).status_code == 404
     assert (await client.delete(f"/api/usuarios/{pedro['usuario_id']}", headers=h1)).status_code == 404
 
     r = await client.post(
         "/api/usuarios", headers=h1,
+        json={
+            "nombre": "Falso Super",
+            "email": f"fs-{uuid.uuid4().hex[:6]}@x.cl",
+            "password": "secreto123",
+            "rol": "super_usuario",
+        },
+    )
+    assert r.status_code == 403
+
+
+async def test_super_solo_crea_y_gestiona_gerentes(client):
+    hs = await _login(client, SUPER)
+    e2 = await _empresa_id(client, hs, "Minera Norte S.A.")
+    base = {"nombre": "Gerente Nuevo", "password": "secreto123", "empresa_id": e2}
+
+    # Otros perfiles (incluido otro super_usuario) -> 403
+    for rol in ("admin", "tecnico", "supervisor", "super_usuario"):
+        r = await client.post("/api/usuarios", headers=hs, json={**base, "email": f"x-{uuid.uuid4().hex[:6]}@x.cl", "rol": rol})
+        assert r.status_code == 403, rol
+    # Sin empresa -> 422
+    sin_empresa = {k: v for k, v in base.items() if k != "empresa_id"}
+    email = f"y-{uuid.uuid4().hex[:6]}@x.cl"
+    r = await client.post("/api/usuarios", headers=hs, json={**sin_empresa, "email": email, "rol": "gerente"})
+    assert r.status_code == 422
+
+    r = await client.post("/api/usuarios", headers=hs, json={**base, "email": f"g-{uuid.uuid4().hex[:6]}@x.cl", "rol": "gerente"})
+    assert r.status_code == 201, r.text
+    nuevo = r.json()
+    try:
+        assert nuevo["rol"] == "gerente" and nuevo["empresa_id"] == e2
+        # El aviso de bienvenida necesita quién creó el usuario y cuándo
+        assert nuevo["creado_por"]["email"] == SUPER[0] and nuevo["creado_por"]["nombre"]
+        assert nuevo["created_at"]
+        # Solo ve gerentes; no puede editar a un técnico de la empresa
+        assert {u["rol"] for u in (await client.get("/api/usuarios", headers=hs)).json()} == {"gerente"}
+        h2 = await _login(client, ADMIN_E2)
+        pedro = next(u for u in (await client.get("/api/usuarios", headers=h2)).json() if u["email"] == TECNICO_E2[0])
+        assert (await client.put(f"/api/usuarios/{pedro['usuario_id']}", headers=hs, json={"nombre": "X Y"})).status_code == 404
+        # No puede ascenderlo a otro perfil
+        assert (await client.put(f"/api/usuarios/{nuevo['usuario_id']}", headers=hs, json={"rol": "admin"})).status_code == 403
+    finally:
+        await client.delete(f"/api/usuarios/{nuevo['usuario_id']}", headers=hs)
+
+
+async def test_gerente_puede_gestionar_usuarios_de_su_empresa(client):
+    hg = await _login(client, ("gerente@mineranorte.cl", "minera123"))
+    usuarios = (await client.get("/api/usuarios", headers=hg)).json()
+    assert usuarios and {u["empresa_nombre"] for u in usuarios} == {"Minera Norte S.A."}
+    r = await client.post(
+        "/api/usuarios", headers=hg,
         json={
             "nombre": "Falso Super",
             "email": f"fs-{uuid.uuid4().hex[:6]}@x.cl",
@@ -376,14 +442,12 @@ async def test_subir_documento_lo_indexa_y_la_ia_lo_encuentra_solo_en_su_empresa
     assert (await client.get("/api/documents", headers=h1)).json()  # sigue funcionando
 
 
-async def test_subida_rechaza_tipo_vacio_y_super_requiere_empresa(client):
-    h1, hs = await _login(client, ENGINEER_E1), await _login(client, SUPER)
+async def test_subida_rechaza_tipo_y_archivo_vacio(client):
+    h1 = await _login(client, ENGINEER_E1)
     exe = {"file": ("x.exe", io.BytesIO(b"MZ"), "application/octet-stream")}
     assert (await client.post("/api/documents", headers=h1, files=exe)).status_code == 415
     vacio = {"file": ("v.txt", io.BytesIO(b""), "text/plain")}
     assert (await client.post("/api/documents", headers=h1, files=vacio)).status_code == 422
-    ok = {"file": ("a.txt", io.BytesIO(b"hola mundo"), "text/plain")}
-    assert (await client.post("/api/documents", headers=hs, files=ok)).status_code == 422  # falta empresa_id
 
 
 async def test_busqueda_rag_con_datos_semilla_respeta_empresa_y_estado(client, db_pool):
@@ -468,11 +532,9 @@ async def test_chat_con_documentacion_pasa_contexto_de_su_empresa(client, user_c
     assert "Setting 150 mm" in chain.payload["context"]
 
 
-async def test_chat_super_usuario_debe_indicar_empresa(client, user_chat, repo_mock):
+async def test_chat_super_usuario_no_tiene_acceso(client, user_chat, repo_mock):
     user_chat(role="super_usuario", empresa_id=None)
     with patch("barb.routers.chat.search_chunks", return_value=[]) as search:
-        status, _ = await _stream(client, {"message": "hola"})
-        assert status == 422
         status, _ = await _stream(client, {"message": "hola", "empresa_id": 2})
-        assert status == 200
-    assert search.call_args.args[0] == 2
+    assert status == 403
+    search.assert_not_called()

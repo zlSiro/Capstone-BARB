@@ -26,6 +26,10 @@ def test_todas_las_acciones_cubren_todos_los_roles():
 RUTAS_SOLO_SUPER = {"empresas"}
 
 
+def test_super_usuario_solo_tiene_empresas_y_usuarios():
+    assert {r for r in RUTAS if puede_acceder_ruta("super_usuario", r)} == {"empresas", "usuarios"}
+
+
 def test_admin_tiene_acceso_total_a_rutas():
     for ruta in RUTAS:
         esperado = ruta not in RUTAS_SOLO_SUPER

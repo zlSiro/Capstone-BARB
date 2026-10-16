@@ -12,8 +12,9 @@ import { ROLE_OPTIONS, UsuarioFormModalComponent } from './usuario-form-modal.co
 
 /**
  * Mantenedor de perfiles de usuario.
- * - Admin de empresa: gestiona solo los usuarios de su empresa (lo garantiza el backend).
- * - super_usuario: gestiona los de cualquier empresa (filtra con el selector de la cabecera).
+ * - Gerente/admin de empresa: gestiona solo los usuarios de su empresa (lo garantiza el backend).
+ * - super_usuario: solo crea y gestiona usuarios con perfil gerente de cualquier empresa.
+ * Por auditoría los usuarios no se eliminan: solo se activan o desactivan.
  */
 @Component({
   selector: 'app-usuarios',
@@ -23,11 +24,14 @@ import { ROLE_OPTIONS, UsuarioFormModalComponent } from './usuario-form-modal.co
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 id="usuarios-title" class="text-2xl font-bold text-gray-800 dark:text-gray-100">
-            Usuarios ({{ usuarios().length }})
+            {{ isSuper() ? 'Gerentes' : 'Usuarios' }} ({{ usuarios().length }})
           </h1>
           <p class="text-sm text-gray-600 dark:text-gray-300">
             @if (isSuper()) {
-              {{ tenant.empresaId() ? 'Usuarios de la empresa seleccionada.' : 'Usuarios de todas las empresas.' }}
+              Gerentes de las empresas{{ tenant.empresaId() ? ' (filtrado por la empresa seleccionada)' : '' }}.
+              @if (tenant.empresaId()) {
+                <button type="button" class="ml-1 underline" (click)="clearEmpresaFilter()">Ver todas</button>
+              }
             } @else {
               Perfiles de los miembros de {{ auth.user()?.empresa_nombre }}.
             }
@@ -97,7 +101,6 @@ import { ROLE_OPTIONS, UsuarioFormModalComponent } from './usuario-form-modal.co
                                 [attr.aria-label]="(u.activo ? 'Desactivar ' : 'Activar ') + u.nombre">
                           {{ u.activo ? 'Desactivar' : 'Activar' }}
                         </button>
-                        <button type="button" class="btn-danger" (click)="remove(u)" [attr.aria-label]="'Eliminar ' + u.nombre">Eliminar</button>
                       }
                     </div>
                   </td>
@@ -155,6 +158,12 @@ export class UsuariosComponent {
     }
   }
 
+  /** Quita el filtro por empresa que dejó el atajo "Gerentes" del mantenedor de empresas. */
+  protected clearEmpresaFilter(): void {
+    this.tenant.select(null);
+    this.load();
+  }
+
   protected rolLabel(rol: string): string {
     return ROLE_OPTIONS.find(r => r.value === rol)?.label ?? rol;
   }
@@ -200,17 +209,6 @@ export class UsuariosComponent {
         this.load();
       },
       error: (err) => this.toast.error(apiErrorMessage(err, 'No se pudo cambiar el estado.')),
-    });
-  }
-
-  protected remove(u: UsuarioPerfil): void {
-    if (!confirm(`¿Eliminar a ${u.nombre}? Si tiene OTs asociadas deberás desactivarlo en su lugar.`)) return;
-    this.users.delete(u.usuario_id).subscribe({
-      next: () => {
-        this.toast.success('Usuario eliminado.');
-        this.load();
-      },
-      error: (err) => this.toast.error(apiErrorMessage(err, 'No se pudo eliminar el usuario.')),
     });
   }
 }

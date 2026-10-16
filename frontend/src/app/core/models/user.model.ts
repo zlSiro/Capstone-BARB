@@ -76,6 +76,11 @@ export interface UsuarioPerfil {
   empresa_nombre: string | null;
 }
 
+/** Respuesta de POST /api/usuarios: el perfil creado y quién lo creó (contacto del aviso de bienvenida). */
+export interface UsuarioCreado extends UsuarioPerfil {
+  creado_por: { nombre: string; email: string };
+}
+
 export interface UserUpdateRequest {
   nombre?: string;
   email?: string;

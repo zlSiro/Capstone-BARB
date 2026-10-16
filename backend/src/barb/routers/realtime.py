@@ -11,7 +11,7 @@ from fastapi import APIRouter, Header, HTTPException, Query, Request
 from sse_starlette.sse import EventSourceResponse
 
 from barb.core.db import fetch_one
-from barb.core.permissions import get_sesion_actual, resolver_empresa
+from barb.core.permissions import ROL_SUPER, get_sesion_actual, resolver_empresa
 from barb.services.realtime import TICKET_TTL_SECONDS, OtEvent, broker, consume_ticket, issue_ticket
 
 logger = logging.getLogger("barb.realtime")
@@ -41,6 +41,12 @@ async def _sesion_vigente(token: str) -> bool:
     return row is not None
 
 
+def _exigir_usuario_de_empresa(sesion: dict) -> None:
+    # El super_usuario no accede a las OTs de las empresas (tampoco a su canal en tiempo real).
+    if sesion["rol"] == ROL_SUPER:
+        raise HTTPException(status_code=403, detail="El rol 'super_usuario' no tiene acceso a órdenes de trabajo.")
+
+
 def _frame(event: OtEvent) -> dict:
     frame = {"event": event.type, "data": json.dumps(event.data)}
     if event.id:
@@ -53,6 +59,7 @@ def _frame(event: OtEvent) -> dict:
 async def crear_ticket_stream(authorization: str = Header(..., alias="Authorization")):
     """Ticket de un solo uso (60 s) para abrir el stream con `EventSource`, que no envía headers."""
     sesion = await get_sesion_actual(authorization)
+    _exigir_usuario_de_empresa(sesion)
     ticket = issue_ticket({**sesion, "token": _token_of(authorization)})
     return {"ticket": ticket, "expires_in": TICKET_TTL_SECONDS}
 
@@ -77,6 +84,7 @@ async def stream_work_orders(
     else:
         raise HTTPException(status_code=401, detail="Falta Authorization: Bearer <token> o ?ticket=.")
 
+    _exigir_usuario_de_empresa(sesion)
     scope = resolver_empresa(sesion, empresa_id)
 
     async def event_generator():

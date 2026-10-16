@@ -30,11 +30,17 @@ export interface Empresa {
   ordenes_trabajo: number;
 }
 
-/** Primer administrador de la empresa; se crea junto con ella (opcional). */
-export interface AdminInicial {
+/** Primer usuario de la empresa, con perfil gerente; se crea junto con ella (opcional). */
+export interface GerenteInicial {
   nombre: string;
   email: string;
   password: string;
+}
+
+/** Respuesta de POST /api/empresas; con gerente inicial incluye los datos de su aviso de bienvenida. */
+export interface EmpresaCreada extends Empresa {
+  gerente?: { nombre: string; rol: string; created_at: string | null };
+  creado_por?: { nombre: string; email: string };
 }
 
 export interface EmpresaPayload {
@@ -55,5 +61,5 @@ export interface EmpresaPayload {
 }
 
 export interface EmpresaCreatePayload extends EmpresaPayload {
-  admin?: AdminInicial | null;
+  gerente?: GerenteInicial | null;
 }

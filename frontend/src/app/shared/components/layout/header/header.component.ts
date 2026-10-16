@@ -1,11 +1,17 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject } from '@angular/core';
+import { Location } from '@angular/common';
+import { NavigationEnd, Router } from '@angular/router';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { filter, map, scan, startWith } from 'rxjs/operators';
 import { AuthService } from '../../../../core/services/auth.service';
-import { EmpresasService } from '../../../../core/services/empresas.service';
 import { I18nService } from '../../../../core/i18n/i18n.service';
-import { TenantContextService } from '../../../../core/services/tenant-context.service';
 import { ThemeService } from '../../../../core/services/theme.service';
 import { TranslatePipe } from '../../../../core/i18n/translate.pipe';
-import { Empresa } from '../../../../core/models';
+import { getDefaultRouteForRole } from '../../../../core/permissions/permissions';
+
+// Vistas que ya ofrecen su propia forma lógica de salir o volver (no llevan el "Volver" global):
+// el detalle de topología navega al nodo padre y el historial de chat tiene "← Volver al chat".
+const RUTAS_CON_SALIDA_PROPIA = ['/topology', '/topologia', '/chat/history'];
 
 @Component({
   selector: 'app-header',
@@ -15,25 +21,10 @@ import { Empresa } from '../../../../core/models';
       <div class="flex items-center gap-3">
         <span class="text-2xl" aria-hidden="true">🏭</span>
         <h1 class="text-lg font-bold text-gray-800 dark:text-gray-100">{{ 'login.title' | translate }}</h1>
-        @if (!tenant.isSuper() && auth.user()?.empresa_nombre) {
+        @if (auth.user()?.empresa_nombre) {
           <span class="text-sm text-gray-600 dark:text-gray-300 border-l border-gray-300 dark:border-gray-600 pl-3">
             {{ auth.user()?.empresa_nombre }}
           </span>
-        }
-        @if (tenant.isSuper()) {
-          <!-- super_usuario: elige qué empresa ver; "Todas" = vista global de la plataforma -->
-          <div class="flex items-center gap-2 border-l border-gray-300 dark:border-gray-600 pl-3">
-            <label for="tenant-select" class="text-sm text-gray-600 dark:text-gray-300">Empresa:</label>
-            <select
-              id="tenant-select"
-              class="rounded border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              (change)="onTenantChange($any($event.target).value)">
-              <option value="" [selected]="tenant.empresaId() === null">Todas las empresas</option>
-              @for (e of empresas(); track e.empresa_id) {
-                <option [value]="e.empresa_id" [selected]="e.empresa_id === tenant.empresaId()">{{ e.nombre }}</option>
-              }
-            </select>
-          </div>
         }
       </div>
       <div class="flex items-center gap-3">
@@ -52,7 +43,16 @@ import { Empresa } from '../../../../core/models';
           class="text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white font-medium">
           🌐 {{ i18n.lang() === 'es' ? 'ES' : 'EN' }}
         </button>
-        <button (click)="auth.logout()" class="text-sm text-red-600 dark:text-red-400 hover:text-red-800">
+        @if (mostrarVolver()) {
+          <button
+            type="button"
+            data-testid="btn-volver"
+            (click)="volver()"
+            class="text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white font-medium">
+            <span aria-hidden="true">←</span> {{ 'common.back' | translate }}
+          </button>
+        }
+        <button type="button" data-testid="btn-salir" (click)="salir()" class="text-sm text-red-600 dark:text-red-400 hover:text-red-800">
           {{ 'topbar.logout' | translate }}
         </button>
       </div>
@@ -63,21 +63,45 @@ export class HeaderComponent {
   auth = inject(AuthService);
   i18n = inject(I18nService);
   theme = inject(ThemeService);
-  protected readonly tenant = inject(TenantContextService);
-  private readonly empresasService = inject(EmpresasService);
+  private readonly router = inject(Router);
+  private readonly location = inject(Location);
 
-  protected readonly empresas = signal<Empresa[]>([]);
+  private readonly currentUrl = toSignal(
+    this.router.events.pipe(
+      filter((e): e is NavigationEnd => e instanceof NavigationEnd),
+      map((e) => e.urlAfterRedirects),
+      startWith(this.router.url),
+    ),
+    { initialValue: this.router.url },
+  );
 
-  constructor() {
-    if (this.tenant.isSuper()) {
-      this.empresasService.getAll().subscribe({ next: (list) => this.empresas.set(list) });
-    }
+  /** Navegaciones hechas desde que se cargó la cabecera: con una sola no hay historial al que volver. */
+  private readonly navegaciones = toSignal(
+    this.router.events.pipe(
+      filter((e): e is NavigationEnd => e instanceof NavigationEnd),
+      scan((total) => total + 1, 0),
+      startWith(0),
+    ),
+    { initialValue: 0 },
+  );
+
+  private readonly inicio = computed(() => getDefaultRouteForRole(this.auth.user()?.role));
+
+  /** Se oculta en la página de inicio del rol (no hay a dónde volver) y en vistas con salida propia. */
+  protected readonly mostrarVolver = computed(() => {
+    const ruta = this.currentUrl().split(/[?#]/)[0];
+    return ruta !== this.inicio() && !RUTAS_CON_SALIDA_PROPIA.some((r) => ruta === r || ruta.startsWith(r + '/'));
+  });
+
+  protected volver(): void {
+    // Con historial dentro de la app se retrocede un paso; si se entró directo por URL, se va al inicio del rol.
+    if (this.navegaciones() > 1) this.location.back();
+    else this.router.navigateByUrl(this.inicio());
   }
 
-  protected onTenantChange(value: string): void {
-    this.tenant.select(value ? Number(value) : null);
-    // Todas las pantallas cargan sus datos al iniciarse: se recarga para que
-    // el nuevo contexto de empresa se aplique de inmediato en la vista actual.
-    window.location.reload();
+  /** Pide confirmación: si se cancela, la sesión queda intacta y el usuario sigue en la misma vista. */
+  protected salir(): void {
+    if (!confirm(this.i18n.get('topbar', 'logoutConfirm'))) return;
+    this.auth.logout();
   }
 }

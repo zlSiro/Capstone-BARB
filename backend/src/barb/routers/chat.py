@@ -45,9 +45,6 @@ class ChatRequest(BaseModel):
         max_length=2000,
         description="Mensaje del usuario (1 a 2000 caracteres).",
     )
-    # Solo lo usa el super_usuario (no tiene empresa propia): empresa cuya
-    # documentación consulta. Para el resto se ignora.
-    empresa_id: int | None = None
 
 
 async def _single_chunk(text: str):
@@ -65,16 +62,10 @@ async def stream_chat(
 ):
     user_id = int(user["id"])
     # Aislamiento: un usuario de empresa SIEMPRE consulta la documentación de su empresa.
-    # El super_usuario (sin empresa) debe elegir una.
-    empresa_id = user["empresa_id"]
-    if user["role"] == "super_usuario":
-        empresa_id = request.empresa_id
-    if empresa_id is None:
-        raise HTTPException(
-            status_code=422,
-            detail="Selecciona una empresa para consultar su documentación.",
-        )
-    empresa_id = int(empresa_id)
+    # get_current_user ya excluye al super_usuario; esta guarda cubre cualquier usuario sin empresa.
+    if user["role"] == "super_usuario" or user["empresa_id"] is None:
+        raise HTTPException(status_code=403, detail="Tu perfil no tiene acceso a DocChat.")
+    empresa_id = int(user["empresa_id"])
 
     chat_rate_limiter.check(str(user_id))
 

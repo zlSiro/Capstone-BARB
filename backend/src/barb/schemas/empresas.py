@@ -9,8 +9,8 @@ Plan = Literal["trial", "starter", "professional", "enterprise"]
 Estado = Literal["active", "suspended", "cancelled", "demo"]
 
 
-class AdminInicial(BaseModel):
-    """Primer administrador de la empresa (se crea junto con ella, opcional)."""
+class GerenteInicial(BaseModel):
+    """Primer usuario de la empresa, con perfil gerente (se crea junto con ella, opcional)."""
 
     nombre: str = Field(min_length=2, max_length=100)
     email: str = Field(min_length=5, max_length=100)
@@ -32,7 +32,7 @@ class EmpresaCreateRequest(BaseModel):
     licencia_inicio: date | None = None
     licencia_fin: date | None = None
     notas: str | None = None
-    admin: AdminInicial | None = None
+    gerente: GerenteInicial | None = None
 
 
 class EmpresaUpdateRequest(BaseModel):

@@ -186,13 +186,11 @@ async def test_las_ordenes_no_cruzan_empresas(client):
     assert cuerpo["nodo"]["tipo"] == "Planta"
 
 
-async def test_super_usuario_ve_nodos_de_todas_las_empresas(client):
-    """El super_usuario (empresa NULL) no está acotado; con `empresa_id` sí."""
+async def test_super_usuario_no_accede_al_detalle_de_nodos(client):
+    """El super_usuario (empresa NULL) no tiene acceso a la topología de ninguna empresa."""
     h = await _login(client, SUPER)
-    assert (await _nodo(client, h, MAQUINA_CON_OTS)).status_code == 200  # empresa 1
-    assert (await _nodo(client, h, PLANTA_E2)).status_code == 200       # empresa 2
-    # Acotado a la empresa 1, la planta de la empresa 2 desaparece.
-    assert (await _nodo(client, h, PLANTA_E2, "?empresa_id=1")).status_code == 404
+    assert (await _nodo(client, h, MAQUINA_CON_OTS)).status_code == 403
+    assert (await _nodo(client, h, PLANTA_E2, "?empresa_id=1")).status_code == 403
 
 
 # =============================================================================

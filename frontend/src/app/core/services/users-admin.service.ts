@@ -1,6 +1,6 @@
 import { Service, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { UserCreateRequest, UserUpdateRequest, UsuarioPerfil } from '../models';
+import { UserCreateRequest, UserUpdateRequest, UsuarioCreado, UsuarioPerfil } from '../models';
 import { environment } from '../../../environments/environment';
 
 /** Mantenedor de perfiles de usuario (admin de empresa y super_usuario). */
@@ -14,14 +14,10 @@ export class UsersAdminService {
   }
 
   create(payload: UserCreateRequest) {
-    return this.http.post<UsuarioPerfil>(this.url, payload);
+    return this.http.post<UsuarioCreado>(this.url, payload);
   }
 
   update(id: number, payload: UserUpdateRequest) {
     return this.http.put<UsuarioPerfil>(`${this.url}/${id}`, payload);
-  }
-
-  delete(id: number) {
-    return this.http.delete<void>(`${this.url}/${id}`);
   }
 }

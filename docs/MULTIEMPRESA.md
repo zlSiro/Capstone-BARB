@@ -21,20 +21,23 @@ Datos ficticios: `backend/seeds/seed_multiempresa.sql` (los aplica `scripts/seed
 
 ## 2. Roles y permisos
 
-Nuevo rol **`super_usuario`** (acceso total, sin empresa). Cambios en `core/permissions.py` y su espejo `frontend/src/app/core/permissions/permissions.ts`:
+Nuevo rol **`super_usuario`**: contraparte comercial de BARB frente a la empresa que contrata el software. No pertenece a ninguna empresa
+y **solo** administra empresas (ver, crear, editar, suspender y habilitar) y crea los usuarios **gerente** de cada una. No tiene acceso a
+dashboard, órdenes de trabajo, topología, DocChat ni documentos (matriz y endpoints devuelven 403). Cambios en `core/permissions.py` y su espejo `frontend/src/app/core/permissions/permissions.ts`:
 
 | Clave | Quién | Uso |
 |---|---|---|
 | ruta `empresas` / acción `gestionar_empresas` | solo `super_usuario` | Mantenedor de empresas |
-| ruta `usuarios`, acciones `ver_usuarios` / `gestionar_usuarios` | `admin` (solo su empresa) y `super_usuario` | Mantenedor de perfiles |
-| ruta `documentos` | `engineer`, `gerente`, `admin`, `super_usuario` (operador/técnico/supervisor: solo ver) | Documentación de la empresa |
-| acciones `subir_documentos`, `eliminar_documentos` | `engineer`, `gerente`, `admin`, `super_usuario` | Subir / activar-excluir / eliminar |
+| ruta `usuarios`, acciones `ver_usuarios` / `gestionar_usuarios` | `gerente` y `admin` (solo su empresa); `super_usuario` solo sobre gerentes | Mantenedor de perfiles |
+| ruta `documentos` | `engineer`, `gerente`, `admin` (operador/técnico/supervisor: solo ver) | Documentación de la empresa |
+| acciones `subir_documentos`, `eliminar_documentos` | `engineer`, `gerente`, `admin` | Subir / activar-excluir / eliminar |
 
 ## 3. Aislamiento por empresa (cómo se garantiza)
 
 * `get_sesion_actual` ahora resuelve `empresa_id` del usuario en **cada request** (y bloquea empresas `suspended`/`cancelled`).
 * `resolver_empresa(sesion, empresa_id_solicitada)`: un usuario de empresa **siempre** recibe la suya (cualquier `?empresa_id=` se ignora);
   el `super_usuario` recibe la solicitada o `None` (= todas).
+* `require_auth` (OTs, catálogos) y el canal SSE de OTs rechazan al `super_usuario` con 403.
 * Filtrados por empresa: OTs (listado/detalle/estado/borrado/creación), catálogos (máquinas, plantas, disciplinas, técnicos),
   stats/dashboard, topología, usuarios, documentos y chat.
 * Al crear una OT, la máquina y el técnico deben pertenecer a la misma empresa.
@@ -51,7 +54,7 @@ Nuevo rol **`super_usuario`** (acceso total, sin empresa). Cambios en `core/perm
 3. Si los hay, se inyectan en el prompt con reglas explícitas: responder solo con ese contenido, no inventar, citar el documento e
    ignorar instrucciones incrustadas en los documentos.
 
-El `super_usuario` (sin empresa) debe indicar `empresa_id` en el body; para el resto se ignora.
+El `super_usuario` no tiene acceso a DocChat (403); el `empresa_id` del body se ignora y siempre se usa la empresa del usuario.
 
 Limitaciones conocidas: la recuperación es léxica (full-text `spanish`), no semántica con embeddings; los PDF escaneados sin texto
 se rechazan al subir (422); los límites de rate/tokens siguen siendo en memoria.
@@ -60,19 +63,18 @@ se rechazan al subir (422); los límites de rate/tokens siguen siendo en memoria
 
 | Método y ruta | Acceso | Descripción |
 |---|---|---|
-| `GET/POST /api/empresas`, `GET/PUT/DELETE /api/empresas/{id}` | super_usuario | CRUD. `POST` admite `admin` inicial (misma transacción). `DELETE` falla con 409 si hay datos asociados (usar `estado='cancelled'`). |
-| `GET/POST /api/usuarios`, `PUT/DELETE /api/usuarios/{id}` | admin / super | Alcance por empresa, límite `max_usuarios`, email duplicado → 409, no se puede eliminar/desactivar a sí mismo, un admin no puede crear `super_usuario`. |
+| `GET/POST /api/empresas`, `GET/PUT/DELETE /api/empresas/{id}` | super_usuario | CRUD. `POST` admite un `gerente` inicial (misma transacción). `DELETE` falla con 409 si hay datos asociados (usar `estado='cancelled'`). |
+| `GET/POST /api/usuarios`, `PUT/DELETE /api/usuarios/{id}` | gerente / admin / super | Alcance por empresa, límite `max_usuarios`, email duplicado → 409, no se puede eliminar/desactivar a sí mismo, nadie crea `super_usuario` por API. El `super_usuario` solo crea/ve/edita/elimina usuarios con rol `gerente` (otro rol → 403; debe indicar `empresa_id`). |
 | `GET/POST /api/documents` (alias `/api/documentos`), `PATCH/DELETE /api/documents/{id}` | ver: roles con ruta `documentos`; escribir: `subir_/eliminar_documentos` | Subida multipart (pdf, docx, txt, md, csv, json, log; máx. 15 MB) con extracción e indexación. |
 | `POST /api/auth/login` | — | La respuesta incluye `empresa_id` y `empresa_nombre`. |
 | Listados existentes | — | Aceptan `?empresa_id=` solo para el `super_usuario`. |
 
 ## 6. Frontend
 
-* `/empresas` (mantenedor, solo super): crear con admin inicial, editar, suspender/reactivar, eliminar, saltar a usuarios/documentos de la empresa.
-* `/usuarios`: alta/edición/activar/eliminar de perfiles (admin de empresa y super).
-* `/documentos`: subir, excluir/incluir en la IA, eliminar.
-* Cabecera: el `super_usuario` elige la empresa activa (o "Todas"); `TenantContextService` + interceptor agregan `?empresa_id=` a los GET y el chat lo envía en el body. Al cambiar la empresa se recarga la página.
-* Menú lateral y página inicial dependen del rol (super → `/empresas`).
+* `/empresas` (mantenedor, solo super): crear con gerente inicial, editar, suspender/reactivar, eliminar, atajo a los gerentes de la empresa.
+* `/usuarios`: alta/edición/activar/eliminar de perfiles (gerente y admin de empresa). Para el super solo lista y crea gerentes.
+* `/documentos`: subir, excluir/incluir en la IA, eliminar (no disponible para el super).
+* Menú lateral y página inicial dependen del rol (super → `/empresas`, único ítem junto a `/usuarios`). La cabecera ya no tiene selector de empresa.
 
 ## 7. Datos ficticios para probar
 

@@ -1,11 +1,12 @@
 import { Component, inject, input, linkedSignal, output, signal } from '@angular/core';
 import { FormField, email, form, min, required, validate } from '@angular/forms/signals';
 
-import { Empresa, EmpresaPayload, EstadoEmpresa, PlanEmpresa } from '../../core/models';
+import { Empresa, EmpresaCreada, EmpresaPayload, EstadoEmpresa, PlanEmpresa } from '../../core/models';
 import { EmpresasService } from '../../core/services/empresas.service';
 import { ToastService } from '../../core/services/toast.service';
 import { apiErrorMessage } from '../../core/utils/http-error';
 import { ModalComponent } from '../../shared/components/ui/modal/modal.component';
+import { BienvenidaUsuario, UsuarioBienvenidaModalComponent } from '../usuarios/usuario-bienvenida-modal.component';
 
 interface EmpresaFormModel {
   nombre: string;
@@ -22,7 +23,7 @@ interface EmpresaFormModel {
   licencia_inicio: string;
   licencia_fin: string;
   notas: string;
-  // Solo al crear: primer administrador de la empresa
+  // Solo al crear: primer usuario (gerente) de la empresa
   crearAdmin: boolean;
   adminNombre: string;
   adminEmail: string;
@@ -69,8 +70,11 @@ function toModel(e: Empresa | null): EmpresaFormModel {
 /** Alta y edición de una empresa (con administrador inicial opcional al crear). */
 @Component({
   selector: 'app-empresa-form-modal',
-  imports: [FormField, ModalComponent],
+  imports: [FormField, ModalComponent, UsuarioBienvenidaModalComponent],
   template: `
+    @if (bienvenida(); as b) {
+      <app-usuario-bienvenida-modal [datos]="b" (closed)="finalizar()" />
+    } @else {
     <app-modal
       [title]="isEdit() ? 'Editar empresa' : 'Nueva empresa'"
       [subtitle]="isEdit() ? 'Actualiza los datos y la licencia de la empresa.' : 'Registra una empresa cliente en la solución.'"
@@ -170,10 +174,10 @@ function toModel(e: Empresa | null): EmpresaFormModel {
 
         @if (!isEdit()) {
           <fieldset class="md:col-span-2 rounded-lg border border-slate-700 p-4">
-            <legend class="px-2 text-xs font-semibold uppercase tracking-wide text-slate-300">Administrador inicial</legend>
+            <legend class="px-2 text-xs font-semibold uppercase tracking-wide text-slate-300">Gerente de la empresa</legend>
             <label class="mb-3 flex items-center gap-2 text-sm text-slate-200">
               <input type="checkbox" [formField]="f.crearAdmin" class="h-4 w-4" />
-              Crear un administrador para la empresa
+              Crear el usuario gerente de la empresa (administra a los demás usuarios)
             </label>
             @if (model().crearAdmin) {
               <div class="grid gap-3 md:grid-cols-2">
@@ -214,6 +218,7 @@ function toModel(e: Empresa | null): EmpresaFormModel {
         </div>
       </form>
     </app-modal>
+    }
   `,
 })
 export class EmpresaFormModalComponent {
@@ -228,6 +233,14 @@ export class EmpresaFormModalComponent {
   protected readonly planes = PLANES;
   protected readonly estados = ESTADOS;
   protected readonly submitting = signal(false);
+  /** Aviso de bienvenida del gerente creado junto con la empresa (incluye su contraseña). */
+  protected readonly bienvenida = signal<BienvenidaUsuario | null>(null);
+  private creada: Empresa | null = null;
+
+  /** Cierra el aviso de bienvenida y devuelve el control al listado. */
+  protected finalizar(): void {
+    if (this.creada) this.saved.emit(this.creada);
+  }
   protected readonly isEdit = () => this.empresa() !== null;
 
   protected readonly model = linkedSignal(() => toModel(this.empresa()));
@@ -244,9 +257,9 @@ export class EmpresaFormModalComponent {
         ? { kind: 'range', message: 'La licencia no puede terminar antes de empezar.' }
         : undefined;
     });
-    // Admin inicial: solo se valida si se eligió crearlo
-    required(p.adminNombre, { message: 'Ingresa el nombre del administrador.', when: ({ valueOf }) => valueOf(p.crearAdmin) });
-    required(p.adminEmail, { message: 'Ingresa el email del administrador.', when: ({ valueOf }) => valueOf(p.crearAdmin) });
+    // Gerente inicial: solo se valida si se eligió crearlo
+    required(p.adminNombre, { message: 'Ingresa el nombre del gerente.', when: ({ valueOf }) => valueOf(p.crearAdmin) });
+    required(p.adminEmail, { message: 'Ingresa el email del gerente.', when: ({ valueOf }) => valueOf(p.crearAdmin) });
     email(p.adminEmail, { message: 'Email inválido.' });
     validate(p.adminPassword, ({ value, valueOf }) =>
       valueOf(p.crearAdmin) && value().length < 6
@@ -283,15 +296,28 @@ export class EmpresaFormModalComponent {
       ? this.empresas.update(current.empresa_id, payload)
       : this.empresas.create({
           ...payload,
-          admin: m.crearAdmin
+          gerente: m.crearAdmin
             ? { nombre: m.adminNombre.trim(), email: m.adminEmail.trim(), password: m.adminPassword }
             : null,
         });
 
     this.submitting.set(true);
     request$.subscribe({
-      next: (saved) => {
+      next: (saved: EmpresaCreada) => {
         this.toast.success(current ? 'Empresa actualizada.' : 'Empresa creada.');
+        // Si se creó un gerente junto con la empresa, se muestra su aviso de bienvenida antes de cerrar.
+        if (!current && saved.gerente && saved.creado_por) {
+          this.creada = saved;
+          this.bienvenida.set({
+            nombre: saved.gerente.nombre,
+            rol: 'Gerente',
+            fecha: saved.gerente.created_at,
+            password: m.adminPassword,
+            creadorNombre: saved.creado_por.nombre,
+            creadorEmail: saved.creado_por.email,
+          });
+          return;
+        }
         this.saved.emit(saved);
       },
       error: (err) => {
