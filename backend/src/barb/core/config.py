@@ -70,6 +70,28 @@ class Settings(BaseSettings):
     llm_max_tokens: int = 1024
     chat_memory_window: int = 10
 
+    # --- Multimodal (HU-05): análisis de imágenes en el chat ---
+    # Diseño: docs/MULTIMODAL_ARCHITECTURE.md (D1/D5). Modelo text+imagen de NVIDIA
+    # NIM, separado del chat textual (nemotron es text-only). Vacío = endpoint
+    # /api/chat/multimedia responde 503.
+    multimodal_model: str = "meta/muse-glimmer-30b"
+    # Key dedicada al modelo multimodal. Vacía = usa NVIDIA_API_KEY: la misma key
+    # de la cuenta sirve para chat + embeddings + multimodal (validado por el equipo).
+    nvidia_multimodal_api_key: str = ""
+    # Timeout por request (segundos): el análisis de imágenes es más lento que el
+    # chat textual (ping real: 4-20 s en el free tier).
+    multimodal_timeout: int = 120
+    # Tamaño máximo de imagen decodificada (el base64 infla ~33% en tránsito).
+    multimodal_max_image_mb: int = 5
+
+    @property
+    def multimodal_api_key(self) -> str:
+        return self.nvidia_multimodal_api_key or self.nvidia_api_key
+
+    @property
+    def multimodal_configurado(self) -> bool:
+        return bool(self.multimodal_model and self.multimodal_api_key)
+
     # --- Resiliencia LLM (HU-03) ---
     # Lista separada por coma de proveedores de respaldo (se usan si el primario falla).
     # Ejemplos: "openrouter", "openai", "groq"
