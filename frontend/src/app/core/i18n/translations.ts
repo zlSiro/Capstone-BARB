@@ -168,7 +168,19 @@ export const translations = {
       emptyState: 'Inicia la conversación escribiendo tu primera pregunta.',
       inputPlaceholder: 'Escribe tu pregunta... (Enter para enviar, Shift+Enter para salto de línea)',
       unknownError: 'Error desconocido', connectionError: 'No se pudo conectar con el asistente.',
-      deleteError: 'No se pudo eliminar la conversación.'
+      deleteError: 'No se pudo eliminar la conversación.',
+      // --- Multimodal (HU-05) ---
+      attachImage: 'Adjuntar imagen', removeImage: 'Quitar imagen',
+      imageReady: 'Imagen lista para analizar',
+      imageHint: 'Puedes adjuntar una imagen (JPEG/PNG/WebP, máx. 5 MB) con 📎 y preguntar sobre ella.',
+      imageTooLarge: 'La imagen supera el máximo de {mb} MB.',
+      imageInvalidFormat: 'Formato no permitido: solo JPEG, PNG o WebP.',
+      imageReadError: 'No se pudo leer la imagen. Intenta de nuevo.',
+      errImageOrQuestionRequired: 'Debes adjuntar una imagen y una pregunta.',
+      errImageTooLarge: 'La imagen es demasiado grande (máx. 5 MB).',
+      errImageInvalidFormat: 'El formato de la imagen no está permitido (solo JPEG, PNG o WebP).',
+      errRateLimit: 'Demasiadas peticiones o límite diario alcanzado. Espera un momento.',
+      errMultimodalUnavailable: 'El análisis de imágenes no está disponible por ahora.'
     }
   },
 
@@ -336,7 +348,19 @@ export const translations = {
       emptyState: 'Start the conversation by typing your first question.',
       inputPlaceholder: 'Type your question... (Enter to send, Shift+Enter for a new line)',
       unknownError: 'Unknown error', connectionError: 'Could not connect to the assistant.',
-      deleteError: 'Could not delete the conversation.'
+      deleteError: 'Could not delete the conversation.',
+      // --- Multimodal (HU-05) ---
+      attachImage: 'Attach image', removeImage: 'Remove image',
+      imageReady: 'Image ready to analyze',
+      imageHint: 'Attach an image (JPEG/PNG/WebP, max 5 MB) with 📎 and ask about it.',
+      imageTooLarge: 'The image exceeds the {mb} MB limit.',
+      imageInvalidFormat: 'Unsupported format: only JPEG, PNG or WebP.',
+      imageReadError: 'Could not read the image. Please try again.',
+      errImageOrQuestionRequired: 'You must attach an image and a question.',
+      errImageTooLarge: 'The image is too large (max 5 MB).',
+      errImageInvalidFormat: 'The image format is not allowed (JPEG, PNG or WebP only).',
+      errRateLimit: 'Too many requests or daily limit reached. Please wait a moment.',
+      errMultimodalUnavailable: 'Image analysis is currently unavailable.'
     }
   }
 };
