@@ -6,7 +6,9 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import {
   ChatRequest,
+  ChatStreamEvent,
   DeleteSessionResponse,
+  MultimediaRequest,
   SessionDetailResponse,
   SessionListResponse,
 } from '../models/chat.model';
@@ -25,11 +27,46 @@ export class ChatService {
   private readonly baseUrl = `${environment.apiUrl}/chat`;
 
   // ---------------------------------------------------------------------------
-  // Chat en streaming (HU-03)
+  // Chat en streaming (HU-03) y multimodal (HU-05, CGBIDA-276)
   // ---------------------------------------------------------------------------
 
-  streamChat(payload: ChatRequest): Observable<{ type: string; data: any }> {
-    return new Observable((subscriber) => {
+  streamChat(payload: ChatRequest): Observable<ChatStreamEvent> {
+    // Mismos mensajes que históricamente mostraba el stream textual.
+    return this.postSse('/stream', payload, {
+      429: 'Demasiadas peticiones. Espera un momento.',
+      422: 'Mensaje inválido (vacío o demasiado largo).',
+    });
+  }
+
+  /**
+   * Turno multimodal: imagen (data URL) + pregunta, atendido por el modelo
+   * multimodal del backend (mismos eventos SSE que el stream textual).
+   * Contrato: docs/contrato_api_chat_multimedia.md.
+   */
+  streamMultimedia(payload: MultimediaRequest): Observable<ChatStreamEvent> {
+    const t = this.i18n.t('docChat');
+    return this.postSse('/multimedia', payload, {
+      400: t.errImageOrQuestionRequired,
+      413: t.errImageTooLarge,
+      422: t.errImageInvalidFormat,
+      429: t.errRateLimit,
+      503: t.errMultimodalUnavailable,
+    });
+  }
+
+  /**
+   * POST + lectura del stream SSE compartido por el chat textual y el
+   * multimodal. El stream usa fetch nativo (no pasa por authInterceptor):
+   * el 401 se maneja aquí → logout + redirect a /login.
+   *
+   * @param statusErrors Mensajes por código HTTP (además del 401 genérico).
+   */
+  private postSse(
+    path: string,
+    payload: object,
+    statusErrors: Record<number, string>,
+  ): Observable<ChatStreamEvent> {
+    return new Observable<ChatStreamEvent>((subscriber) => {
       if (this.tenant.isSuper() && this.tenant.empresaId() === null) {
         subscriber.error(new Error('Selecciona una empresa en la cabecera para consultar su documentación.'));
         return;
@@ -42,7 +79,7 @@ export class ChatService {
       };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      fetch(`${this.baseUrl}/stream`, {
+      fetch(`${this.baseUrl}${path}`, {
         method: 'POST',
         headers,
         // super_usuario: indica qué empresa consulta (el backend lo ignora para usuarios de empresa).
@@ -53,19 +90,14 @@ export class ChatService {
       })
         .then(async (response) => {
           if (response.status === 401) {
-            // El stream usa fetch nativo (no pasa por authInterceptor):
-            // mismo manejo de sesión expirada → logout + redirect a /login.
             this.toast.show(this.i18n.t('common').sessionExpired, 'error');
             this.auth.logout();
             subscriber.error(new Error('Sesión expirada. Vuelve a iniciar sesión.'));
             return;
           }
-          if (response.status === 429) {
-            subscriber.error(new Error('Demasiadas peticiones. Espera un momento.'));
-            return;
-          }
-          if (response.status === 422) {
-            subscriber.error(new Error('Mensaje inválido (vacío o demasiado largo).'));
+          const statusMessage = statusErrors[response.status];
+          if (statusMessage) {
+            subscriber.error(new Error(statusMessage));
             return;
           }
           if (!response.ok) {
@@ -110,7 +142,7 @@ export class ChatService {
     });
   }
 
-  private parseSseEvent(raw: string): { type: string; data: any } | null {
+  private parseSseEvent(raw: string): ChatStreamEvent | null {
     const lines = raw.split('\n');
     let eventType = 'message';
     let dataLine = '';
@@ -126,7 +158,7 @@ export class ChatService {
     if (!dataLine) return null;
 
     try {
-      return { type: eventType, data: JSON.parse(dataLine) };
+      return { type: eventType, data: JSON.parse(dataLine) } as ChatStreamEvent;
     } catch (e) {
       console.warn('[ChatService] No se pudo parsear el evento SSE:', raw, e);
       return null;
