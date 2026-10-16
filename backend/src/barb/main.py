@@ -45,6 +45,15 @@ async def lifespan(app: FastAPI):
             settings.llm_model,
         )
 
+    # --- Estado del análisis multimodal (HU-05) ---
+    if settings.multimodal_configurado:
+        logger.info("Chat multimodal (HU-05) activo: %s", settings.multimodal_model)
+    else:
+        logger.warning(
+            "Multimodal no configurado: /api/chat/multimedia responderá 503 "
+            "(requiere MULTIMODAL_MODEL y NVIDIA_MULTIMODAL_API_KEY o NVIDIA_API_KEY)."
+        )
+
     # --- Limpieza de sesiones expiradas al arrancar ---
     try:
         eliminadas_row = await _cleanup_expired_sessions()

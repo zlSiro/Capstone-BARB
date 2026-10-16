@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables import Runnable, RunnableLambda
@@ -161,7 +161,7 @@ RAG_RULES = (
 
 
 def create_conversation_chain() -> Runnable:
-   
+
     llm = _build_llm_with_resilience()
 
     prompt = ChatPromptTemplate.from_messages([
@@ -172,3 +172,83 @@ def create_conversation_chain() -> Runnable:
 
     chain = RunnableLambda(_prepare_prompt_input) | prompt | llm | StrOutputParser()
     return chain
+
+
+# ---------------------------------------------------------------------------
+# Cadena multimodal (HU-05 / CGBIDA-277) — docs/MULTIMODAL_ARCHITECTURE.md (D5)
+#
+# El chat textual (nemotron) es text-only: para analizar imágenes se usa un
+# SEGUNDO modelo (MULTIMODAL_MODEL, default meta/muse-glimmer-30b) sobre el
+# mismo endpoint NIM (API OpenAI-compatible). Sin RAG en v1: el turno
+# multimodal consulta solo imagen+texto; integrarlo con la documentación de
+# la empresa es mejora futura.
+# ---------------------------------------------------------------------------
+
+# Presupuesto visual máximo por imagen (ViT-G/14, ver model card): se registra
+# contra el límite diario de tokens del usuario (D6).
+MULTIMODAL_IMAGE_TOKENS = 4096
+
+# System prompt multimodal: el mismo BARB + instrucción de análisis visual.
+# "Reasoning strength: low" es el mecanismo oficial del modelo (model card) para
+# respuestas directas: sin él, el razonamiento interno consume el max_tokens y
+# `content` llega vacío (verificado empíricamente contra NIM, 15-10-2026).
+MULTIMODAL_SYSTEM_PROMPT = (
+    settings.barb_system_prompt
+    + "\n\n"
+    + "El usuario adjuntó una imagen de su planta (foto de máquina, panel, pantalla o componente). "
+    "Analízala visualmente en el contexto de su pregunta: describe lo observado, señala posibles "
+    "causas del problema y orienta el diagnóstico o el siguiente paso de mantenimiento. "
+    "Si la imagen no es suficiente para diagnosticar, dilo y pide una foto más clara o específica. "
+    "No inventes lecturas, códigos o valores que no se distingan en la imagen.\n"
+    "Reasoning strength: low"
+)
+
+
+def _build_multimodal_llm():
+    """Cliente del modelo multimodal: ChatOpenAI + base_url de NIM (D5).
+
+    Sin reintentos ni fallbacks entre proveedores: el modelo solo existe en NIM y
+    la latencia del free tier (hasta ~20 s por request) haría un reintento peor
+    que el error. El timeout MULTIMODAL_TIMEOUT es la protección.
+    """
+    from langchain_openai import ChatOpenAI
+
+    if not settings.multimodal_api_key:
+        raise RuntimeError(
+            "Multimodal no configurado: se requiere NVIDIA_MULTIMODAL_API_KEY o NVIDIA_API_KEY"
+        )
+
+    return ChatOpenAI(
+        model=settings.multimodal_model,
+        temperature=settings.llm_temperature,
+        max_tokens=settings.llm_max_tokens,
+        streaming=True,
+        api_key=settings.multimodal_api_key,
+        base_url=settings.nvidia_base_url,
+        request_timeout=settings.multimodal_timeout,
+    )
+
+
+def _prepare_multimodal_input(payload: dict[str, Any]) -> list[BaseMessage]:
+    """Construye los mensajes del turno multimodal.
+
+    `content` del turno humano va como lista de bloques estándar OpenAI:
+    [{type: "text", ...}, {type: "image_url", image_url: {url: "data:..."}}]
+    — el formato que muse-glimmer espera (prototipo oficial de su model card).
+    La imagen NO se persiste: vive solo en este request (D2).
+    """
+    history = _dicts_to_messages(payload.get("history", []))
+    content = [
+        {"type": "text", "text": payload.get("input", "")},
+        {"type": "image_url", "image_url": {"url": payload.get("image", "")}},
+    ]
+    return [
+        SystemMessage(content=MULTIMODAL_SYSTEM_PROMPT),
+        *history,
+        HumanMessage(content=content),
+    ]
+
+
+def create_multimodal_chain() -> Runnable:
+    llm = _build_multimodal_llm()
+    return RunnableLambda(_prepare_multimodal_input) | llm | StrOutputParser()
