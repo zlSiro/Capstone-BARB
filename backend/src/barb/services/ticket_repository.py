@@ -138,17 +138,21 @@ async def update_estado(ticket_id: int, empresa_id: int, estado: str) -> dict | 
     """
     Transiciona el estado (la validez la valida el router con ticket_states)
     y registra `resolved_at` solo al llegar a 'resolved'. None si no existe.
+
+    Nota: el estado se pasa una sola vez y la condición usa un booleano propio —
+    reutilizar %(estado)s en SET (varchar) y en una comparación con literal
+    dispara `AmbiguousParameter` en Postgres (text vs character varying).
     """
     updated = await fetch_one(
         """
         UPDATE ticket
         SET estado = %(estado)s,
             updated_at = NOW(),
-            resolved_at = CASE WHEN %(estado)s = 'resolved' THEN NOW() ELSE resolved_at END
+            resolved_at = CASE WHEN %(es_resuelto)s THEN NOW() ELSE resolved_at END
         WHERE ticket_id = %(tid)s AND empresa_id = %(eid)s
         RETURNING ticket_id
         """,
-        {"estado": estado, "tid": ticket_id, "eid": empresa_id},
+        {"estado": estado, "es_resuelto": estado == "resolved", "tid": ticket_id, "eid": empresa_id},
     )
     if not updated:
         return None
