@@ -276,7 +276,9 @@ tiene un ticket asociado responde:
 
 ```
 409 {"detail": "Esta conversación tiene un ticket asociado y no se puede eliminar
-mientras exista. Cancela o cierra el ticket primero."}
+mientras el ticket exista."}
 ```
 
-(FK `ON DELETE RESTRICT` en la migración 0007; decisión D4 de la arquitectura.)
+(FK `ON DELETE RESTRICT` en la migración 0007; decisión D4 de la arquitectura.
+Cerrar o cancelar el ticket **no** libera la sesión: la fila del ticket persiste
+como registro de trazabilidad y v1 no expone `DELETE /api/tickets`.)

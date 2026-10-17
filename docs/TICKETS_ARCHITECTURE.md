@@ -91,8 +91,9 @@ open ──► in_progress ──► resolved (final)
   verdad).
 - El usuario puede borrar sus conversaciones (`DELETE /api/chat/sessions/{id}`),
   pero **no una sesión con ticket**: la FK `ON DELETE RESTRICT` lo impide en BD y
-  el endpoint traduce la violación a **409** con mensaje claro ("cierra o cancela
-  el ticket primero"). Trazabilidad del ticket prima sobre la limpieza del chat.
+  el endpoint traduce la violación a **409** con mensaje claro. Trazabilidad del
+  ticket prima sobre la limpieza del chat. Nótese que cerrar o cancelar el ticket
+  NO libera la sesión (la fila persiste; v1 no expone `DELETE /api/tickets`).
 - Si se elimina el usuario, el ticket sobrevive (`usuario_id ON DELETE SET NULL`,
   mismo patrón que `chat_session`) y pasa a ser visible solo para `history`.
 
