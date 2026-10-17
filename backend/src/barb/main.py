@@ -20,6 +20,7 @@ from barb.routers import (
     preferences,
     realtime,
     stats,
+    tickets,
     topology,
     users,
     work_orders,
@@ -98,3 +99,6 @@ app.include_router(work_orders.router)
 app.include_router(preferences.router)
 app.include_router(chat.router)
 app.include_router(notifications.router)
+# Tickets conversacionales (HU-06): nacen de las sesiones del chat; sin
+# conflicto de rutas (prefijo /api/tickets).
+app.include_router(tickets.router)
