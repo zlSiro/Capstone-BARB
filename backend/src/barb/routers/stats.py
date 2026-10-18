@@ -38,6 +38,123 @@ def _mtbf_visible(days: int | None) -> bool:
     return days is None or days >= MTBF_VENTANA_DIAS
 
 
+# --- Índice de Salud Operacional (CGBIDA-438) ---------------------------------
+# Umbrales industriales acordados con el equipo. Van como constantes de módulo y no como
+# literales dentro de la consulta, por la convención del proyecto (docs/DASHBOARD_KPIS.md,
+# anexo A.4): así se pueden ajustar sin tocar la lógica.
+SALUD_SLA_VERDE = 95.0     # % de cumplimiento
+SALUD_SLA_ROJO = 85.0
+SALUD_MTBF_VERDE_H = 730.0  # horas (≈ 1 falla por mes)
+SALUD_MTBF_ROJO_H = 365.0
+SALUD_BACKLOG_VERDE_SEM = 4.0   # semanas de trabajo acumulado
+SALUD_BACKLOG_ROJO_SEM = 8.0
+
+VERDE, AMARILLO, ROJO, INSUFICIENTE = "verde", "amarillo", "rojo", "insuficiente"
+
+
+def _semanas_backlog(abiertas: int, completadas: int, dias_periodo: int) -> float | None:
+    """Semanas que tardaría en vaciarse el backlog al ritmo de cierre del período.
+
+    Fórmula aprobada: OTs abiertas divididas por el ritmo de cierre semanal. Si no hubo
+    ningún cierre en el período el ritmo es cero y no se puede estimar: devuelve None en
+    vez de infinito, para que la interfaz muestre "sin datos" y no un número inventado.
+    """
+    if dias_periodo <= 0:
+        return None
+    ritmo_semanal = completadas / (dias_periodo / 7.0)
+    if ritmo_semanal <= 0:
+        return None
+    return round(abiertas / ritmo_semanal, 1)
+
+
+def _estado_por_umbral(valor: float, verde: float, rojo: float, mayor_es_mejor: bool) -> str:
+    """Clasifica un valor en verde/amarillo/rojo según dos umbrales."""
+    if mayor_es_mejor:
+        if valor >= verde:
+            return VERDE
+        return ROJO if valor < rojo else AMARILLO
+    if valor <= verde:
+        return VERDE
+    return ROJO if valor > rojo else AMARILLO
+
+
+def _score_sla(sla: float) -> float:
+    """El SLA ya viene en 0-100: el score es el propio porcentaje, acotado."""
+    return round(max(0.0, min(100.0, sla)), 1)
+
+
+def _score_mtbf(mtbf_horas: float) -> float:
+    """Lineal de 0 a 730 h: 365 h (el umbral rojo) puntúa 50."""
+    return round(max(0.0, min(100.0, mtbf_horas / SALUD_MTBF_VERDE_H * 100.0)), 1)
+
+
+def _score_backlog(semanas: float) -> float:
+    """Lineal e invertido: 4 semanas puntúa 100 y 8 semanas puntúa 0."""
+    rango = SALUD_BACKLOG_ROJO_SEM - SALUD_BACKLOG_VERDE_SEM
+    return round(max(0.0, min(100.0, (SALUD_BACKLOG_ROJO_SEM - semanas) / rango * 100.0)), 1)
+
+
+def _salud_operacional(
+    *, sla: float, mtbf_horas: float | None, abiertas: int, completadas: int, dias_periodo: int
+) -> dict:
+    """Índice de Salud Operacional compuesto por SLA, MTBF y backlog.
+
+    Reglas, en este orden:
+      1. Si falta CUALQUIER componente, el estado es `insuficiente` y el índice es None.
+         Nunca se pinta verde por defecto: un semáforo que no puede medir no debe
+         tranquilizar a nadie.
+      2. Si no, el estado global es el PEOR de los tres. Es la semántica de un tablero de
+         operaciones: una señal crítica hace crítica la planta entera.
+      3. El índice 0-100 es la media simple de los tres scores. No se ponderan porque el
+         peso relativo de cada señal es una decisión de negocio que nadie tomó; con la
+         media, el número es reproducible y se puede explicar.
+    """
+    semanas = _semanas_backlog(abiertas, completadas, dias_periodo)
+
+    componentes = {
+        "sla": {
+            "valor": round(sla, 1),
+            "estado": _estado_por_umbral(sla, SALUD_SLA_VERDE, SALUD_SLA_ROJO, True),
+            "score": _score_sla(sla),
+        },
+        "mtbf": {
+            "valor": mtbf_horas,
+            "estado": (
+                _estado_por_umbral(mtbf_horas, SALUD_MTBF_VERDE_H, SALUD_MTBF_ROJO_H, True)
+                if mtbf_horas is not None
+                else INSUFICIENTE
+            ),
+            "score": _score_mtbf(mtbf_horas) if mtbf_horas is not None else None,
+        },
+        "backlog": {
+            "valor": semanas,
+            "estado": (
+                _estado_por_umbral(
+                    semanas, SALUD_BACKLOG_VERDE_SEM, SALUD_BACKLOG_ROJO_SEM, False
+                )
+                if semanas is not None
+                else INSUFICIENTE
+            ),
+            "score": _score_backlog(semanas) if semanas is not None else None,
+        },
+    }
+
+    scores = [c["score"] for c in componentes.values()]
+    if any(s is None for s in scores):
+        return {"indice": None, "estado": INSUFICIENTE, "componentes": componentes}
+
+    estados = {c["estado"] for c in componentes.values()}
+    if ROJO in estados:
+        estado = ROJO
+    elif AMARILLO in estados:
+        estado = AMARILLO
+    else:
+        estado = VERDE
+
+    indice = round(sum(scores) / len(scores), 1)
+    return {"indice": indice, "estado": estado, "componentes": componentes}
+
+
 # ---------------------------------------------------------------------------
 # Órdenes estancadas (CGBIDA-396, HU-16)
 # ---------------------------------------------------------------------------
@@ -123,7 +240,9 @@ async def get_financial_impact(
             COUNT(*) FILTER (
                 WHERE ot.estado = 'completed' AND ot.tiempo_reparacion_min <= {sla_target}
             ) AS completadas_en_sla,
-            COUNT(*) AS total_ots
+            COUNT(*) AS total_ots,
+            -- Para el semáforo de salud (CGBIDA-438): backlog vivo del período.
+            COUNT(*) FILTER (WHERE ot.estado NOT IN ('completed', 'cancelled')) AS abiertas
         FROM orden_trabajo ot
         WHERE 1=1 {date_filter} {ot_scope}
         """
@@ -343,6 +462,17 @@ async def get_financial_impact(
                     "supuestos_incompletos": incompletos,
                 })
 
+        # --- Índice de Salud Operacional (CGBIDA-438) ---------------------------
+        # Combina SLA, MTBF y backlog. El MTBF entra solo si es visible: con un rango
+        # corto no hay MTBF y el estado debe ser "insuficiente", no verde.
+        salud = _salud_operacional(
+            sla=efficiency,
+            mtbf_horas=mtbf_hours if visible else None,
+            abiertas=int(f["abiertas"]),
+            completadas=total_completadas,
+            dias_periodo=dias_periodo,
+        )
+
         return {
             "financials": {
                 "ahorro_generado": round(ahorro_generado, 2),
@@ -355,6 +485,8 @@ async def get_financial_impact(
                 "mtbf_visible": visible,
             },
             "impacto_anual": impacto,
+            # Semáforo de Salud Operacional (CGBIDA-438). Lo pinta el frontend en la Sub D.
+            "salud_operacional": salud,
             "trend14Days": [
                 {"date": row["date"].isoformat(), "abiertas": int(row["abiertas"]), "cerradas": int(row["cerradas"])}
                 for row in trend_rows

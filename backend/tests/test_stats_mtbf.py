@@ -60,7 +60,7 @@ def _fila_financiera() -> _Fila:
     """Fila del bloque `financials`. Valores neutros: lo que se prueba es el MTBF."""
     return _Fila(
         mttr=100, costo_total_acumulado=1000, downtime_evitado_min=0,
-        total_completadas=4, completadas_en_sla=4, total_ots=10,
+        total_completadas=4, completadas_en_sla=4, total_ots=10, abiertas=6,
     )
 
 

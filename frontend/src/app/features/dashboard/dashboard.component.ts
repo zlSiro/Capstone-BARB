@@ -8,7 +8,7 @@ import { BacklogChartComponent } from './components/backlog-chart/backlog-chart.
 import { MachineRankingComponent } from './components/machine-ranking/machine-ranking.component';
 import { TipoDonutComponent } from './components/tipo-donut/tipo-donut.component';
 import { AlertaEstancadasComponent } from './components/alerta-estancadas/alerta-estancadas.component';
-import { TiempoResolucionComponent } from './components/tiempo-resolucion/tiempo-resolucion.component';
+import { ImpactoEscenariosComponent } from './components/impacto-escenarios/impacto-escenarios.component';
 
 /** Rangos del selector temporal (CGBIDA-397). `'all'` = histórico completo. */
 export type RangoTemporal = 7 | 30 | 90 | 'all';
@@ -29,7 +29,7 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, BacklogChartComponent, MachineRankingComponent, TipoDonutComponent, AlertaEstancadasComponent, TiempoResolucionComponent],
+  imports: [CommonModule, BacklogChartComponent, MachineRankingComponent, TipoDonutComponent, AlertaEstancadasComponent, ImpactoEscenariosComponent],
   template: `
     <!--
       max-w-screen-2xl (1536px) + mx-auto: sin esto el dashboard se estiraba al 100% del
@@ -192,8 +192,9 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
           <!-- Dona por tipo de intervencion (CGBIDA-395). Se auto-oculta sin datos. -->
           <app-tipo-donut class="min-w-0" [datos]="porTipo()" />
 
-          <!-- Tiempo de resolución por máquina (CGBIDA-400), como el legacy. -->
-          <app-tiempo-resolucion class="min-w-0" [maquinas]="equipos()" />
+          <!-- Escenarios de Impacto Anual (CGBIDA-436). Reemplaza al de resolucion,
+               que duplicaba el ranking en su metrica MTTR. -->
+          <app-impacto-escenarios class="min-w-0" [impacto]="impacto()" />
         </div>
       }
     </div>
@@ -261,6 +262,9 @@ export class DashboardComponent implements OnInit {
 
   /** Distribucion por tipo de intervencion, para la dona. */
   protected readonly porTipo = computed(() => this.stats()?.por_tipo ?? []);
+
+  /** Impacto anual, para el grafico de escenarios (CGBIDA-436). */
+  protected readonly impacto = computed(() => this.stats()?.impacto_anual ?? null);
 
   /** Ordenes estancadas para el banner. Un total de 0 lo oculta. */
   protected readonly estancadas = computed(

@@ -155,7 +155,12 @@ export const translations = {
       kpiImpactoTooltip:
         'Proyección a 12 meses comparando dos escenarios. Sin BARB, cada incidente tarda el tiempo de referencia del modelo en resolverse; con BARB, el tiempo real medido. La diferencia, valorizada por minuto, es el ahorro proyectado. Requiere al menos 90 días de historial.',
       kpiUsdNote:
-        'Las cifras se convierten a USD con el tipo de cambio observado del día (mindicador.cl).'
+        'Las cifras se convierten a USD con el tipo de cambio observado del día (mindicador.cl).',
+      // CGBIDA-436: reemplaza al gráfico de tiempo de resolución, que duplicaba el ranking.
+      impactChartTitle: 'Escenarios de Impacto Anual',
+      impactChartSub: 'Costo proyectado a 12 meses: sin BARB frente a con BARB',
+      impactSavingsLabel: 'Ahorro proyectado',
+      impactNoHistory: 'Requiere al menos 90 días de historial para proyectar.'
     },
     dashboard: {
       title: 'Órdenes de Trabajo', totalWorkOrders: 'Total OTs',
@@ -373,7 +378,11 @@ export const translations = {
       kpiImpactoTooltip:
         'A 12-month projection comparing two scenarios. Without BARB, each incident takes the model reference time to resolve; with BARB, the actual measured time. The difference, valued per minute, is the projected savings. Requires at least 90 days of history.',
       kpiUsdNote:
-        'Amounts are converted to USD using the daily observed exchange rate (mindicador.cl).'
+        'Amounts are converted to USD using the daily observed exchange rate (mindicador.cl).',
+      impactChartTitle: 'Annual Impact Scenarios',
+      impactChartSub: 'Projected 12-month cost: without BARB vs with BARB',
+      impactSavingsLabel: 'Projected savings',
+      impactNoHistory: 'Requires at least 90 days of history to project.'
     },
     dashboard: {
       title: 'Work Orders', totalWorkOrders: 'Total WOs',
@@ -455,4 +464,5 @@ export const translations = {
 };
 
 export type TranslationTree = typeof translations['es'];
+
 

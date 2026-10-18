@@ -69,7 +69,7 @@ def _mock_pool(incidentes: int, tiempo_promedio: float | None):
                 return _Fila(total=0, vencidas=0, demoradas=0)
             return _Fila(
                 mttr=100, costo_total_acumulado=1000, downtime_evitado_min=0,
-                total_completadas=4, completadas_en_sla=4, total_ots=10,
+                total_completadas=4, completadas_en_sla=4, total_ots=10, abiertas=6,
             )
 
         async def fetchall(self):

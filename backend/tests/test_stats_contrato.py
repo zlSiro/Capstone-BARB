@@ -62,6 +62,8 @@ async def test_contrato_del_endpoint_tiene_las_claves_exactas(client):
     tipo de intervencion para la dona del dashboard).
     ACTUALIZADO A PROPOSITO en CGBIDA-396: se agrego la clave `estancadas` (banner de
     ordenes vencidas o demoradas).
+    ACTUALIZADO A PROPOSITO en CGBIDA-438: se agrego la clave `salud_operacional` (indice
+    compuesto de SLA, MTBF y backlog para el semaforo).
 
     Esta asercion es un guardarrail: se toca cuando el contrato cambia a proposito, nunca
     para que una prueba pase.
@@ -69,6 +71,7 @@ async def test_contrato_del_endpoint_tiene_las_claves_exactas(client):
     d = await _stats(client)
     assert set(d) == {
         "financials", "trend14Days", "machines", "impacto_anual", "por_tipo", "estancadas",
+        "salud_operacional",
     }, sorted(d)
 
 

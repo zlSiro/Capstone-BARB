@@ -112,6 +112,35 @@ export interface EstancadasData {
   umbral_dias: number;
 }
 
+/** Estados posibles de un componente del semáforo (CGBIDA-438). */
+export type EstadoSalud = 'verde' | 'amarillo' | 'rojo' | 'insuficiente';
+
+/** Un componente del Índice de Salud Operacional. */
+export interface ComponenteSalud {
+  /** Valor medido. `null` cuando no se puede calcular (por ejemplo MTBF sin historial). */
+  valor: number | null;
+  estado: EstadoSalud;
+  /** Puntaje 0-100 con el que entra al índice. `null` si no se pudo medir. */
+  score: number | null;
+}
+
+/**
+ * Índice de Salud Operacional (CGBIDA-438).
+ *
+ * Combina SLA, MTBF y semanas de backlog. Si falta cualquier componente, `indice` es
+ * `null` y el estado es `insuficiente`: el backend no pinta verde lo que no puede medir.
+ */
+export interface SaludOperacionalData {
+  /** 0-100. Es la media de los tres scores. */
+  indice: number | null;
+  estado: EstadoSalud;
+  componentes: {
+    sla: ComponenteSalud;
+    mtbf: ComponenteSalud;
+    backlog: ComponenteSalud;
+  };
+}
+
 /** Respuesta completa del endpoint. */
 export interface FinancialStats {
   financials: Financials;
@@ -122,4 +151,6 @@ export interface FinancialStats {
   por_tipo: PorTipoData[];
   /** Ordenes estancadas, para el banner de alerta. */
   estancadas: EstancadasData;
+  /** Semaforo compuesto de salud operacional. */
+  salud_operacional: SaludOperacionalData;
 }
