@@ -1,6 +1,7 @@
 import { Component, computed, inject, signal, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { StatsService } from '../../core/services/stats.service';
+import { CurrencyService, Moneda } from '../../core/services/currency.service';
 import { FinancialStats } from '../../core/models';
 import { I18nService } from '../../core/i18n/i18n.service';
 import { BacklogChartComponent } from './components/backlog-chart/backlog-chart.component';
@@ -43,23 +44,64 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
           <p class="text-sm text-gray-500 dark:text-gray-400">{{ t().dashboardSubtitle }}</p>
         </div>
 
-        <!-- Selector de rango temporal (CGBIDA-397). Replica el select del legacy. -->
-        <div>
-          <label for="rango-temporal" class="sr-only">{{ tr().rangeLabel }}</label>
-          <select
-            id="rango-temporal"
-            data-testid="selector-rango"
-            (change)="cambiarRango($any($event.target).value)"
-            class="cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs
-                   text-gray-700 outline-none transition-colors focus:border-blue-500
-                   dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+        <!-- Moneda y rango temporal, juntos a la derecha de la cabecera. -->
+        <div class="flex flex-wrap items-center justify-end gap-2">
+          <!--
+            Toggle de moneda (CGBIDA-432). Los datos base estan en CLP; USD solo cambia
+            la presentacion. Se usa aria-pressed y no un select porque son dos estados.
+          -->
+          <div
+            class="flex items-center gap-1 rounded-lg border border-gray-300 p-0.5
+                   dark:border-gray-700"
+            role="group"
+            [attr.aria-label]="t().currencyLabel"
+            data-testid="selector-moneda"
           >
-            @for (r of rangos; track r) {
-              <option [value]="r" [selected]="r === rango()" [attr.data-testid]="'rango-' + r">
-                {{ etiquetaRango(r) }}
-              </option>
+            @for (m of monedas; track m) {
+              <button
+                type="button"
+                [attr.aria-pressed]="currency.moneda() === m"
+                [attr.data-testid]="'moneda-' + m"
+                (click)="cambiarMoneda(m)"
+                [class]="currency.moneda() === m ? claseMonedaActiva : claseMonedaInactiva"
+              >
+                {{ m }}
+              </button>
             }
-          </select>
+          </div>
+
+          <!--
+            Tasa aplicada y su fecha. Es lo que hace auditable la conversion: sin esto el
+            usuario no sabe a que tipo de cambio se convirtieron las cifras.
+          -->
+          @if (currency.sinTasa()) {
+            <p class="text-xs text-amber-600 dark:text-amber-400" data-testid="moneda-sin-tasa">
+              {{ t().currencyNoRate }}
+            </p>
+          } @else if (currency.moneda() === 'USD') {
+            <p class="text-xs text-gray-500 dark:text-gray-400" data-testid="moneda-tasa">
+              {{ t().currencyRate }} {{ tasaTexto() }} CLP/USD
+            </p>
+          }
+
+          <!-- Selector de rango temporal (CGBIDA-397). Replica el select del legacy. -->
+          <div>
+            <label for="rango-temporal" class="sr-only">{{ tr().rangeLabel }}</label>
+            <select
+              id="rango-temporal"
+              data-testid="selector-rango"
+              (change)="cambiarRango($any($event.target).value)"
+              class="cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs
+                     text-gray-700 outline-none transition-colors focus:border-blue-500
+                     dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+            >
+              @for (r of rangos; track r) {
+                <option [value]="r" [selected]="r === rango()" [attr.data-testid]="'rango-' + r">
+                  {{ etiquetaRango(r) }}
+                </option>
+              }
+            </select>
+          </div>
         </div>
       </div>
 
@@ -90,7 +132,39 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
                      dark:border-gray-700 dark:bg-gray-900"
               [attr.data-testid]="'kpi-' + kpi.clave"
             >
-              <p class="text-xs uppercase text-gray-500 dark:text-gray-400">{{ kpi.etiqueta }}</p>
+              <div class="flex items-start justify-between gap-1">
+                <p class="text-xs uppercase text-gray-500 dark:text-gray-400">{{ kpi.etiqueta }}</p>
+                @if (kpi.tooltip) {
+                  <!--
+                    Tooltip de formula (CGBIDA-433). Va en un group para que se abra con
+                    hover Y con foco de teclado: un title nativo no es accesible ni se ve
+                    en una demo.
+                  -->
+                  <div class="group relative shrink-0">
+                    <button
+                      type="button"
+                      class="flex h-4 w-4 items-center justify-center rounded-full border
+                             border-gray-300 text-[9px] font-bold leading-none text-gray-500
+                             transition-colors hover:border-blue-500 hover:text-blue-600
+                             focus:border-blue-500 focus:text-blue-600 focus:outline-none
+                             dark:border-gray-600 dark:text-gray-400"
+                      [attr.aria-describedby]="'kpi-tip-' + kpi.clave"
+                      [attr.aria-label]="kpi.etiqueta"
+                      [attr.data-testid]="'info-kpi-' + kpi.clave"
+                    >?</button>
+                    <div
+                      role="tooltip"
+                      [id]="'kpi-tip-' + kpi.clave"
+                      [attr.data-testid]="'tooltip-kpi-' + kpi.clave"
+                      class="pointer-events-none invisible absolute right-0 top-full z-50 mt-2 w-64
+                             rounded-lg border border-gray-200 bg-white p-3 text-xs font-normal
+                             normal-case leading-relaxed text-gray-600 shadow-lg
+                             group-hover:visible group-focus-within:visible
+                             dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                    >{{ kpi.tooltip }}</div>
+                  </div>
+                }
+              </div>
               <p class="mt-1 text-2xl font-bold" [class]="kpi.color">{{ kpi.valor }}</p>
               <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">{{ kpi.descripcion }}</p>
             </div>
@@ -128,6 +202,12 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
 export class DashboardComponent implements OnInit {
   private statsService = inject(StatsService);
   private i18n = inject(I18nService);
+
+  /** Moneda de presentación (CGBIDA-432). Los datos base son CLP. */
+  protected readonly currency = inject(CurrencyService);
+
+  /** Opciones del toggle de moneda, en orden. */
+  protected readonly monedas: readonly Moneda[] = ['CLP', 'USD'];
 
   stats = signal<FinancialStats | null>(null);
   loading = signal(true);
@@ -203,50 +283,69 @@ export class DashboardComponent implements OnInit {
     const mtbfOk = f.mtbf_visible && f.mtbfHours !== null;
     const impactoOk = imp.impacto_visible && imp.ahorro_proyectado !== null;
 
+    // Moneda: los montos base estan en CLP y el servicio formatea en la activa.
+    // Leer `formatear` dentro del computed lo hace reactivo al toggle.
+    const cifra = (v: number) => this.currency.formatear(v);
+
+    // Supuestos del modelo, tal como los entrega el backend. No se hardcodean: si manana
+    // cambian en config.py, el tooltip sigue diciendo la verdad.
+    const costoMin = imp.supuestos?.costo_por_minuto ?? 2000;
+    const minutosRef = imp.supuestos?.minutos_sin_barb ?? 180;
+    const supuestoClp = `${this.currency.formatearClp(costoMin)} CLP`;
+    const notaUsd =
+      this.currency.moneda() === 'USD' && !this.currency.sinTasa() ? ` ${tx.kpiUsdNote}` : '';
+
     return [
       {
         clave: 'mttr',
         etiqueta: tx.mttrGlobal,
         valor: `${f.mttr}m`,
         descripcion: tx.mttrSub,
-        color: 'text-gray-800 dark:text-gray-100'
+        color: 'text-gray-800 dark:text-gray-100',
+        tooltip: ''
       },
       {
         clave: 'sla',
         etiqueta: tx.efficiency,
         valor: `${f.efficiency}%`,
         descripcion: tx.efficiencySub,
-        color: 'text-green-600 dark:text-green-400'
+        color: 'text-green-600 dark:text-green-400',
+        tooltip: ''
       },
       {
         clave: 'costo',
         etiqueta: tx.directCost,
-        valor: this.moneda(f.costo_total_acumulado),
+        valor: cifra(f.costo_total_acumulado),
         descripcion: tx.directCostSub,
-        color: 'text-gray-800 dark:text-gray-100'
+        color: 'text-gray-800 dark:text-gray-100',
+        tooltip: `${tx.kpiCostoTooltip}${notaUsd}`
       },
       {
         clave: 'mtbf',
         etiqueta: tx.mtbf,
-        // El flag es lo que permite distinguir "el rango no alcanza" de "hay pocas
-        // fallas": ambos casos dan mtbfHours null.
-        valor: mtbfOk ? `${f.mtbfHours} h` : tx.mtbfNeedData,
+        // CGBIDA-434: el backend entrega horas; se muestran dias. Un decimal basta y el
+        // doble redondeo (ya viene redondeado a 1 decimal en horas) es despreciable.
+        valor: mtbfOk
+          ? `${((f.mtbfHours as number) / 24).toFixed(1)} d`
+          : tx.mtbfNeedData,
         descripcion: tx.mtbfSub,
         color: mtbfOk
           ? 'text-gray-800 dark:text-gray-100'
-          : 'text-sm font-medium text-amber-600 dark:text-amber-400'
+          : 'text-sm font-medium text-amber-600 dark:text-amber-400',
+        tooltip: ''
       },
       {
         clave: 'ahorro',
         etiqueta: tx.savingsGenerated,
-        valor: this.moneda(f.ahorro_generado),
+        valor: cifra(f.ahorro_generado),
         descripcion: tx.savingsSub,
-        color: 'text-orange-600 dark:text-orange-400'
+        color: 'text-orange-600 dark:text-orange-400',
+        tooltip: `${tx.kpiAhorroTooltip} Supuesto: ${supuestoClp} por minuto.${notaUsd}`
       },
       {
         clave: 'impacto',
         etiqueta: tx.impactCardTitle,
-        valor: impactoOk ? this.moneda(imp.ahorro_proyectado as number) : tx.impactNoData,
+        valor: impactoOk ? cifra(imp.ahorro_proyectado as number) : tx.impactNoData,
         // `supuestos_incompletos` avisa de que se proyecto con el supuesto del modelo en
         // vez de con un tiempo medido. Se refleja para no presentarlo como dato duro.
         descripcion: imp.supuestos_incompletos
@@ -254,14 +353,35 @@ export class DashboardComponent implements OnInit {
           : tx.impactCardSub,
         color: impactoOk
           ? 'text-blue-700 dark:text-blue-400'
-          : 'text-sm font-medium text-amber-600 dark:text-amber-400'
+          : 'text-sm font-medium text-amber-600 dark:text-amber-400',
+        tooltip:
+          `${tx.kpiImpactoTooltip} Supuestos: ${supuestoClp} por minuto y ` +
+          `${minutosRef} min sin BARB por incidente.${notaUsd}`
       }
     ];
   });
 
   ngOnInit() {
+    // La tasa se pide en el componente, no en el servicio: asi el arranque es explicito
+    // y los tests controlan cuando ocurre la peticion.
+    void this.currency.asegurarTasa();
     this.cargar();
   }
+
+  /** Cambia la moneda de presentación (CGBIDA-432). */
+  protected cambiarMoneda(moneda: Moneda): void {
+    this.currency.setMoneda(moneda);
+  }
+
+  /** Tasa vigente con dos decimales y coma decimal, como se lee en Chile. */
+  protected readonly tasaTexto = computed(() => {
+    const t = this.currency.tasa();
+    if (t === null) return '';
+    return new Intl.NumberFormat('es-CL', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(t);
+  });
 
   /**
    * Cambia el rango temporal y vuelve a pedir las metricas (CGBIDA-397).
@@ -275,6 +395,17 @@ export class DashboardComponent implements OnInit {
     this.rango.set(nuevo);
     this.cargar();
   }
+
+  /**
+   * Clases del boton de moneda.
+   *
+   * Se guardan como cadenas completas y se enlazan con [class] para que el estado activo
+   * no dependa de que Tailwind genere variantes condicionales.
+   */
+  protected readonly claseMonedaActiva =
+    'rounded px-2 py-1 text-xs font-semibold bg-blue-600 text-white';
+  protected readonly claseMonedaInactiva =
+    'rounded px-2 py-1 text-xs font-medium text-gray-600 dark:text-gray-300';
 
   private cargar(): void {
     this.loading.set(true);
@@ -290,21 +421,5 @@ export class DashboardComponent implements OnInit {
         this.loading.set(false);
       }
     });
-  }
-
-  /**
-   * Formatea en CLP. Se mantiene el formato que ya usaba el dashboard.
-   *
-   * NOTA: el rotulo del supuesto dice "US$" (bloque `financial`, roiSubtitle) y el
-   * formato es CLP. Es el desajuste de moneda documentado en CGBIDA-410, anexo A.1. No
-   * se corrige aqui porque cambiarlo altera todas las cifras visibles y es una decision
-   * de producto, no de esta subtarea.
-   */
-  private moneda(v: number): string {
-    return new Intl.NumberFormat('es-CL', {
-      style: 'currency',
-      currency: 'CLP',
-      maximumFractionDigits: 0
-    }).format(v);
   }
 }

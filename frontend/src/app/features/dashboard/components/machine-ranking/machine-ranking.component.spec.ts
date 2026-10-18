@@ -337,12 +337,12 @@ describe('MachineRankingComponent', () => {
   describe('i18n y dark mode', () => {
     it('traduce el titulo y las opciones del selector', () => {
       const es = setup(CINCO, 'es').el.textContent ?? '';
-      expect(es).toContain('Top Equipos');
+      expect(es).toContain('Top 5 Equipos');
       expect(es).toContain('Volumen OTs');
       expect(es).toContain('MTTR (Minutos)');
 
       const en = setup(CINCO, 'en').el.textContent ?? '';
-      expect(en).toContain('Top Machines');
+      expect(en).toContain('Top 5 Machines');
       expect(en).toContain('WO Volume');
       expect(en).toContain('MTTR (Minutes)');
     });
@@ -362,3 +362,5 @@ describe('MachineRankingComponent', () => {
     });
   });
 });
+
+

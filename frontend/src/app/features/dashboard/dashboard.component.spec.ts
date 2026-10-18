@@ -96,7 +96,7 @@ describe('DashboardComponent', () => {
       const { el } = setup();
       expect(tarjeta(el, 'mttr').textContent).toContain('88.1m');
       expect(tarjeta(el, 'sla').textContent).toContain('97.7%');
-      expect(tarjeta(el, 'mtbf').textContent).toContain('223.6 h');
+      expect(tarjeta(el, 'mtbf').textContent).toContain('9.3 d');
       // El costo y el ahorro van formateados en CLP.
       expect(tarjeta(el, 'costo').textContent).toMatch(/47\.192\.065/);
       expect(tarjeta(el, 'ahorro').textContent).toMatch(/10\.042\.000/);
@@ -160,7 +160,7 @@ describe('DashboardComponent', () => {
       vacio.impacto_anual.ahorro_proyectado = null;
       vacio.impacto_anual.impacto_visible = false;
       const { el } = setup(vacio);
-      expect(tarjeta(el, 'mtbf').textContent).not.toMatch(/\b0 h\b/);
+      expect(tarjeta(el, 'mtbf').textContent).not.toMatch(/\b0 d\b/);
       expect(tarjeta(el, 'impacto').textContent).not.toMatch(/\$\s?0\b/);
     });
   });
@@ -617,6 +617,190 @@ describe('DashboardComponent', () => {
       expect(texto).toMatch(/-/);
       // No debe haberse convertido en cero.
       expect(texto).not.toMatch(/\$\s?0\b/);
+    });
+  });
+});
+
+
+
+/**
+ * CGBIDA-432 a 434 y 437: moneda, MTBF en días y textos del feedback de Samuel.
+ *
+ * El fetch se stubea para que el servicio de moneda no salga a la red desde los tests.
+ */
+describe('DashboardComponent — feedback de Samuel', () => {
+  const TASA = 984.09;
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    globalThis.fetch = (async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ serie: [{ valor: TASA, fecha: '2026-10-16T03:00:00.000Z' }] }),
+    })) as unknown as typeof fetch;
+  });
+
+  afterEach(() => {
+    window.localStorage.clear();
+  });
+
+  describe('toggle de moneda (CGBIDA-432)', () => {
+    it('ofrece CLP y USD, y arranca en CLP', () => {
+      const { el } = setup();
+      expect(el.querySelector('[data-testid="moneda-CLP"]')).not.toBeNull();
+      expect(el.querySelector('[data-testid="moneda-USD"]')).not.toBeNull();
+      expect(
+        el.querySelector('[data-testid="moneda-CLP"]')!.getAttribute('aria-pressed')
+      ).toBe('true');
+    });
+
+    it('en CLP las cifras van en pesos', () => {
+      const { el } = setup();
+      expect(tarjeta(el, 'costo').textContent).toContain('47.192.065');
+      expect(tarjeta(el, 'costo').textContent).not.toContain('US$');
+    });
+
+    it('al elegir USD convierte las tres tarjetas monetarias', async () => {
+      const { fixture, el } = setup();
+      (el.querySelector('[data-testid="moneda-USD"]') as HTMLButtonElement).click();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      for (const clave of ['costo', 'ahorro', 'impacto']) {
+        expect(tarjeta(el, clave).textContent).toContain('US$');
+      }
+      // 47.192.065 / 984,09 = 47.955
+      expect(tarjeta(el, 'costo').textContent).toContain('47.955');
+    });
+
+    it('no toca las tarjetas que no son dinero', async () => {
+      const { fixture, el } = setup();
+      (el.querySelector('[data-testid="moneda-USD"]') as HTMLButtonElement).click();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(tarjeta(el, 'mttr').textContent).toContain('88.1m');
+      expect(tarjeta(el, 'sla').textContent).toContain('97.7%');
+    });
+
+    it('en USD muestra la tasa aplicada, para que la conversión sea auditable', async () => {
+      const { fixture, el } = setup();
+      (el.querySelector('[data-testid="moneda-USD"]') as HTMLButtonElement).click();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const nota = el.querySelector('[data-testid="moneda-tasa"]');
+      expect(nota).not.toBeNull();
+      expect(nota!.textContent).toContain('984,09');
+    });
+
+    it('persiste la moneda elegida', async () => {
+      const { fixture, el } = setup();
+      (el.querySelector('[data-testid="moneda-USD"]') as HTMLButtonElement).click();
+      await fixture.whenStable();
+      expect(window.localStorage.getItem('barb.currency')).toBe('USD');
+    });
+  });
+
+  describe('MTBF en días (CGBIDA-434)', () => {
+    it('convierte las horas del backend a días', () => {
+      const { el } = setup();
+      // El fixture trae 223,6 h -> 9,3 d
+      expect(tarjeta(el, 'mtbf').textContent).toContain('9.3 d');
+      expect(tarjeta(el, 'mtbf').textContent).not.toContain('223.6 h');
+    });
+
+    it('el subtítulo anuncia la unidad que se ve', () => {
+      const { el } = setup();
+      expect(tarjeta(el, 'mtbf').textContent).toContain('(Días)');
+    });
+  });
+
+  describe('tooltips de fórmula (CGBIDA-433)', () => {
+    const CON_FORMULA = ['costo', 'ahorro', 'impacto'];
+    const SIN_FORMULA = ['mttr', 'sla', 'mtbf'];
+
+    it('las tres tarjetas que Samuel pidió tienen tooltip', () => {
+      const { el } = setup();
+      for (const clave of CON_FORMULA) {
+        expect(el.querySelector(`[data-testid="tooltip-kpi-${clave}"]`)).not.toBeNull();
+      }
+    });
+
+    it('las que no necesitan explicación no lo tienen', () => {
+      const { el } = setup();
+      for (const clave of SIN_FORMULA) {
+        expect(el.querySelector(`[data-testid="tooltip-kpi-${clave}"]`)).toBeNull();
+      }
+    });
+
+    it('el tooltip es accesible: role tooltip y descrito por el botón', () => {
+      const { el } = setup();
+      const tip = el.querySelector('[data-testid="tooltip-kpi-ahorro"]')!;
+      expect(tip.getAttribute('role')).toBe('tooltip');
+
+      const boton = el.querySelector('[data-testid="info-kpi-ahorro"]')!;
+      expect(boton.getAttribute('aria-describedby')).toBe(tip.getAttribute('id'));
+    });
+
+    it('el tooltip del ahorro cita el supuesto en CLP, no inventado', () => {
+      const { el } = setup();
+      const texto = el.querySelector('[data-testid="tooltip-kpi-ahorro"]')!.textContent ?? '';
+      expect(texto).toContain('2.000');
+      expect(texto).toContain('CLP');
+    });
+
+    it('el tooltip del impacto cita los 180 minutos sin BARB del modelo', () => {
+      const { el } = setup();
+      const texto = el.querySelector('[data-testid="tooltip-kpi-impacto"]')!.textContent ?? '';
+      expect(texto).toContain('180');
+    });
+
+    it('con USD activo el tooltip avisa de la conversión', async () => {
+      const { fixture, el } = setup();
+      (el.querySelector('[data-testid="moneda-USD"]') as HTMLButtonElement).click();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const texto = el.querySelector('[data-testid="tooltip-kpi-costo"]')!.textContent ?? '';
+      expect(texto).toContain('USD');
+      expect(texto).toContain('mindicador.cl');
+    });
+
+    it('en CLP el tooltip no menciona conversión', () => {
+      const { el } = setup();
+      const texto = el.querySelector('[data-testid="tooltip-kpi-costo"]')!.textContent ?? '';
+      expect(texto).not.toContain('mindicador.cl');
+    });
+  });
+
+  describe('textos i18n corregidos (CGBIDA-437)', () => {
+    it('el ranking se anuncia como Top 5 y por KPI', () => {
+      // Con machines vacio el ranking muestra su estado vacio, no el titulo.
+      const { el } = setup({
+        ...stats(),
+        machines: [
+          {
+            id: '1',
+            name: 'PLC Siemens S7 Principal',
+            total: 16,
+            ahorroGenerado: 638_000,
+            mttr: 52.7,
+            slaCompliance: 100,
+          },
+        ],
+      });
+      const texto = el.textContent ?? '';
+      expect(texto).toContain('Top 5 Equipos');
+      expect(texto).toContain('Rendimiento por KPI');
+    });
+
+    it('la dona se anuncia como distribución por tipo', () => {
+      const { el } = setup({
+        ...stats(),
+        por_tipo: [{ tipo: 'corrective', total: 70 }],
+      });
+      expect(el.textContent).toContain('Distribución por Tipo de Mantenimiento');
     });
   });
 });

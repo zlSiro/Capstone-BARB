@@ -267,12 +267,12 @@ describe('TipoDonutComponent', () => {
   describe('i18n y dark mode', () => {
     it('traduce el titulo y los nombres de los tipos', () => {
       const es = setup(REAL, 'es').el.textContent ?? '';
-      expect(es).toContain('Estrategia de Mantenimiento');
+      expect(es).toContain('Distribución por Tipo de Mantenimiento');
       expect(es).toContain('Correctivo');
       expect(es).toContain('Inspección');
 
       const en = setup(REAL, 'en').el.textContent ?? '';
-      expect(en).toContain('Maintenance Strategy');
+      expect(en).toContain('Distribution by Maintenance Type');
       expect(en).toContain('Corrective');
       expect(en).toContain('Inspection');
     });
@@ -292,7 +292,7 @@ describe('TipoDonutComponent', () => {
       const { el } = setup(REAL);
       const svg = el.querySelector('svg')!;
       expect(svg.getAttribute('role')).toBe('img');
-      expect(svg.getAttribute('aria-label')).toBe('Estrategia de Mantenimiento');
+      expect(svg.getAttribute('aria-label')).toBe('Distribución por Tipo de Mantenimiento');
     });
   });
 
@@ -364,3 +364,6 @@ describe('TipoDonutComponent', () => {
     });
   });
 });
+
+
+

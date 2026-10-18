@@ -101,11 +101,11 @@ export const translations = {
     },
     financial: {
       dashboardTitle: 'Dashboard KPI',
-      dashboardSubtitle: 'Impacto basado en US$2.000/min de inactividad operativa.',
+      dashboardSubtitle: 'Impacto basado en $2.000 CLP/min de inactividad operativa.',
       loading: 'Cargando KPIs…',
       loadError: 'No se pudieron cargar los KPIs. Vuelve a intentarlo en unos minutos.',
       roiTitle: 'Impacto Anual Proyectado (Modelo BARB v1.0)',
-      roiSubtitle: 'Basado en US$2.000/min de inactividad operativa.',
+      roiSubtitle: 'Basado en $2.000 CLP/min de inactividad operativa.',
       // Descripciones de las tarjetas de KPI (CGBIDA-392). Las claves mttrGlobal,
       // efficiency, directCost, mtbf y savingsGenerated ya existian; estas son los
       // subtitulos que faltaban para que cada tarjeta diga QUE mide.
@@ -129,14 +129,33 @@ export const translations = {
       mttrGlobal: 'MTTR Global', mttrOptimal: '✓ Dentro de SLA',
       efficiency: 'Cumplimiento de SLA', efficiencySub: 'OTs completadas dentro del SLA (24h)',
       directCost: 'Costo Directo', directCostSub: 'Repuestos y servicios facturados',
-      mtbf: 'MTBF Global', mtbfSub: 'Tiempo Medio Entre Fallas (Horas)',
+      // CGBIDA-434: el MTBF se muestra en días. El subtítulo tiene que decir la unidad
+      // que el usuario ve, no la que calcula el backend.
+      mtbf: 'MTBF Global', mtbfSub: 'Tiempo Medio Entre Fallas (Días)',
       mtbfNeedData: 'Requiere historial min. 2 fallas',
       healthTitle: 'Salud Operacional: Backlog',
       healthSub: 'Tendencia diaria de OTs Abiertas vs Cerradas (14 d).',
       performanceTitle: 'Rendimiento por Máquina',
       measured: 'Medido', estimated: 'Estimado',
-      topMachinesTitle: 'Top Equipos', topMachinesSubtitle: 'Rendimiento por métrica',
-      viewOts: 'Volumen OTs', viewMttr: 'MTTR (Minutos)', viewAhorro: 'Ahorro Generado'
+      // CGBIDA-437: los títulos decían algo distinto de lo que el gráfico muestra.
+      topMachinesTitle: 'Top 5 Equipos', topMachinesSubtitle: 'Rendimiento por KPI',
+      viewOts: 'Volumen OTs', viewMttr: 'MTTR (Minutos)', viewAhorro: 'Ahorro Generado',
+      // CGBIDA-432: toggle de moneda. Los datos base están en CLP y el backend no cambia.
+      currencyLabel: 'Moneda',
+      currencyClp: 'CLP',
+      currencyUsd: 'USD',
+      currencyRate: 'Tipo de cambio observado:',
+      currencyNoRate: 'No se pudo obtener el tipo de cambio. Se muestran montos en CLP.',
+      // CGBIDA-433: explicación de cada KPI. Las cifras del modelo están en CLP, así que
+      // el supuesto se enuncia siempre en pesos, aunque el resto de la tarjeta esté en USD.
+      kpiCostoTooltip:
+        'Suma del costo real de todas las OTs no canceladas del período. Las canceladas no suman: si el trabajo no se hizo, no hay costo que registrar.',
+      kpiAhorroTooltip:
+        'Inactividad evitada por las OTs completadas, valorizada al costo por minuto de inactividad. Solo cuentan las OTs completadas: las abiertas todavía no evitaron nada.',
+      kpiImpactoTooltip:
+        'Proyección a 12 meses comparando dos escenarios. Sin BARB, cada incidente tarda el tiempo de referencia del modelo en resolverse; con BARB, el tiempo real medido. La diferencia, valorizada por minuto, es el ahorro proyectado. Requiere al menos 90 días de historial.',
+      kpiUsdNote:
+        'Las cifras se convierten a USD con el tipo de cambio observado del día (mindicador.cl).'
     },
     dashboard: {
       title: 'Órdenes de Trabajo', totalWorkOrders: 'Total OTs',
@@ -146,8 +165,8 @@ export const translations = {
       createWorkOrder: 'Crear OT', chartStatus: 'Distribución por estado',
       chartMachines: 'Máquinas con más OTs', chartResolution: 'Tiempo de resolución',
       chartResolutionSub: 'Tiempo medio de reparación por máquina, en minutos',
-      noData: 'Sin datos', strategyTitle: 'Estrategia de Mantenimiento',
-      strategySubtitle: 'Preventivo vs Correctivo',
+      noData: 'Sin datos', strategyTitle: 'Distribución por Tipo de Mantenimiento',
+      strategySubtitle: 'Correctivo, preventivo, predictivo e inspección',
       totalOts: 'OTs',
       stalledAlertLabel: 'Alerta:',
       stalledLabel: 'ordenes de trabajo estancadas o criticas',
@@ -313,11 +332,11 @@ export const translations = {
     },
     financial: {
       dashboardTitle: 'KPI Dashboard',
-      dashboardSubtitle: 'Impact based on US$2,000/min of operational downtime.',
+      dashboardSubtitle: 'Impact based on $2,000 CLP/min of operational downtime.',
       loading: 'Loading KPIs…',
       loadError: 'The KPIs could not be loaded. Please try again in a few minutes.',
       roiTitle: 'Projected Annual Impact (BARB v1.0 Model)',
-      roiSubtitle: 'Based on US$2,000/min of operational downtime.',
+      roiSubtitle: 'Based on $2,000 CLP/min of operational downtime.',
       mttrSub: 'Average repair time of completed WOs.',
       savingsSub: 'Downtime avoided by completed WOs, valued.',
       impactCardTitle: 'Projected Annual Impact',
@@ -334,14 +353,27 @@ export const translations = {
       mttrGlobal: 'Global MTTR', mttrOptimal: '✓ Within SLA',
       efficiency: 'SLA Compliance', efficiencySub: 'Work orders completed within SLA (24h)',
       directCost: 'Direct Cost', directCostSub: 'Billed parts and services',
-      mtbf: 'Global MTBF', mtbfSub: 'Mean Time Between Failures (Hours)',
+      mtbf: 'Global MTBF', mtbfSub: 'Mean Time Between Failures (Days)',
       mtbfNeedData: 'Requires min. 2 failures history',
       healthTitle: 'Operational Health: Backlog',
       healthSub: 'Daily trend of Open vs Closed WOs (14 d).',
       performanceTitle: 'Machine Performance',
       measured: 'Measured', estimated: 'Estimated',
-      topMachinesTitle: 'Top Machines', topMachinesSubtitle: 'Performance by metric',
-      viewOts: 'WO Volume', viewMttr: 'MTTR (Minutes)', viewAhorro: 'Savings Generated'
+      topMachinesTitle: 'Top 5 Machines', topMachinesSubtitle: 'Performance by KPI',
+      viewOts: 'WO Volume', viewMttr: 'MTTR (Minutes)', viewAhorro: 'Savings Generated',
+      currencyLabel: 'Currency',
+      currencyClp: 'CLP',
+      currencyUsd: 'USD',
+      currencyRate: 'Observed exchange rate:',
+      currencyNoRate: 'Could not fetch the exchange rate. Amounts are shown in CLP.',
+      kpiCostoTooltip:
+        'Sum of the actual cost of all non-cancelled work orders in the period. Cancelled ones do not add: if the work was not done, there is no cost to record.',
+      kpiAhorroTooltip:
+        'Downtime avoided by completed work orders, valued at the downtime cost per minute. Only completed work orders count: open ones have not avoided anything yet.',
+      kpiImpactoTooltip:
+        'A 12-month projection comparing two scenarios. Without BARB, each incident takes the model reference time to resolve; with BARB, the actual measured time. The difference, valued per minute, is the projected savings. Requires at least 90 days of history.',
+      kpiUsdNote:
+        'Amounts are converted to USD using the daily observed exchange rate (mindicador.cl).'
     },
     dashboard: {
       title: 'Work Orders', totalWorkOrders: 'Total WOs',
@@ -351,8 +383,8 @@ export const translations = {
       createWorkOrder: 'Create WO', chartStatus: 'Status breakdown',
       chartMachines: 'Top machines', chartResolution: 'Resolution time',
       chartResolutionSub: 'Average repair time per machine, in minutes',
-      noData: 'No data', strategyTitle: 'Maintenance Strategy',
-      strategySubtitle: 'Preventive vs Corrective',
+      noData: 'No data', strategyTitle: 'Distribution by Maintenance Type',
+      strategySubtitle: 'Corrective, preventive, predictive and inspection',
       totalOts: 'WOs',
       stalledAlertLabel: 'Alert:',
       stalledLabel: 'stalled or critical work orders',
@@ -423,3 +455,4 @@ export const translations = {
 };
 
 export type TranslationTree = typeof translations['es'];
+
