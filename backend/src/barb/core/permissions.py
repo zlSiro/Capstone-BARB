@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from fastapi import Header, HTTPException
 
-from barb.core.db import fetch_one
+from barb.core.db import actor_usuario_id, fetch_one
 
 # =============================================================================
 # ROLES VÁLIDOS
@@ -146,6 +146,7 @@ async def get_sesion_actual(authorization: str = Header(..., alias="Authorizatio
     if rol != ROL_SUPER and sesion.get("empresa_estado") in ESTADOS_EMPRESA_BLOQUEADOS:
         raise HTTPException(status_code=403, detail="La empresa está suspendida o cancelada. Contacta a BARB.")
 
+    actor_usuario_id.set(int(sesion["usuario_id"]))  # lo lee core/db.py para auditar en `transacciones`
     return {
         "usuario_id": int(sesion["usuario_id"]),
         "rol": rol,

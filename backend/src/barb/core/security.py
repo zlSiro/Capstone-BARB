@@ -5,7 +5,7 @@ import secrets
 import bcrypt
 from fastapi import Header, HTTPException
 
-from barb.core.db import fetch_one
+from barb.core.db import actor_usuario_id, fetch_one
 
 
 def hash_password(raw_password: str) -> str:
@@ -61,6 +61,7 @@ async def get_current_user(
     if row.get("empresa_estado") in ("suspended", "cancelled"):
         raise HTTPException(status_code=403, detail="La empresa está suspendida o cancelada. Contacta a BARB.")
 
+    actor_usuario_id.set(int(row["usuario_id"]))  # lo lee core/db.py para auditar en `transacciones`
     return {
         "id": int(row["usuario_id"]),
         "empresa_id": int(row["empresa_id"]) if row["empresa_id"] is not None else None,
