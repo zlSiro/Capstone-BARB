@@ -75,16 +75,17 @@ function tarjeta(el: HTMLElement, clave: string): HTMLElement {
   return t as HTMLElement;
 }
 
-const CLAVES = ['mttr', 'sla', 'costo', 'mtbf', 'ahorro', 'impacto'];
+// El KPI de Impacto se elimino en CGBIDA-435: su cifra vive en el grafico de abajo.
+const CLAVES = ['mttr', 'sla', 'costo', 'mtbf', 'ahorro'];
 
 describe('DashboardComponent', () => {
-  describe('los 6 indicadores', () => {
+  describe('los 5 indicadores', () => {
     it('pide las metricas al servicio al construirse', () => {
       const { getFinancialImpact } = setup();
       expect(getFinancialImpact).toHaveBeenCalledWith('all');
     });
 
-    it('renderiza exactamente las 6 tarjetas esperadas', () => {
+    it('renderiza exactamente las 5 tarjetas esperadas', () => {
       const { el } = setup();
       const claves = [...el.querySelectorAll('[data-testid^="kpi-"]')].map((n) =>
         (n as HTMLElement).dataset['testid']?.replace('kpi-', '')
@@ -100,7 +101,8 @@ describe('DashboardComponent', () => {
       // El costo y el ahorro van formateados en CLP.
       expect(tarjeta(el, 'costo').textContent).toMatch(/47\.192\.065/);
       expect(tarjeta(el, 'ahorro').textContent).toMatch(/10\.042\.000/);
-      expect(tarjeta(el, 'impacto').textContent).toMatch(/3\.748\.000/);
+      // El impacto ya no es tarjeta: se comprueba en el grafico de escenarios.
+      expect(el.textContent).toMatch(/3\.748\.000/);
     });
 
     it('cada tarjeta dice QUE mide, no solo el numero', () => {
@@ -140,16 +142,20 @@ describe('DashboardComponent', () => {
       sinImpacto.impacto_anual.impacto_visible = false;
       sinImpacto.impacto_anual.ahorro_proyectado = null;
       const { el } = setup(sinImpacto);
-      const texto = tarjeta(el, 'impacto').textContent ?? '';
-      expect(texto).toContain('90 dias');
+      // CGBIDA-435: el aviso vive en el grafico de escenarios, no en una tarjeta de KPI.
+      const texto = el.querySelector('[data-testid="impacto-vacio"]')?.textContent ?? '';
+      expect(texto).toContain('90 días');
       expect(texto).not.toContain('null');
     });
 
-    it('con supuestos_incompletos lo refleja en la descripcion', () => {
+    it('con supuestos_incompletos lo refleja en el subtitulo del grafico', () => {
       const incompleto = stats();
       incompleto.impacto_anual.supuestos_incompletos = true;
       const { el } = setup(incompleto);
-      expect(tarjeta(el, 'impacto').textContent).toContain('Estimado');
+      // El aviso de "estimado" se mudo con el KPI al grafico.
+      expect(el.querySelector('[data-testid="impacto-escenarios"]')!.textContent).toContain(
+        'Estimado'
+      );
     });
 
     it('no muestra ceros cuando el backend no puede calcular', () => {
@@ -161,7 +167,8 @@ describe('DashboardComponent', () => {
       vacio.impacto_anual.impacto_visible = false;
       const { el } = setup(vacio);
       expect(tarjeta(el, 'mtbf').textContent).not.toMatch(/\b0 d\b/);
-      expect(tarjeta(el, 'impacto').textContent).not.toMatch(/\$\s?0\b/);
+      expect(el.querySelector('[data-testid="impacto-vacio"]')).not.toBeNull();
+      expect(el.querySelector('[data-testid="valor-ahorro"]')).toBeNull();
     });
   });
 
@@ -186,13 +193,13 @@ describe('DashboardComponent', () => {
       expect(texto).toContain('Ahorro Generado a la fecha');
     });
 
-    it('en ingles muestra las MISMAS 6 etiquetas traducidas', () => {
+    it('en ingles muestra las MISMAS 5 etiquetas traducidas', () => {
       const texto = textoEn('en');
       expect(texto).toContain('Global MTTR');
       expect(texto).toContain('SLA Compliance');
       expect(texto).toContain('Direct Cost');
       expect(texto).toContain('Savings Generated to Date');
-      expect(texto).toContain('Projected Annual Impact');
+      // El KPI de impacto se elimino: su cifra vive en el grafico de escenarios.
     });
 
     it('traduce las descripciones, no solo las etiquetas', () => {
@@ -208,7 +215,7 @@ describe('DashboardComponent', () => {
       expect(textoEn('en')).toContain('KPI Dashboard');
     });
 
-    it('las 6 tarjetas siguen presentes al cambiar de idioma', () => {
+    it('las 5 tarjetas siguen presentes al cambiar de idioma', () => {
       TestBed.resetTestingModule();
       const { el } = setup(stats(), 'en');
       for (const clave of CLAVES) {
@@ -482,8 +489,9 @@ describe('DashboardComponent', () => {
           } as never,
         })
       );
-      const texto = tarjeta(el, 'impacto').textContent ?? '';
-      expect(texto).toContain('Requiere al menos 90 dias de historial.');
+      // CGBIDA-435: el aviso se muestra en el grafico de escenarios.
+      const texto = el.querySelector('[data-testid="impacto-vacio"]')?.textContent ?? '';
+      expect(texto).toContain('Requiere al menos 90 días de historial para proyectar.');
     });
   });
 
@@ -503,34 +511,34 @@ describe('DashboardComponent', () => {
       const { el, fixture } = setup(sinCampo('por_tipo'));
       expect(fixture.componentInstance).toBeTruthy();
       expect(el.querySelector('[data-testid="tipo-donut"]')).toBeNull();
-      expect(el.querySelectorAll('[data-testid^="kpi-"]').length).toBe(6);
+      expect(el.querySelectorAll('[data-testid^="kpi-"]').length).toBe(5);
     });
 
     it('sin estancadas no rompe: el banner no aparece', () => {
       const { el, fixture } = setup(sinCampo('estancadas'));
       expect(fixture.componentInstance).toBeTruthy();
       expect(el.querySelector('[data-testid="banner-estancadas"]')).toBeNull();
-      expect(el.querySelectorAll('[data-testid^="kpi-"]').length).toBe(6);
+      expect(el.querySelectorAll('[data-testid^="kpi-"]').length).toBe(5);
     });
 
     it('sin trend14Days no rompe: el backlog no se dibuja', () => {
       const { el, fixture } = setup(sinCampo('trend14Days'));
       expect(fixture.componentInstance).toBeTruthy();
-      expect(el.querySelectorAll('[data-testid^="kpi-"]').length).toBe(6);
+      expect(el.querySelectorAll('[data-testid^="kpi-"]').length).toBe(5);
     });
 
     it('sin machines no rompe: el ranking muestra su estado vacio', () => {
       const { el, fixture } = setup(sinCampo('machines'));
       expect(fixture.componentInstance).toBeTruthy();
-      expect(el.querySelectorAll('[data-testid^="kpi-"]').length).toBe(6);
+      expect(el.querySelectorAll('[data-testid^="kpi-"]').length).toBe(5);
     });
 
-    it('sin ningun campo nuevo la pagina sigue mostrando las 6 tarjetas', () => {
+    it('sin ningun campo nuevo la pagina sigue mostrando las 5 tarjetas', () => {
       const s = stats();
       delete (s as unknown as Record<string, unknown>)['por_tipo'];
       delete (s as unknown as Record<string, unknown>)['estancadas'];
       const { el } = setup(s);
-      expect(el.querySelectorAll('[data-testid^="kpi-"]').length).toBe(6);
+      expect(el.querySelectorAll('[data-testid^="kpi-"]').length).toBe(5);
       expect(el.textContent).not.toContain('NaN');
       expect(el.textContent).not.toContain('undefined');
     });
@@ -666,9 +674,11 @@ describe('DashboardComponent — feedback de Samuel', () => {
       await fixture.whenStable();
       fixture.detectChanges();
 
-      for (const clave of ['costo', 'ahorro', 'impacto']) {
+      for (const clave of ['costo', 'ahorro']) {
         expect(tarjeta(el, clave).textContent).toContain('US$');
       }
+      // El impacto ya no es tarjeta: se convierte dentro del grafico.
+      expect(el.querySelector('[data-testid="valor-ahorro"]')!.textContent).toContain('US$');
       // 47.192.065 / 984,09 = 47.955
       expect(tarjeta(el, 'costo').textContent).toContain('47.955');
     });
@@ -702,22 +712,81 @@ describe('DashboardComponent — feedback de Samuel', () => {
     });
   });
 
-  describe('MTBF en días (CGBIDA-434)', () => {
-    it('convierte las horas del backend a días', () => {
+  describe('MTBF y su unidad (CGBIDA-434 y 435)', () => {
+    it('convierte las horas del backend a días por defecto', () => {
       const { el } = setup();
       // El fixture trae 223,6 h -> 9,3 d
       expect(tarjeta(el, 'mtbf').textContent).toContain('9.3 d');
       expect(tarjeta(el, 'mtbf').textContent).not.toContain('223.6 h');
     });
 
-    it('el subtítulo anuncia la unidad que se ve', () => {
+    it('el subtítulo ya NO fija la unidad: la elige el usuario', () => {
       const { el } = setup();
-      expect(tarjeta(el, 'mtbf').textContent).toContain('(Días)');
+      const texto = tarjeta(el, 'mtbf').textContent ?? '';
+      expect(texto).not.toContain('(Días)');
+      expect(texto).not.toContain('(Horas)');
+      expect(texto).toContain('Tiempo medio entre fallas');
+    });
+
+    it('ofrece Horas, Días y Meses en el selector', () => {
+      const { el } = setup();
+      const sel = el.querySelector('[data-testid="selector-unidad-mtbf"]') as HTMLSelectElement;
+      expect(sel).not.toBeNull();
+      const opciones = [...sel.options].map((o) => o.value);
+      expect(opciones).toEqual(['horas', 'dias', 'meses']);
+      expect(sel.value).toBe('dias');
+    });
+
+    it('al elegir horas muestra el valor del backend sin convertir', async () => {
+      const { fixture, el } = setup();
+      const sel = el.querySelector('[data-testid="selector-unidad-mtbf"]') as HTMLSelectElement;
+      sel.value = 'horas';
+      sel.dispatchEvent(new Event('change'));
+      await fixture.whenStable();
+      fixture.detectChanges();
+      expect(tarjeta(el, 'mtbf').textContent).toContain('223.6 h');
+    });
+
+    it('al elegir meses divide por 730 h', async () => {
+      const { fixture, el } = setup();
+      const sel = el.querySelector('[data-testid="selector-unidad-mtbf"]') as HTMLSelectElement;
+      sel.value = 'meses';
+      sel.dispatchEvent(new Event('change'));
+      await fixture.whenStable();
+      fixture.detectChanges();
+      // 223,6 / 730 = 0,3
+      expect(tarjeta(el, 'mtbf').textContent).toContain('0.3 mes');
+    });
+
+    it('el semáforo refleja la misma unidad que la tarjeta', async () => {
+      const { fixture, el } = setup({
+        ...stats(),
+        salud_operacional: {
+          indice: 42.8,
+          estado: 'rojo',
+          componentes: {
+            sla: { valor: 97.7, estado: 'verde', score: 97.7 },
+            mtbf: { valor: 223.6, estado: 'rojo', score: 30.6 },
+            backlog: { valor: 31.8, estado: 'rojo', score: 0 },
+          },
+        },
+      });
+      // Por defecto los dos muestran días.
+      expect(el.querySelector('[data-testid="componente-mtbf"]')!.textContent).toContain('9.3 d');
+
+      const sel = el.querySelector('[data-testid="selector-unidad-mtbf"]') as HTMLSelectElement;
+      sel.value = 'horas';
+      sel.dispatchEvent(new Event('change'));
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(el.querySelector('[data-testid="componente-mtbf"]')!.textContent).toContain('223.6 h');
     });
   });
 
   describe('tooltips de fórmula (CGBIDA-433)', () => {
-    const CON_FORMULA = ['costo', 'ahorro', 'impacto'];
+    // El tooltip del impacto se mudo al grafico de escenarios (CGBIDA-435).
+    const CON_FORMULA = ['costo', 'ahorro'];
     const SIN_FORMULA = ['mttr', 'sla', 'mtbf'];
 
     it('las tres tarjetas que Samuel pidió tienen tooltip', () => {
@@ -752,7 +821,7 @@ describe('DashboardComponent — feedback de Samuel', () => {
 
     it('el tooltip del impacto cita los 180 minutos sin BARB del modelo', () => {
       const { el } = setup();
-      const texto = el.querySelector('[data-testid="tooltip-kpi-impacto"]')!.textContent ?? '';
+      const texto = el.querySelector('[data-testid="tooltip-impacto"]')!.textContent ?? '';
       expect(texto).toContain('180');
     });
 
@@ -804,3 +873,5 @@ describe('DashboardComponent — feedback de Samuel', () => {
     });
   });
 });
+
+

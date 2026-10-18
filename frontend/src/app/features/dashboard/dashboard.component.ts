@@ -2,6 +2,7 @@ import { Component, computed, inject, signal, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { StatsService } from '../../core/services/stats.service';
 import { CurrencyService, Moneda } from '../../core/services/currency.service';
+import { MtbfUnitService, UnidadMtbf } from '../../core/services/mtbf-unit.service';
 import { FinancialStats } from '../../core/models';
 import { I18nService } from '../../core/i18n/i18n.service';
 import { SaludOperacionalComponent } from './components/salud-operacional/salud-operacional.component';
@@ -121,11 +122,11 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
         <!-- Banner de estancadas (CGBIDA-396). Se auto-oculta si no hay ninguna. -->
         <app-alerta-estancadas [datos]="estancadas()" />
         <!--
-          KPIs: en pantallas anchas van las 6 en una sola fila, como el legacy
-          (.dash-kpi-grid: repeat(4, 1fr)). En dos filas de tres ocupaban 228 px de alto y
-          eran lo que empujaba el resto del dashboard fuera de la pantalla.
+          KPIs: 5 en una sola fila desde xl. Se quito el de Impacto Anual porque el
+          grafico de escenarios de abajo ya lo explica con mas detalle; con 5 columnas
+          cada tarjeta gana ancho y la fila queda continua (6 columnas dejaria un hueco).
         -->
-        <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           @for (kpi of tarjetas(); track kpi.clave) {
             <div
               class="rounded-lg border border-gray-100 bg-white p-3 shadow-sm
@@ -133,7 +134,34 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
               [attr.data-testid]="'kpi-' + kpi.clave"
             >
               <div class="flex items-start justify-between gap-1">
-                <p class="text-xs uppercase text-gray-500 dark:text-gray-400">{{ kpi.etiqueta }}</p>
+                <div class="flex min-w-0 items-center gap-1">
+                  <p class="truncate text-xs uppercase text-gray-500 dark:text-gray-400">
+                    {{ kpi.etiqueta }}
+                  </p>
+                  <!--
+                    Selector de unidad del MTBF (CGBIDA-435). Va en la MISMA linea de la
+                    etiqueta y con alto fijo de 16 px, para no sumar altura: el dashboard
+                    esta en 0 px de desborde y un renglon mas lo rompe.
+                  -->
+                  @if (kpi.clave === 'mtbf') {
+                    <select
+                      [attr.aria-label]="t().mtbfUnitLabel"
+                      [attr.data-testid]="'selector-unidad-mtbf'"
+                      (change)="cambiarUnidadMtbf($any($event.target).value)"
+                      class="h-4 shrink-0 cursor-pointer rounded border border-gray-300
+                             bg-transparent px-0.5 text-[10px] leading-none
+                             text-gray-600 outline-none focus:border-blue-500
+                             dark:border-gray-600 dark:text-gray-300"
+                    >
+                      @for (u of unidadesMtbf; track u) {
+                        <option [value]="u" [selected]="u === mtbf.unidad()"
+                                [attr.data-testid]="'unidad-' + u">
+                          {{ etiquetaUnidadMtbf(u) }}
+                        </option>
+                      }
+                    </select>
+                  }
+                </div>
                 @if (kpi.tooltip) {
                   <!--
                     Tooltip de formula (CGBIDA-433). Va en un group para que se abra con
@@ -209,6 +237,16 @@ export class DashboardComponent implements OnInit {
   /** Moneda de presentación (CGBIDA-432). Los datos base son CLP. */
   protected readonly currency = inject(CurrencyService);
 
+  /**
+   * Unidad del MTBF (CGBIDA-435). Estado compartido con el semáforo: el mismo MTBF
+   * aparece en la tarjeta y en el desglose de salud, y verlo en dos unidades distintas
+   * se lee como un error.
+   */
+  protected readonly mtbf = inject(MtbfUnitService);
+
+  /** Opciones del selector de unidad, en orden. */
+  protected readonly unidadesMtbf: readonly UnidadMtbf[] = ['horas', 'dias', 'meses'];
+
   /** Opciones del toggle de moneda, en orden. */
   protected readonly monedas: readonly Moneda[] = ['CLP', 'USD'];
 
@@ -277,11 +315,13 @@ export class DashboardComponent implements OnInit {
   );
 
   /**
-   * Las 6 tarjetas de KPI, derivadas de la respuesta.
+   * Las 5 tarjetas de KPI, derivadas de la respuesta.
    *
    * La descripcion (`*Sub`) es lo que pide la HU: que cada indicador diga que mide.
    * El MTBF tiene dos estados: valor, o aviso de que falta historial (`mtbf_visible`).
-   * El impacto anual tambien: valor, o aviso de que el rango no alcanza.
+   *
+   * La tarjeta de Impacto Anual se quito en CGBIDA-435: el grafico de escenarios de abajo
+   * muestra la misma cifra con mas contexto, y su explicacion se mudo al grafico.
    */
   protected readonly tarjetas = computed(() => {
     const s = this.stats();
@@ -290,7 +330,6 @@ export class DashboardComponent implements OnInit {
     const imp = s.impacto_anual;
     const tx = this.t();
     const mtbfOk = f.mtbf_visible && f.mtbfHours !== null;
-    const impactoOk = imp.impacto_visible && imp.ahorro_proyectado !== null;
 
     // Moneda: los montos base estan en CLP y el servicio formatea en la activa.
     // Leer `formatear` dentro del computed lo hace reactivo al toggle.
@@ -299,7 +338,6 @@ export class DashboardComponent implements OnInit {
     // Supuestos del modelo, tal como los entrega el backend. No se hardcodean: si manana
     // cambian en config.py, el tooltip sigue diciendo la verdad.
     const costoMin = imp.supuestos?.costo_por_minuto ?? 2000;
-    const minutosRef = imp.supuestos?.minutos_sin_barb ?? 180;
     const supuestoClp = `${this.currency.formatearClp(costoMin)} CLP`;
     const notaUsd =
       this.currency.moneda() === 'USD' && !this.currency.sinTasa() ? ` ${tx.kpiUsdNote}` : '';
@@ -332,10 +370,10 @@ export class DashboardComponent implements OnInit {
       {
         clave: 'mtbf',
         etiqueta: tx.mtbf,
-        // CGBIDA-434: el backend entrega horas; se muestran dias. Un decimal basta y el
-        // doble redondeo (ya viene redondeado a 1 decimal en horas) es despreciable.
+        // CGBIDA-435: la unidad la elige el usuario. El servicio convierte desde horas
+        // y el sufijo sale de i18n, asi que la tarjeta no sabe de conversiones.
         valor: mtbfOk
-          ? `${((f.mtbfHours as number) / 24).toFixed(1)} d`
+          ? this.mtbf.formatear(f.mtbfHours as number, this.sufijoMtbf())
           : tx.mtbfNeedData,
         descripcion: tx.mtbfSub,
         color: mtbfOk
@@ -350,22 +388,6 @@ export class DashboardComponent implements OnInit {
         descripcion: tx.savingsSub,
         color: 'text-orange-600 dark:text-orange-400',
         tooltip: `${tx.kpiAhorroTooltip} Supuesto: ${supuestoClp} por minuto.${notaUsd}`
-      },
-      {
-        clave: 'impacto',
-        etiqueta: tx.impactCardTitle,
-        valor: impactoOk ? cifra(imp.ahorro_proyectado as number) : tx.impactNoData,
-        // `supuestos_incompletos` avisa de que se proyecto con el supuesto del modelo en
-        // vez de con un tiempo medido. Se refleja para no presentarlo como dato duro.
-        descripcion: imp.supuestos_incompletos
-          ? `${tx.impactCardSub} (${tx.estimated})`
-          : tx.impactCardSub,
-        color: impactoOk
-          ? 'text-blue-700 dark:text-blue-400'
-          : 'text-xs font-medium text-amber-600 dark:text-amber-400',
-        tooltip:
-          `${tx.kpiImpactoTooltip} Supuestos: ${supuestoClp} por minuto y ` +
-          `${minutosRef} min sin BARB por incidente.${notaUsd}`
       }
     ];
   });
@@ -381,6 +403,39 @@ export class DashboardComponent implements OnInit {
   protected cambiarMoneda(moneda: Moneda): void {
     this.currency.setMoneda(moneda);
   }
+
+  /** Cambia la unidad del MTBF. El semáforo la refleja porque comparte el servicio. */
+  protected cambiarUnidadMtbf(valor: string): void {
+    if (valor === 'horas' || valor === 'dias' || valor === 'meses') {
+      this.mtbf.setUnidad(valor);
+    }
+  }
+
+  /** Etiqueta del selector de unidad, en el idioma activo. */
+  protected etiquetaUnidadMtbf(u: UnidadMtbf): string {
+    const t = this.t();
+    switch (u) {
+      case 'horas':
+        return t.mtbfUnitHoras;
+      case 'meses':
+        return t.mtbfUnitMeses;
+      default:
+        return t.mtbfUnitDias;
+    }
+  }
+
+  /** Sufijo corto que acompaña al valor del MTBF en la tarjeta. */
+  protected readonly sufijoMtbf = computed(() => {
+    const t = this.t();
+    switch (this.mtbf.unidad()) {
+      case 'horas':
+        return t.mtbfUnitShortHoras;
+      case 'meses':
+        return t.mtbfUnitShortMeses;
+      default:
+        return t.mtbfUnitShortDias;
+    }
+  });
 
   /** Tasa vigente con dos decimales y coma decimal, como se lee en Chile. */
   protected readonly tasaTexto = computed(() => {

@@ -131,7 +131,11 @@ export const translations = {
       directCost: 'Costo Directo', directCostSub: 'Repuestos y servicios facturados',
       // CGBIDA-434: el MTBF se muestra en días. El subtítulo tiene que decir la unidad
       // que el usuario ve, no la que calcula el backend.
-      mtbf: 'MTBF Global', mtbfSub: 'Tiempo Medio Entre Fallas (Días)',
+      // La unidad ya no va en el subtítulo: la elige el usuario con el selector.
+      mtbf: 'MTBF Global', mtbfSub: 'Tiempo medio entre fallas',
+      mtbfUnitLabel: 'Unidad del MTBF',
+      mtbfUnitHoras: 'Horas', mtbfUnitDias: 'Días', mtbfUnitMeses: 'Meses',
+      mtbfUnitShortHoras: 'h', mtbfUnitShortDias: 'd', mtbfUnitShortMeses: 'mes',
       mtbfNeedData: 'Requiere historial min. 2 fallas',
       // CGBIDA-435: tarjeta de semáforo. Reemplaza al gráfico de backlog suelto: el
       // indicador va arriba y la tendencia queda como minigráfico debajo.
@@ -373,7 +377,10 @@ export const translations = {
       mttrGlobal: 'Global MTTR', mttrOptimal: '✓ Within SLA',
       efficiency: 'SLA Compliance', efficiencySub: 'Work orders completed within SLA (24h)',
       directCost: 'Direct Cost', directCostSub: 'Billed parts and services',
-      mtbf: 'Global MTBF', mtbfSub: 'Mean Time Between Failures (Days)',
+      mtbf: 'Global MTBF', mtbfSub: 'Mean time between failures',
+      mtbfUnitLabel: 'MTBF unit',
+      mtbfUnitHoras: 'Hours', mtbfUnitDias: 'Days', mtbfUnitMeses: 'Months',
+      mtbfUnitShortHoras: 'h', mtbfUnitShortDias: 'd', mtbfUnitShortMeses: 'mo',
       mtbfNeedData: 'Requires min. 2 failures history',
       healthCardTitle: 'Operational Health',
       healthCardSub: 'Composite index of SLA, MTBF and backlog weeks',

@@ -25,18 +25,47 @@ import { CurrencyService } from '../../../../core/services/currency.service';
   standalone: true,
   imports: [CommonModule],
   template: `
-    @if (visible()) {
-      <figure
-        class="relative rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-900"
-        data-testid="impacto-escenarios"
-      >
-        <figcaption class="mb-2">
+    <figure
+      class="relative rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-900"
+      data-testid="impacto-escenarios"
+    >
+      <figcaption class="mb-2 flex items-start justify-between gap-2">
+        <div>
           <h3 class="text-sm font-extrabold text-gray-800 dark:text-gray-100">
             {{ t().impactChartTitle }}
           </h3>
-          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t().impactChartSub }}</p>
-        </figcaption>
+          <p class="text-xs text-gray-500 dark:text-gray-400">{{ subtitulo() }}</p>
+        </div>
 
+        <!--
+          Tooltip de la formula (CGBIDA-435). Vivia en la tarjeta de KPI de Impacto, que se
+          elimino: sin esto, la explicacion de como se proyecta la cifra se perdia.
+        -->
+        <div class="group relative shrink-0">
+          <button
+            type="button"
+            class="flex h-4 w-4 items-center justify-center rounded-full border
+                   border-gray-300 text-[9px] font-bold leading-none text-gray-500
+                   transition-colors hover:border-blue-500 hover:text-blue-600
+                   focus:border-blue-500 focus:text-blue-600 focus:outline-none
+                   dark:border-gray-600 dark:text-gray-400"
+            aria-describedby="tip-impacto"
+            [attr.aria-label]="t().impactChartTitle"
+            data-testid="info-impacto"
+          >?</button>
+          <div
+            id="tip-impacto"
+            role="tooltip"
+            data-testid="tooltip-impacto"
+            class="pointer-events-none invisible absolute right-0 top-full z-50 mt-2 w-64
+                   rounded-lg border border-gray-200 bg-white p-3 text-xs leading-relaxed
+                   text-gray-600 shadow-lg group-hover:visible group-focus-within:visible
+                   dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
+          >{{ tooltipTexto() }}</div>
+        </div>
+      </figcaption>
+
+      @if (visible()) {
         <svg
           [attr.viewBox]="'0 0 ' + ANCHO + ' ' + ALTO"
           class="w-full"
@@ -95,27 +124,12 @@ import { CurrencyService } from '../../../../core/services/currency.service';
             data-testid="valor-ahorro"
           >{{ t().impactSavingsLabel }}: {{ valorAhorro() }}</text>
         </svg>
-      </figure>
-    } @else {
-      <!--
-        Sin historial suficiente se mantiene la tarjeta, no un parrafo suelto: si el
-        mensaje queda sin marco, la celda del grid parece rota al lado de las demas.
-      -->
-      <figure
-        class="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-900"
-        data-testid="impacto-escenarios-vacio"
-      >
-        <figcaption class="mb-2">
-          <h3 class="text-sm font-extrabold text-gray-800 dark:text-gray-100">
-            {{ t().impactChartTitle }}
-          </h3>
-          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t().impactChartSub }}</p>
-        </figcaption>
+      } @else {
         <p class="text-sm text-amber-600 dark:text-amber-400" data-testid="impacto-vacio">
           {{ t().impactNoHistory }}
         </p>
-      </figure>
-    }
+      }
+    </figure>
   `
 })
 export class ImpactoEscenariosComponent {
@@ -176,4 +190,37 @@ export class ImpactoEscenariosComponent {
   protected readonly valorAhorro = computed(() =>
     this.currency.formatear(this.impacto()?.ahorro_proyectado ?? 0)
   );
+
+  /**
+   * Subtítulo, con el aviso de estimación cuando corresponde.
+   *
+   * `supuestos_incompletos` significa que se proyectó con el supuesto del modelo en vez
+   * de con un tiempo medido. Antes se reflejaba en la tarjeta de KPI de Impacto, que se
+   * eliminó en CGBIDA-435: el aviso se muda aquí para no perder la advertencia.
+   */
+  protected readonly subtitulo = computed(() => {
+    const t = this.t();
+    return this.impacto()?.supuestos_incompletos
+      ? `${t.impactChartSub} (${t.estimated})`
+      : t.impactChartSub;
+  });
+
+  /**
+   * Texto del tooltip: la fórmula más los supuestos reales del modelo.
+   *
+   * Los supuestos se leen de la respuesta (`impacto_anual.supuestos`), no se hardcodean:
+   * si cambian en config.py, el texto sigue diciendo la verdad.
+   */
+  protected readonly tooltipTexto = computed(() => {
+    const t = this.t();
+    const sup = this.impacto()?.supuestos;
+    const costoMin = sup?.costo_por_minuto ?? 2000;
+    const minutosRef = sup?.minutos_sin_barb ?? 180;
+    const notaUsd =
+      this.currency.moneda() === 'USD' && !this.currency.sinTasa() ? ` ${t.kpiUsdNote}` : '';
+    return (
+      `${t.kpiImpactoTooltip} Supuestos: ${this.currency.formatearClp(costoMin)} CLP por minuto ` +
+      `y ${minutosRef} min sin BARB por incidente.${notaUsd}`
+    );
+  });
 }

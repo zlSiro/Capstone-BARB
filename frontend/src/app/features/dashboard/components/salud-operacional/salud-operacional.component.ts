@@ -2,6 +2,7 @@ import { Component, computed, inject, input } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ComponenteSalud, EstadoSalud, SaludOperacionalData, TrendData } from '../../../../core/models';
 import { I18nService } from '../../../../core/i18n/i18n.service';
+import { MtbfUnitService } from '../../../../core/services/mtbf-unit.service';
 
 /**
  * Tarjeta de Salud Operacional (CGBIDA-435).
@@ -28,65 +29,75 @@ import { I18nService } from '../../../../core/i18n/i18n.service';
       class="relative rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-900"
       data-testid="salud-operacional"
     >
-      <figcaption class="mb-3">
+      <figcaption class="mb-1">
         <h3 class="text-sm font-extrabold text-gray-800 dark:text-gray-100">
           {{ t().healthCardTitle }}
         </h3>
         <p class="text-xs text-gray-500 dark:text-gray-400">{{ t().healthCardSub }}</p>
       </figcaption>
 
-      <div class="flex items-center gap-5">
-        <!-- Anillo del índice. El color sale del estado que calcula el backend. -->
+      <!--
+        Anillo grande y centrado. El tamano es lo que lo vuelve el heroe de la tarjeta:
+        a 200 px el porcentaje se lee desde lejos, que es lo que pide un semaforo.
+      -->
+      <div class="flex justify-center">
         <svg
-          viewBox="0 0 140 140"
-          class="h-32 w-32 shrink-0"
+          [attr.viewBox]="'0 0 ' + LADO + ' ' + LADO"
+          class="h-[200px] w-[200px]"
           role="img"
           [attr.aria-label]="t().healthCardTitle + ': ' + etiquetaEstado()"
           data-testid="anillo-salud"
         >
           <circle
-            cx="70" cy="70" [attr.r]="RADIO"
-            fill="none" stroke-width="14"
+            [attr.cx]="CENTRO" [attr.cy]="CENTRO" [attr.r]="RADIO"
+            fill="none" [attr.stroke-width]="TRAZO"
             class="stroke-gray-200 dark:stroke-gray-700"
           />
           <circle
-            cx="70" cy="70" [attr.r]="RADIO"
-            fill="none" stroke-width="14" stroke-linecap="round"
+            [attr.cx]="CENTRO" [attr.cy]="CENTRO" [attr.r]="RADIO"
+            fill="none" [attr.stroke-width]="TRAZO" stroke-linecap="round"
             [attr.stroke]="color()"
             [attr.stroke-dasharray]="arco()"
-            transform="rotate(-90 70 70)"
+            [attr.transform]="'rotate(-90 ' + CENTRO + ' ' + CENTRO + ')'"
             data-testid="arco-salud"
           />
           <text
-            x="70" y="68" text-anchor="middle" font-size="26" font-weight="800"
+            [attr.x]="CENTRO" [attr.y]="CENTRO - 2" text-anchor="middle"
+            font-size="38" font-weight="800"
             [attr.fill]="color()"
             data-testid="indice-salud"
           >{{ textoIndice() }}</text>
           <text
-            x="70" y="88" text-anchor="middle" font-size="11" font-weight="600"
+            [attr.x]="CENTRO" [attr.y]="CENTRO + 26" text-anchor="middle"
+            font-size="14" font-weight="600"
             class="fill-gray-500 dark:fill-gray-400"
             data-testid="estado-salud"
           >{{ etiquetaEstado() }}</text>
         </svg>
-
-        <!-- Desglose: por qué ese color. -->
-        <ul class="flex min-w-0 flex-1 flex-col gap-2" data-testid="componentes-salud">
-          @for (c of componentes(); track c.clave) {
-            <li class="flex items-center justify-between gap-3 text-xs">
-              <span class="flex min-w-0 items-center gap-2">
-                <span
-                  class="inline-block h-2 w-2 shrink-0 rounded-full"
-                  [style.background]="c.color"
-                ></span>
-                <span class="truncate text-gray-600 dark:text-gray-300">{{ c.etiqueta }}</span>
-              </span>
-              <span class="shrink-0 font-semibold tabular-nums text-gray-800 dark:text-gray-100">
-                {{ c.valor }}
-              </span>
-            </li>
-          }
-        </ul>
       </div>
+
+      <!-- Desglose: por qué ese color. Tres sub-tarjetas con el estado en palabras. -->
+      <ul class="mt-2 grid grid-cols-3 gap-2" data-testid="componentes-salud">
+        @for (c of componentes(); track c.clave) {
+          <li
+            class="rounded-lg border border-gray-100 px-2 py-1.5 text-center
+                   dark:border-gray-700"
+            [attr.data-testid]="'componente-' + c.clave"
+          >
+            <p class="flex items-center justify-center gap-1 text-[10px] uppercase text-gray-500 dark:text-gray-400">
+              <span
+                class="inline-block h-2 w-2 shrink-0 rounded-full"
+                [style.background]="c.color"
+              ></span>
+              {{ c.etiqueta }}
+            </p>
+            <p class="mt-1 text-sm font-bold tabular-nums text-gray-800 dark:text-gray-100">
+              {{ c.valor }}
+            </p>
+            <p class="text-[10px] font-medium" [style.color]="c.color">{{ c.estadoTexto }}</p>
+          </li>
+        }
+      </ul>
 
       @if (insuficiente()) {
         <p
@@ -96,8 +107,13 @@ import { I18nService } from '../../../../core/i18n/i18n.service';
         >{{ t().healthInsufficient }}</p>
       }
 
-      <!-- Tendencia de backlog, compacta. Conserva el dato del gráfico que reemplazó. -->
-      @if (puntos().length > 0) {
+      <!--
+        Tendencia de backlog: OCULTA por defecto (CGBIDA-435). Hoy trend14Days trae un
+        solo dia con actividad, asi que la linea ocupa lugar sin informar. La logica queda
+        intacta y se activa con [mostrarTendencia]="true" cuando CGBIDA-439 deje el seed
+        denso.
+      -->
+      @if (mostrarTendencia() && puntos().length > 0) {
         <div class="mt-3">
           <div class="mb-1 flex items-center justify-between">
             <p class="text-[11px] uppercase text-gray-500 dark:text-gray-400">
@@ -140,16 +156,32 @@ import { I18nService } from '../../../../core/i18n/i18n.service';
 export class SaludOperacionalComponent {
   private i18n = inject(I18nService);
 
+  /** Unidad del MTBF compartida con la tarjeta de KPI (CGBIDA-435). */
+  private mtbf = inject(MtbfUnitService);
+
   /** Semáforo compuesto que calcula el backend (CGBIDA-438). */
   readonly salud = input.required<SaludOperacionalData | null>();
 
-  /** Tendencia de 14 días, para el minigráfico del pie. */
+  /** Tendencia de 14 días. Solo se dibuja si `mostrarTendencia` está activo. */
   readonly tendencia = input<TrendData[]>([]);
+
+  /**
+   * Interruptor de la tendencia.
+   *
+   * Apagado por defecto: con un solo día con actividad la línea no informa y competía
+   * visualmente con el anillo. La lógica se conserva para cuando el seed esté denso
+   * (CGBIDA-439).
+   */
+  readonly mostrarTendencia = input<boolean>(false);
 
   protected readonly t = computed(() => this.i18n.tree().financial);
 
-  // Geometría del anillo: r=54 con trazo de 14 deja un diámetro útil de 140.
-  protected readonly RADIO = 54;
+  // Anillo de 200 px: r=80 con trazo de 18 deja un diámetro útil de 200 y un centro
+  // despejado para el porcentaje, que es lo que se mira primero.
+  protected readonly LADO = 200;
+  protected readonly CENTRO = 100;
+  protected readonly RADIO = 80;
+  protected readonly TRAZO = 18;
   private readonly CIRCUNFERENCIA = 2 * Math.PI * this.RADIO;
 
   protected readonly ANCHO_MINI = 600;
@@ -200,22 +232,55 @@ export class SaludOperacionalComponent {
         clave: 'sla',
         etiqueta: t.healthComponentSla,
         valor: formatear(c?.sla, (v) => `${v}%`),
+        estadoTexto: this.etiquetaDeEstado(c?.sla),
         color: colorDe(c?.sla),
       },
       {
         clave: 'mtbf',
+        // La unidad la manda el servicio compartido: si el usuario elige días en la
+        // tarjeta de KPI, aquí también se ven días. Es el mismo MTBF.
         etiqueta: t.healthComponentMtbf,
-        valor: formatear(c?.mtbf, (v) => `${v} h`),
+        valor: this.mtbf.formatear(c?.mtbf?.valor ?? null, this.sufijoMtbf()),
+        estadoTexto: this.etiquetaDeEstado(c?.mtbf),
         color: colorDe(c?.mtbf),
       },
       {
         clave: 'backlog',
         etiqueta: t.healthComponentBacklog,
         valor: formatear(c?.backlog, (v) => `${v} ${t.healthWeeks}`),
+        estadoTexto: this.etiquetaDeEstado(c?.backlog),
         color: colorDe(c?.backlog),
       },
     ];
   });
+
+  /** Sufijo corto del MTBF en la unidad activa. */
+  private readonly sufijoMtbf = computed(() => {
+    const t = this.t();
+    switch (this.mtbf.unidad()) {
+      case 'horas':
+        return t.mtbfUnitShortHoras;
+      case 'meses':
+        return t.mtbfUnitShortMeses;
+      default:
+        return t.mtbfUnitShortDias;
+    }
+  });
+
+  /** Etiqueta del estado de UN componente, en palabras. */
+  private etiquetaDeEstado(c: ComponenteSalud | undefined): string {
+    const t = this.t();
+    switch (c?.estado) {
+      case 'verde':
+        return t.healthEstadoVerde;
+      case 'amarillo':
+        return t.healthEstadoAmarillo;
+      case 'rojo':
+        return t.healthEstadoRojo;
+      default:
+        return t.healthEstadoInsuficiente;
+    }
+  }
 
   protected readonly lineaAbiertas = computed(() =>
     this.linea((p) => p.abiertas)
@@ -260,4 +325,5 @@ const COLOR_POR_ESTADO: Record<EstadoSalud, string> = {
   rojo: '#c0281e',
   insuficiente: '#9ca3af',
 };
+
 

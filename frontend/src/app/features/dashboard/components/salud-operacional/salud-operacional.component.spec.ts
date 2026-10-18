@@ -52,7 +52,8 @@ const TENDENCIA: TrendData[] = Array.from({ length: 14 }, (_, i) => ({
 function setup(
   salud: SaludOperacionalData | null = ROJO,
   tendencia: TrendData[] = TENDENCIA,
-  lang: 'es' | 'en' = 'es'
+  lang: 'es' | 'en' = 'es',
+  mostrarTendencia = false
 ) {
   TestBed.resetTestingModule();
   window.localStorage.clear();
@@ -61,6 +62,7 @@ function setup(
   const fixture = TestBed.createComponent(SaludOperacionalComponent);
   fixture.componentRef.setInput('salud', salud);
   fixture.componentRef.setInput('tendencia', tendencia);
+  fixture.componentRef.setInput('mostrarTendencia', mostrarTendencia);
   fixture.detectChanges();
   return { fixture, el: fixture.nativeElement as HTMLElement };
 }
@@ -86,7 +88,8 @@ describe('SaludOperacionalComponent', () => {
       const { el } = setup(ROJO);
       const dash = el.querySelector('[data-testid="arco-salud"]')!.getAttribute('stroke-dasharray')!;
       const avance = Number(dash.split(' ')[0]);
-      const circunferencia = 2 * Math.PI * 54;
+      // CGBIDA-435: el anillo crecio a 200 px, o sea r=80.
+      const circunferencia = 2 * Math.PI * 80;
       expect(avance / circunferencia).toBeCloseTo(0.428, 2);
     });
   });
@@ -149,7 +152,7 @@ describe('SaludOperacionalComponent', () => {
   });
 
   describe('el desglose', () => {
-    it('muestra los tres componentes con su valor', () => {
+    it('muestra los tres componentes con su valor y su estado', () => {
       const { el } = setup(ROJO);
       const lista = el.querySelector('[data-testid="componentes-salud"]')!;
       expect(lista.querySelectorAll('li').length).toBe(3);
@@ -157,9 +160,13 @@ describe('SaludOperacionalComponent', () => {
       expect(t).toContain('SLA');
       expect(t).toContain('97.7%');
       expect(t).toContain('MTBF');
-      expect(t).toContain('223.6 h');
+      // El MTBF respeta la unidad compartida: por defecto, dias.
+      expect(t).toContain('9.3 d');
       expect(t).toContain('Backlog');
       expect(t).toContain('31.8 sem');
+      // Cada sub-tarjeta dice su estado en palabras, no solo con color.
+      expect(t).toContain('Saludable');
+      expect(t).toContain('Crítico');
     });
 
     it('un componente sin valor se muestra como guion', () => {
@@ -170,20 +177,21 @@ describe('SaludOperacionalComponent', () => {
   });
 
   describe('tendencia de backlog', () => {
-    it('dibuja la serie de 14 días', () => {
+    it('por defecto NO se dibuja: el flag arranca apagado (CGBIDA-435)', () => {
+      // Con un solo dia con actividad la linea no informa y competia con el anillo.
       const { el } = setup(ROJO, TENDENCIA);
+      expect(el.querySelector('[data-testid="tendencia-salud"]')).toBeNull();
+    });
+
+    it('con mostrarTendencia activo dibuja la serie de 14 dias', () => {
+      const { el } = setup(ROJO, TENDENCIA, 'es', true);
       const svg = el.querySelector('[data-testid="tendencia-salud"]');
       expect(svg).not.toBeNull();
       expect(svg!.querySelectorAll('polyline').length).toBe(2);
     });
 
-    it('sin tendencia no dibuja el minigráfico', () => {
-      const { el } = setup(ROJO, []);
-      expect(el.querySelector('[data-testid="tendencia-salud"]')).toBeNull();
-    });
-
     it('con un solo punto no divide por cero', () => {
-      const { el } = setup(ROJO, [{ date: '2026-10-01', abiertas: 1, cerradas: 0 }]);
+      const { el } = setup(ROJO, [{ date: '2026-10-01', abiertas: 1, cerradas: 0 }], 'es', true);
       const linea = el.querySelector('[data-testid="tendencia-salud"] polyline')!;
       expect(linea.getAttribute('points')).not.toContain('NaN');
     });
