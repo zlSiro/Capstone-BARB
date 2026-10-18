@@ -710,6 +710,22 @@ describe('DashboardComponent — feedback de Samuel', () => {
       await fixture.whenStable();
       expect(window.localStorage.getItem('barb.currency')).toBe('USD');
     });
+
+    it('el tipo de cambio se lee ANTES del toggle: [texto] [CLP|USD]', async () => {
+      // Pedido de René: primero el dato, después el control que lo usa.
+      const { fixture, el } = setup();
+      (el.querySelector('[data-testid="moneda-USD"]') as HTMLButtonElement).click();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const nota = el.querySelector('[data-testid="moneda-tasa"]')!;
+      const toggle = el.querySelector('[data-testid="selector-moneda"]')!;
+      expect(nota).not.toBeNull();
+      // `nota` precede a `toggle` en el documento.
+      expect(
+        nota.compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy();
+    });
   });
 
   describe('MTBF y su unidad (CGBIDA-434 y 435)', () => {

@@ -48,6 +48,22 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
         <!-- Moneda y rango temporal, juntos a la derecha de la cabecera. -->
         <div class="flex flex-wrap items-center justify-end gap-2">
           <!--
+            Tasa aplicada y su fecha, ANTES del toggle (pedido de Rene): se lee
+            [tipo de cambio] [CLP|USD], o sea primero el dato y despues el control que lo
+            usa. Es lo que hace auditable la conversion: sin esto el usuario no sabe a que
+            tipo de cambio se convirtieron las cifras.
+          -->
+          @if (currency.sinTasa()) {
+            <p class="text-xs text-amber-600 dark:text-amber-400" data-testid="moneda-sin-tasa">
+              {{ t().currencyNoRate }}
+            </p>
+          } @else if (currency.moneda() === 'USD') {
+            <p class="text-xs text-gray-500 dark:text-gray-400" data-testid="moneda-tasa">
+              {{ t().currencyRate }} {{ tasaTexto() }} CLP/USD
+            </p>
+          }
+
+          <!--
             Toggle de moneda (CGBIDA-432). Los datos base estan en CLP; USD solo cambia
             la presentacion. Se usa aria-pressed y no un select porque son dos estados.
           -->
@@ -70,20 +86,6 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
               </button>
             }
           </div>
-
-          <!--
-            Tasa aplicada y su fecha. Es lo que hace auditable la conversion: sin esto el
-            usuario no sabe a que tipo de cambio se convirtieron las cifras.
-          -->
-          @if (currency.sinTasa()) {
-            <p class="text-xs text-amber-600 dark:text-amber-400" data-testid="moneda-sin-tasa">
-              {{ t().currencyNoRate }}
-            </p>
-          } @else if (currency.moneda() === 'USD') {
-            <p class="text-xs text-gray-500 dark:text-gray-400" data-testid="moneda-tasa">
-              {{ t().currencyRate }} {{ tasaTexto() }} CLP/USD
-            </p>
-          }
 
           <!-- Selector de rango temporal (CGBIDA-397). Replica el select del legacy. -->
           <div>
