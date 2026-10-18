@@ -158,3 +158,75 @@ Al abrir una conversación existente, el flujo es:
                               │ api.deepseek.com     │
                               │ (deepseek-chat)      │
                               └──────────────────────┘
+## 2.9 Chat multimodal — análisis de imágenes (HU-05, estado final)
+
+> CGBIDA-276/277 (backend, PR #24) + CGBIDA-278/279 (frontend, PR #25) + Fase 3
+> de verificación (CGBIDA-280/281/282). Diseño completo:
+> `docs/MULTIMODAL_ARCHITECTURE.md` · Contrato: `docs/contrato_api_chat_multimedia.md`
+> · Evidencia: `docs/verificacion_hu05_multimedia.md`.
+>
+> ⚠️ Vigencia: las secciones 2.3–2.8 describen el estado de la HU-03 (deepseek,
+> `RunnableWithMessageHistory` con memoria en RAM). El estado vigente del chat
+> textual es NVIDIA NIM (`LLM_PROVIDER=nvidia`, modelo `nemotron-3.5-lightning`,
+> historial reconstruido desde `chat_session` vía `chat_repository`).
+
+**Decisión:** el chat tiene **dos modelos**. El textual (nemotron, text-only) no se
+reemplaza; para imágenes, un endpoint separado consulta un segundo modelo multimodal
+de la misma cuenta NIM.
+
+### Endpoint
+
+`POST /api/chat/multimedia` (`routers/chat.py`) — reutiliza toda la infra del
+stream textual: JWT, rate limit 10 req/min, límite de 50k tokens/día, SSE con los
+mismos eventos (`session`/`token`/`error`/`done`) y la misma sesión conversacional
+(la conversación aparece en el Historial como cualquier otra).
+
+| Validación | Respuesta |
+|---|---|
+| Sin imagen (data URL inválido/base64 ilegible) o mensaje vacío | `400` "Debes adjuntar una imagen y una pregunta." |
+| Formato no permitido (solo jpeg/png/webp) | `422` array de errores Pydantic |
+| Imagen > 5 MB **decodificados** | `413` "La imagen supera el máximo de 5 MB." |
+| Sin modelo o sin key | `503` "El análisis de imágenes no está disponible (MULTIMODAL_MODEL)." |
+| Sin token / rate limit / límite diario / sesión ajena | `401` / `429` / `429` / `404` — igual que el stream |
+
+El super_usuario elige empresa como en el stream (`chat_session.empresa_id` es
+NOT NULL).
+
+### Modelo multimodal
+
+`meta/muse-glimmer-30b` (multilingüe con imagen, +100 idiomas) vía
+`create_multimodal_chain()` en `llm_service.py`: `ChatOpenAI` + `base_url` de NIM
+con `MULTIMODAL_TIMEOUT=120` s. El turno humano viaja como bloques estándar
+`[{type:"text"}, {type:"image_url", image_url:{url:"data:..."}}]`.
+
+**Hallazgo operativo clave:** el system prompt incluye `Reasoning strength: low`
+(mecanismo oficial del modelo para respuestas directas). Sin esa línea, el
+razonamiento interno consume el `max_tokens` y `content` llega **vacío** — el
+equivalente multimodal del `enable_thinking: false` de nemotron. Verificado
+empíricamente contra NIM (2026-10-15; documentado en el diseño D5).
+
+**Sin reintentos ni fallbacks**: el modelo solo existe en NIM y la latencia del
+free tier (4–20 s por request) hace un reintento peor que el error.
+
+### Persistencia y contabilidad
+
+- **La imagen NO se persiste** (decisión D2): se usa en memoria y se descarta;
+  el historial guarda solo el texto del turno. El frontend muestra la miniatura
+  solo en la sesión viva.
+- **Cada imagen suma ~4096 tokens visuales** (presupuesto del ViT-G/14 del
+  modelo) al límite diario del usuario (D6), junto con entrada y salida.
+- **Sin RAG en v1** (D5): el turno multimodal consulta solo imagen+texto;
+  integrar "imagen + documentación de la empresa" quedó registrado como mejora
+  futura en el backlog (HU-23).
+
+### Configuración
+
+```env
+MULTIMODAL_MODEL=meta/muse-glimmer-30b   # vacío → endpoint responde 503
+NVIDIA_MULTIMODAL_API_KEY=               # vacía = usa NVIDIA_API_KEY (la misma key sirve)
+MULTIMODAL_TIMEOUT=120
+MULTIMODAL_MAX_IMAGE_MB=5
+```
+
+Al arrancar, `main.py` registra el estado en el log (verificación en Render):
+`Chat multimodal (HU-05) activo: <modelo>`.
