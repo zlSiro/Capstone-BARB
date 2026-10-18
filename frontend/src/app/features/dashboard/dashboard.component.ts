@@ -4,7 +4,7 @@ import { StatsService } from '../../core/services/stats.service';
 import { CurrencyService, Moneda } from '../../core/services/currency.service';
 import { FinancialStats } from '../../core/models';
 import { I18nService } from '../../core/i18n/i18n.service';
-import { BacklogChartComponent } from './components/backlog-chart/backlog-chart.component';
+import { SaludOperacionalComponent } from './components/salud-operacional/salud-operacional.component';
 import { MachineRankingComponent } from './components/machine-ranking/machine-ranking.component';
 import { TipoDonutComponent } from './components/tipo-donut/tipo-donut.component';
 import { AlertaEstancadasComponent } from './components/alerta-estancadas/alerta-estancadas.component';
@@ -29,7 +29,7 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, BacklogChartComponent, MachineRankingComponent, TipoDonutComponent, AlertaEstancadasComponent, ImpactoEscenariosComponent],
+  imports: [CommonModule, MachineRankingComponent, TipoDonutComponent, AlertaEstancadasComponent, ImpactoEscenariosComponent, SaludOperacionalComponent],
   template: `
     <!--
       max-w-screen-2xl (1536px) + mx-auto: sin esto el dashboard se estiraba al 100% del
@@ -183,8 +183,10 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
           porque su contenido (dona de 200 px + leyenda de 214 px) es angosto y se centra.
         -->
         <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <!-- El gráfico se auto-oculta si no hay puntos, igual que el legacy. -->
-          <app-backlog-chart class="min-w-0" [puntos]="tendencia()" />
+          <!-- Salud Operacional (CGBIDA-435). Sustituye al grafico de backlog suelto:
+               el indicador va como hero y la tendencia queda de minigrafico en la misma
+               tarjeta, asi el dashboard sigue entrando sin scroll. -->
+          <app-salud-operacional class="min-w-0" [salud]="salud()" [tendencia]="tendencia()" />
 
           <!-- El ranking muestra su propio estado vacío si no hay equipos. -->
           <app-machine-ranking class="min-w-0" [maquinas]="equipos()" />
@@ -266,6 +268,9 @@ export class DashboardComponent implements OnInit {
   /** Impacto anual, para el grafico de escenarios (CGBIDA-436). */
   protected readonly impacto = computed(() => this.stats()?.impacto_anual ?? null);
 
+  /** Semaforo compuesto de salud operacional (CGBIDA-435). */
+  protected readonly salud = computed(() => this.stats()?.salud_operacional ?? null);
+
   /** Ordenes estancadas para el banner. Un total de 0 lo oculta. */
   protected readonly estancadas = computed(
     () => this.stats()?.estancadas ?? { total: 0, vencidas: 0, demoradas: 0, umbral_dias: 0 }
@@ -335,7 +340,7 @@ export class DashboardComponent implements OnInit {
         descripcion: tx.mtbfSub,
         color: mtbfOk
           ? 'text-gray-800 dark:text-gray-100'
-          : 'text-sm font-medium text-amber-600 dark:text-amber-400',
+          : 'text-xs font-medium text-amber-600 dark:text-amber-400',
         tooltip: ''
       },
       {
@@ -357,7 +362,7 @@ export class DashboardComponent implements OnInit {
           : tx.impactCardSub,
         color: impactoOk
           ? 'text-blue-700 dark:text-blue-400'
-          : 'text-sm font-medium text-amber-600 dark:text-amber-400',
+          : 'text-xs font-medium text-amber-600 dark:text-amber-400',
         tooltip:
           `${tx.kpiImpactoTooltip} Supuestos: ${supuestoClp} por minuto y ` +
           `${minutosRef} min sin BARB por incidente.${notaUsd}`
@@ -427,3 +432,4 @@ export class DashboardComponent implements OnInit {
     });
   }
 }
+

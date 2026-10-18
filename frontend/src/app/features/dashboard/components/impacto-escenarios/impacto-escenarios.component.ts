@@ -97,9 +97,24 @@ import { CurrencyService } from '../../../../core/services/currency.service';
         </svg>
       </figure>
     } @else {
-      <p class="text-sm text-gray-500 dark:text-gray-400" data-testid="impacto-vacio">
-        {{ t().impactNoHistory }}
-      </p>
+      <!--
+        Sin historial suficiente se mantiene la tarjeta, no un parrafo suelto: si el
+        mensaje queda sin marco, la celda del grid parece rota al lado de las demas.
+      -->
+      <figure
+        class="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-900"
+        data-testid="impacto-escenarios-vacio"
+      >
+        <figcaption class="mb-2">
+          <h3 class="text-sm font-extrabold text-gray-800 dark:text-gray-100">
+            {{ t().impactChartTitle }}
+          </h3>
+          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t().impactChartSub }}</p>
+        </figcaption>
+        <p class="text-sm text-amber-600 dark:text-amber-400" data-testid="impacto-vacio">
+          {{ t().impactNoHistory }}
+        </p>
+      </figure>
     }
   `
 })
