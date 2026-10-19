@@ -271,7 +271,11 @@ async def get_financial_impact(
                 100.0 * COUNT(*) FILTER (WHERE ot.estado = 'completed' AND ot.tiempo_reparacion_min <= {sla_target})
                 / NULLIF(COUNT(*) FILTER (WHERE ot.estado = 'completed'), 0),
                 0
-            ) AS sla_compliance
+            ) AS sla_compliance,
+            -- Costo por maquina (CGBIDA-426 y siguientes): mismo criterio que el Costo
+            -- Directo del KPI, o sea sin las canceladas. Como el filtro de fecha va en el
+            -- ON del LEFT JOIN, tambien respeta el rango elegido.
+            COALESCE(SUM(ot.costo_real) FILTER (WHERE ot.estado != 'cancelled'), 0) AS costo_total
         FROM maquina m
         JOIN planta pl ON pl.planta_id = m.planta_id
         LEFT JOIN orden_trabajo ot ON ot.maquina_id = m.maquina_id {date_filter}
@@ -499,6 +503,8 @@ async def get_financial_impact(
                     "ahorroGenerado": round(float(row["downtime_evitado_min"]) * downtime_cost, 2),
                     "mttr": round(float(row["mttr"]), 1),
                     "slaCompliance": round(float(row["sla_compliance"]), 1),
+                    # Costo real de la maquina en el periodo, sin canceladas.
+                    "costo_total": round(float(row["costo_total"]), 2),
                 }
                 for row in machine_rows
             ],

@@ -75,6 +75,48 @@ async def test_contrato_del_endpoint_tiene_las_claves_exactas(client):
     }, sorted(d)
 
 
+async def test_el_costo_por_maquina_es_numerico_y_no_supera_el_total(client):
+    """`costo_total` por máquina es la base del gráfico de Top 5 por costo.
+
+    Dos invariantes: nunca es negativo, y la suma de las 5 máquinas no puede superar el
+    Costo Directo de la empresa (las máquinas son un top 5, no el universo).
+    """
+    d = await _stats(client)
+    for m in d["machines"]:
+        assert isinstance(m["costo_total"], (int, float)), m["costo_total"]
+        assert m["costo_total"] >= 0, m
+
+    suma = sum(m["costo_total"] for m in d["machines"])
+    assert suma <= d["financials"]["costo_total_acumulado"] + 0.01, (suma, d["financials"])
+
+
+async def test_el_costo_por_maquina_respeta_el_rango(client):
+    """Como el filtro de fecha va en el ON del JOIN, un rango corto debe bajar el costo."""
+    # Una sola sesión: dos logins seguidos en la misma prueba chocan con el control de
+    # sesiones y el segundo responde 401.
+    h = await _login(client, ADMIN_E1)
+    completo = (await client.get(RUTA, headers=h)).json()
+    corto = (await client.get(f"{RUTA}?days=7", headers=h)).json()
+    total_completo = sum(m["costo_total"] for m in completo["machines"])
+    total_corto = sum(m["costo_total"] for m in corto["machines"])
+    assert total_corto <= total_completo, (total_corto, total_completo)
+
+
+def test_la_query_de_machines_excluye_las_canceladas_del_costo():
+    """Las canceladas no suman costo (mismo criterio que el KPI de Costo Directo).
+
+    Se comprueba en el SQL, no en el valor: con el dataset actual no hay ninguna cancelada
+    con costo distinto de cero, así que el resultado sería el mismo sin el filtro. Es la
+    misma convención que usa la prueba del filtro de correctivas en el MTBF.
+    """
+    from pathlib import Path
+
+    fuente = Path(stats.__file__).read_text(encoding="utf-8")
+    inicio = fuente.index("machines_query")
+    fragmento = fuente[inicio : inicio + 1200]
+    assert "estado != 'cancelled'" in fragmento, fragmento
+
+
 async def test_por_tipo_tiene_la_forma_esperada(client):
     """Cada elemento de `por_tipo` declara el tipo de intervencion y su volumen."""
     d = await _stats(client)
@@ -420,10 +462,9 @@ async def test_trend_y_machines_tienen_la_forma_esperada(client):
         assert set(punto) == {"date", "abiertas", "cerradas"}, sorted(punto)
 
     assert len(d["machines"]) == 5, f"{len(d['machines'])} máquinas"
-    # El backend envía 6 campos por máquina. El modelo del frontend
-    # (`stats.model.ts`, interfaz `MachineData`) solo declara 3: `ahorroGenerado`, `mttr`
-    # y `slaCompliance` llegan pero no se consumen. Queda documentado en CGBIDA-410.
-    esperado = {"id", "name", "total", "ahorroGenerado", "mttr", "slaCompliance"}
+    # El backend envía 7 campos por máquina; `MachineData` los declara todos desde
+    # CGBIDA-394/399. `costo_total` se agregó para el gráfico de Top 5 por costo.
+    esperado = {"id", "name", "total", "ahorroGenerado", "mttr", "slaCompliance", "costo_total"}
     for m in d["machines"]:
         assert set(m) == esperado, sorted(m)
 
