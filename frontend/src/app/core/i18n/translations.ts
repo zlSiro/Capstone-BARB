@@ -123,6 +123,8 @@ export const translations = {
       rankingMetricOts: 'Volumen de OTs',
       rankingMetricMttr: 'MTTR',
       rankingMetricAhorro: 'Ahorro generado',
+  rankingMetricCosto: 'Costo real',
+  rankingCostoReal: 'Costo real del periodo',
       rankingEmpty: 'Sin datos de equipos en el período.',
       withoutBarb: 'Escenario Sin BARB', withBarb: 'Escenario Con BARB',
       savingsGenerated: 'Ahorro Generado a la fecha',
@@ -158,7 +160,7 @@ export const translations = {
       measured: 'Medido', estimated: 'Estimado',
       // CGBIDA-437: los títulos decían algo distinto de lo que el gráfico muestra.
       topMachinesTitle: 'Top 5 Equipos', topMachinesSubtitle: 'Rendimiento por KPI',
-      viewOts: 'Volumen OTs', viewMttr: 'MTTR (Minutos)', viewAhorro: 'Ahorro Generado',
+      viewOts: 'Volumen OTs', viewMttr: 'MTTR (Minutos)', viewAhorro: 'Ahorro Generado', viewCosto: 'Costo Real',
       // CGBIDA-432: toggle de moneda. Los datos base están en CLP y el backend no cambia.
       currencyLabel: 'Moneda',
       currencyClp: 'CLP',
@@ -371,6 +373,8 @@ export const translations = {
       rankingMetricOts: 'WO volume',
       rankingMetricMttr: 'MTTR',
       rankingMetricAhorro: 'Savings generated',
+  rankingMetricCosto: 'Actual cost',
+  rankingCostoReal: 'Actual cost for the period',
       rankingEmpty: 'No machine data for this period.',
       withoutBarb: 'Without BARB Scenario', withBarb: 'With BARB Scenario',
       savingsGenerated: 'Savings Generated to Date',
@@ -400,7 +404,7 @@ export const translations = {
       performanceTitle: 'Machine Performance',
       measured: 'Measured', estimated: 'Estimated',
       topMachinesTitle: 'Top 5 Machines', topMachinesSubtitle: 'Performance by KPI',
-      viewOts: 'WO Volume', viewMttr: 'MTTR (Minutes)', viewAhorro: 'Savings Generated',
+      viewOts: 'WO Volume', viewMttr: 'MTTR (Minutes)', viewAhorro: 'Savings Generated', viewCosto: 'Actual Cost',
       currencyLabel: 'Currency',
       currencyClp: 'CLP',
       currencyUsd: 'USD',
@@ -499,6 +503,7 @@ export const translations = {
 };
 
 export type TranslationTree = typeof translations['es'];
+
 
 
 

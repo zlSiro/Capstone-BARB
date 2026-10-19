@@ -161,8 +161,9 @@ async def test_impacto_days_30_no_visible_y_campos_null(client, monkeypatch):
 async def test_impacto_con_rango_corto_ni_se_ejecuta_la_query(client, monkeypatch):
     """`impacto_visible=False` no es cosmético: ahorra la consulta.
 
-    ACTUALIZADO A PROPÓSITO en CGBIDA-395 y 396: el conteo pasó de 3 a 5 consultas porque se
-    agregó la distribución por tipo de intervención (`por_tipo`), que se ejecuta siempre.
+    ACTUALIZADO A PROPÓSITO en CGBIDA-395, 396 y 435: el conteo pasó de 3 a 6 consultas. Se
+    agregó la distribución por tipo de intervención (por_tipo) y la segunda lista de
+    máquinas ordenada por costo (machines_por_costo), que se ejecutan siempre.
     Lo que este test protege no es el número exacto, sino que el impacto NO se consulte
     cuando el rango no lo justifica.
     """
@@ -170,7 +171,7 @@ async def test_impacto_con_rango_corto_ni_se_ejecuta_la_query(client, monkeypatc
     await _impacto(client, "?days=30")
     ejecutadas = [sql for sql, _ in p.conn.cursor_obj.llamadas]
     assert not any("incidentes_periodo" in s for s in ejecutadas), "se ejecutó la consulta de impacto"
-    assert len(ejecutadas) == 5, f"esperaba 5 consultas, hubo {len(ejecutadas)}"
+    assert len(ejecutadas) == 6, f"esperaba 6 consultas, hubo {len(ejecutadas)}"
 
 
 async def test_supuestos_se_devuelven_siempre(client, monkeypatch):
@@ -338,3 +339,4 @@ async def test_no_quedan_literales_180_ni_2000_en_stats_py():
 
     assert not re.search(r"\b180\b", sin_comentarios), "quedó un 180 hardcodeado en stats.py"
     assert not re.search(r"\b2000\b", sin_comentarios), "quedó un 2000 hardcodeado en stats.py"
+

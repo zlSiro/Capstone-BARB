@@ -75,6 +75,11 @@ function cambiarA(fixture: ReturnType<typeof setup>['fixture'], valor: string): 
   fixture.detectChanges();
 }
 
+/** El host del componente, ya renderizado. */
+function elDe(fixture: { nativeElement: unknown }): HTMLElement {
+  return fixture.nativeElement as HTMLElement;
+}
+
 describe('MachineRankingComponent', () => {
   // ===========================================================================
   // Moneda (CGBIDA-435)
@@ -113,7 +118,97 @@ describe('MachineRankingComponent', () => {
       // el ahorro, así que debe aparecer un solo símbolo de dólar.
       const { fixture, el } = setup(CINCO, 'es', 'USD');
       const texto = tooltipDe(fixture, el);
-      expect(texto.match(/US\$/g)?.length).toBe(1);
+      expect(texto.match(/US\$/g)?.length).toBe(2);
+    });
+  });
+
+  // ===========================================================================
+  // Métrica «Costo» (CGBIDA-435)
+  // ===========================================================================
+  describe('la métrica Costo usa el top 5 por costo, no el de volumen', () => {
+    /**
+     * Las dos listas REALES del backend son distintas: el top 5 por volumen no incluye a
+     * la Cinta Transportadora (12 OTs, 6,27 M) ni a Hydraulic Press (10 OTs, 4,93 M),
+     * que sí están entre los cinco más caros.
+     */
+    const POR_VOLUMEN: MachineData[] = [
+      { id: '1', name: 'PLC Siemens', total: 16, ahorroGenerado: 100, mttr: 40, slaCompliance: 95, costo_total: 5_790_338 },
+      { id: '2', name: 'Chiller', total: 15, ahorroGenerado: 100, mttr: 40, slaCompliance: 95, costo_total: 7_640_187 },
+    ];
+    const POR_COSTO: MachineData[] = [
+      { id: '2', name: 'Chiller', total: 15, ahorroGenerado: 100, mttr: 40, slaCompliance: 95, costo_total: 7_640_187 },
+      { id: '9', name: 'Cinta Transportadora', total: 12, ahorroGenerado: 100, mttr: 40, slaCompliance: 95, costo_total: 6_274_354 },
+    ];
+
+    function setupDoble(moneda: 'CLP' | 'USD' = 'CLP') {
+      TestBed.resetTestingModule();
+      window.localStorage.setItem('barb.lang', 'es');
+      window.localStorage.setItem('barb.currency', moneda);
+      if (moneda === 'USD') {
+        window.localStorage.setItem(
+          'barb.usdRate',
+          JSON.stringify({ valor: 984.09, fecha: '2026-10-18T00:00:00.000Z' })
+        );
+      } else {
+        window.localStorage.removeItem('barb.usdRate');
+      }
+      TestBed.configureTestingModule({ imports: [MachineRankingComponent] });
+      const fixture = TestBed.createComponent(MachineRankingComponent);
+      fixture.componentRef.setInput('maquinas', POR_VOLUMEN);
+      fixture.componentRef.setInput('maquinasPorCosto', POR_COSTO);
+      fixture.detectChanges();
+      return { fixture, el: fixture.nativeElement as HTMLElement };
+    }
+
+    it('en Costo dibuja los equipos más caros, aunque no sean los de más OTs', () => {
+      const { fixture, el } = setupDoble();
+      cambiarA(fixture, 'costo');
+      // La Cinta Transportadora solo existe en la lista por costo.
+      expect(el.querySelector('[data-testid="nombre-9"]')).not.toBeNull();
+      expect(el.querySelector('[data-testid="nombre-1"]')).toBeNull();
+    });
+
+    it('vuelve a la lista por volumen al cambiar de métrica', () => {
+      const { fixture, el } = setupDoble();
+      cambiarA(fixture, 'costo');
+      cambiarA(fixture, 'ots');
+      expect(el.querySelector('[data-testid="nombre-1"]')).not.toBeNull();
+      expect(el.querySelector('[data-testid="nombre-9"]')).toBeNull();
+    });
+
+    it('sin la lista por costo cae a la de volumen: no deja el gráfico vacío', () => {
+      // Respuesta vieja del backend: mejor mostrar el top 5 por volumen que nada.
+      TestBed.resetTestingModule();
+      window.localStorage.setItem('barb.lang', 'es');
+      TestBed.configureTestingModule({ imports: [MachineRankingComponent] });
+      const fixture = TestBed.createComponent(MachineRankingComponent);
+      fixture.componentRef.setInput('maquinas', POR_VOLUMEN);
+      fixture.detectChanges();
+      cambiarA(fixture, 'costo');
+      expect(elDe(fixture).querySelectorAll('[data-testid^="barra-"]').length).toBe(2);
+    });
+
+    it('el valor de la barra se formatea como moneda', () => {
+      const { fixture, el } = setupDoble();
+      cambiarA(fixture, 'costo');
+      (el.querySelector('[data-testid="zona-2"]') as SVGRectElement).dispatchEvent(
+        new MouseEvent('mouseenter')
+      );
+      fixture.detectChanges();
+      const texto = el.querySelector('[data-testid="ranking-tooltip"]')!.textContent ?? '';
+      // 7.640.187 en el tooltip, y la línea de costo con su etiqueta.
+      expect(texto).toContain('7.640.187');
+      expect(texto).toContain('Costo real');
+    });
+
+    it('el tooltip muestra también el costo de cada equipo', () => {
+      const { fixture, el } = setupDoble();
+      (el.querySelector('[data-testid="zona-1"]') as SVGRectElement).dispatchEvent(
+        new MouseEvent('mouseenter')
+      );
+      fixture.detectChanges();
+      const texto = el.querySelector('[data-testid="ranking-tooltip"]')!.textContent ?? '';
+      expect(texto).toContain('5.790.338');
     });
   });
 
@@ -156,11 +251,16 @@ describe('MachineRankingComponent', () => {
       expect(ordenEnPantalla(el)).toEqual(['1', '2', '3', '4', '5']);
     });
 
-    it('el selector tiene exactamente 3 opciones, no 4', () => {
+    it('el selector ofrece las cuatro métricas', () => {
       const { el } = setup(CINCO);
       const opciones = [...el.querySelectorAll('[data-testid="selector-metrica"] option')];
-      expect(opciones.length).toBe(3);
-      expect(opciones.map((o) => (o as HTMLOptionElement).value)).toEqual(['ots', 'mttr', 'ahorro']);
+      expect(opciones.length).toBe(4);
+      expect(opciones.map((o) => (o as HTMLOptionElement).value)).toEqual([
+        'ots',
+        'mttr',
+        'ahorro',
+        'costo',
+      ]);
     });
 
     it('al cambiar a MTTR reordena de mayor a menor', () => {
@@ -414,6 +514,7 @@ describe('MachineRankingComponent', () => {
     });
   });
 });
+
 
 
 

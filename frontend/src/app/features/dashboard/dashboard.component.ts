@@ -216,10 +216,21 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
           <!-- Salud Operacional (CGBIDA-435). Sustituye al grafico de backlog suelto:
                el indicador va como hero y la tendencia queda de minigrafico en la misma
                tarjeta, asi el dashboard sigue entrando sin scroll. -->
-          <app-salud-operacional class="min-w-0" [salud]="salud()" [tendencia]="tendencia()" />
+          <!-- Tendencia activa (CGBIDA-439): con datos en los 14 días deja de ser una
+               línea plana. Para que entre sin scroll, el anillo baja a 150 px. -->
+          <app-salud-operacional
+            class="min-w-0"
+            [salud]="salud()"
+            [tendencia]="tendencia()"
+            [mostrarTendencia]="true"
+          />
 
           <!-- El ranking muestra su propio estado vacío si no hay equipos. -->
-          <app-machine-ranking class="min-w-0" [maquinas]="equipos()" />
+          <app-machine-ranking
+            class="min-w-0"
+            [maquinas]="equipos()"
+            [maquinasPorCosto]="equiposPorCosto()"
+          />
 
           <!-- Dona por tipo de intervencion (CGBIDA-395). Se auto-oculta sin datos. -->
           <app-tipo-donut class="min-w-0" [datos]="porTipo()" />
@@ -301,6 +312,9 @@ export class DashboardComponent implements OnInit {
 
   /** Equipos del ranking. El backend ya los limita a 5. */
   protected readonly equipos = computed(() => this.stats()?.machines ?? []);
+
+  /** Top 5 por costo real, que no coincide con el top 5 por volumen (CGBIDA-435). */
+  protected readonly equiposPorCosto = computed(() => this.stats()?.machines_por_costo ?? []);
 
   /** Distribucion por tipo de intervencion, para la dona. */
   protected readonly porTipo = computed(() => this.stats()?.por_tipo ?? []);
@@ -491,5 +505,7 @@ export class DashboardComponent implements OnInit {
     });
   }
 }
+
+
 
 

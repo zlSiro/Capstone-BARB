@@ -5,13 +5,17 @@ import { I18nService } from '../../../../core/i18n/i18n.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
 
 /** Métricas que ofrece el selector, en el orden del legacy. */
-export type MetricaRanking = 'ots' | 'mttr' | 'ahorro';
+export type MetricaRanking = 'ots' | 'mttr' | 'ahorro' | 'costo';
 
 /** Campos numéricos de un equipo. Acota `keyof MachineData` a los que se pueden graficar. */
-type CampoNumerico = 'total' | 'mttr' | 'ahorroGenerado';
+type CampoNumerico = 'total' | 'mttr' | 'ahorroGenerado' | 'costo_total';
 
 /** Claves del bloque i18n `financial` que etiquetan cada métrica. */
-type ClaveEtiqueta = 'rankingMetricOts' | 'rankingMetricMttr' | 'rankingMetricAhorro';
+type ClaveEtiqueta =
+  | 'rankingMetricOts'
+  | 'rankingMetricMttr'
+  | 'rankingMetricAhorro'
+  | 'rankingMetricCosto';
 
 /** Cuántos caracteres entran en el eje Y antes de truncar. */
 export const MAX_CARACTERES_NOMBRE = 16;
@@ -27,6 +31,7 @@ const METRICAS: Record<MetricaRanking, { campo: CampoNumerico; etiqueta: ClaveEt
   ots: { campo: 'total', etiqueta: 'rankingMetricOts' },
   mttr: { campo: 'mttr', etiqueta: 'rankingMetricMttr' },
   ahorro: { campo: 'ahorroGenerado', etiqueta: 'rankingMetricAhorro' },
+  costo: { campo: 'costo_total', etiqueta: 'rankingMetricCosto' },
 };
 
 /** Paleta del legacy (`FinancialDashboard.jsx:22`), con los hex resueltos. */
@@ -85,6 +90,7 @@ const MIL = new Intl.NumberFormat('es-CL');
             <option value="ots">{{ t().viewOts }}</option>
             <option value="mttr">{{ t().viewMttr }}</option>
             <option value="ahorro">{{ t().viewAhorro }}</option>
+            <option value="costo">{{ t().viewCosto }}</option>
           </select>
         </figcaption>
 
@@ -183,6 +189,10 @@ const MIL = new Intl.NumberFormat('es-CL');
                   <dd class="font-medium tabular-nums text-gray-800 dark:text-gray-100">{{ m.ahorro }}</dd>
                 </div>
                 <div class="flex justify-between gap-3">
+                  <dt>{{ t().rankingCostoReal }}</dt>
+                  <dd class="font-medium tabular-nums text-gray-800 dark:text-gray-100">{{ m.costo }}</dd>
+                </div>
+                <div class="flex justify-between gap-3">
                   <dt>{{ t().efficiency }}</dt>
                   <dd class="font-medium tabular-nums text-gray-800 dark:text-gray-100">{{ m.sla }}</dd>
                 </div>
@@ -203,8 +213,30 @@ export class MachineRankingComponent {
   private host = inject(ElementRef<HTMLElement>);
   private currency = inject(CurrencyService);
 
-  /** Equipos del endpoint. Ya vienen limitados a 5 por el backend. */
+  /** Equipos del endpoint: los 5 con más OTs del período. */
   readonly maquinas = input.required<MachineData[]>();
+
+  /**
+   * Los 5 equipos MÁS CAROS, que no son los mismos que los de más OTs.
+   *
+   * El endpoint devuelve las dos listas porque ordenar acá no alcanza: con el dataset de
+   * la demo, tres de los cinco equipos más caros no están entre los de más OTs (la Cinta
+   * Transportadora, con 12 OTs, cuesta más que el Generador, con 13). Ordenar el top 5 por
+   * volumen daría un gráfico que dice «Top 5 por costo» y muestra otros cinco.
+   */
+  readonly maquinasPorCosto = input<MachineData[]>([]);
+
+  /**
+   * Lista sobre la que se calcula el ranking.
+   *
+   * Cambia con la métrica: el top 5 por costo se pide aparte. Si el backend todavía no
+   * manda la lista (respuesta vieja), se cae a la de volumen en vez de dibujar un vacío.
+   */
+  private readonly fuente = computed(() => {
+    if (this.metrica() !== 'costo') return this.maquinas();
+    const porCosto = this.maquinasPorCosto();
+    return porCosto.length > 0 ? porCosto : this.maquinas();
+  });
 
   /** Métrica activa. Por defecto `ots`, como el legacy (`FinancialDashboard.jsx:63`). */
   protected readonly metrica = signal<MetricaRanking>('ots');
@@ -258,7 +290,7 @@ export class MachineRankingComponent {
    */
   private readonly ordenadas = computed(() => {
     const campo = METRICAS[this.metrica()].campo;
-    return [...this.maquinas()].sort((a, b) => {
+    return [...this.fuente()].sort((a, b) => {
       const va = Number(a[campo] ?? 0);
       const vb = Number(b[campo] ?? 0);
       return vb - va;
@@ -268,7 +300,7 @@ export class MachineRankingComponent {
   /** Máximo de la métrica activa. Piso de 1 para no dividir por cero si todo es 0. */
   private readonly maximo = computed(() => {
     const campo = METRICAS[this.metrica()].campo;
-    return Math.max(1, ...this.maquinas().map((m) => Number(m[campo] ?? 0)));
+    return Math.max(1, ...this.fuente().map((m) => Number(m[campo] ?? 0)));
   });
 
   /** Guías verticales del eje numérico, que en el legacy van ocultas. */
@@ -292,6 +324,7 @@ export class MachineRankingComponent {
         ots: MIL.format(m.total),
         mttr: `${MIL.format(Math.round(m.mttr))} min`,
         ahorro: this.currency.formatear(m.ahorroGenerado),
+        costo: this.currency.formatear(m.costo_total ?? 0),
         sla: `${m.slaCompliance} %`,
         // Color por POSICIÓN en el ranking, no por equipo: si al cambiar de métrica un
         // equipo sube o baja, cambia de color. Es el comportamiento del legacy.
@@ -349,8 +382,12 @@ export class MachineRankingComponent {
    * el toggle en dólares el ranking seguía mostrando pesos.
    */
   private formatear(valor: number): string {
-    if (this.metrica() === 'ahorro') return this.currency.formatear(valor);
+    if (this.metrica() === 'ahorro' || this.metrica() === 'costo') {
+      return this.currency.formatear(valor);
+    }
     if (this.metrica() === 'mttr') return `${MIL.format(Math.round(valor))} min`;
     return MIL.format(valor);
   }
 }
+
+

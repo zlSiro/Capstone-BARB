@@ -70,8 +70,8 @@ async def test_contrato_del_endpoint_tiene_las_claves_exactas(client):
     """
     d = await _stats(client)
     assert set(d) == {
-        "financials", "trend14Days", "machines", "impacto_anual", "por_tipo", "estancadas",
-        "salud_operacional",
+        "financials", "trend14Days", "machines", "machines_por_costo", "impacto_anual",
+        "por_tipo", "estancadas", "salud_operacional",
     }, sorted(d)
 
 
@@ -112,9 +112,14 @@ def test_la_query_de_machines_excluye_las_canceladas_del_costo():
     from pathlib import Path
 
     fuente = Path(stats.__file__).read_text(encoding="utf-8")
-    inicio = fuente.index("machines_query")
-    fragmento = fuente[inicio : inicio + 1200]
+    # La consulta vive en el helper `_maquinas_sql`, que se ejecuta dos veces (por volumen
+    # y por costo). El filtro tiene que estar en el SQL, así que las DOS listas lo heredan.
+    inicio = fuente.index("def _maquinas_sql")
+    fragmento = fuente[inicio : inicio + 1600]
     assert "estado != 'cancelled'" in fragmento, fragmento
+    assert fragmento.count("estado != 'cancelled'") == 1, (
+        "el filtro debe estar una sola vez, en el SQL compartido"
+    )
 
 
 async def test_por_tipo_tiene_la_forma_esperada(client):
@@ -453,6 +458,40 @@ async def test_el_cumplimiento_de_sla_no_es_plano(client):
         f"efficiency = {eff}: el dataset no tiene ninguna OT sobre el SLA, "
         "el KPI queda plano y el ajuste de demo no está operando"
     )
+
+
+async def test_machines_por_costo_viene_ordenado_por_costo(client):
+    """La lista por costo existe porque el top 5 por volumen NO es el top 5 por costo.
+
+    Con el dataset de la demo, tres de los cinco equipos más caros no están entre los de
+    más OTs. Si el frontend ordenara la lista de volumen, el gráfico diría «Top 5 por
+    costo» mostrando otros equipos. Esta prueba fija que el backend manda la lista buena.
+    """
+    d = await _stats(client)
+    por_costo = d["machines_por_costo"]
+    assert 1 <= len(por_costo) <= 5, f"{len(por_costo)} equipos"
+
+    # Misma forma que `machines`: se reusan los mismos consumidores.
+    esperado = {"id", "name", "total", "ahorroGenerado", "mttr", "slaCompliance", "costo_total"}
+    for m in por_costo:
+        assert set(m) == esperado, sorted(m)
+
+    # Ordenada de mayor a menor costo.
+    costos = [m["costo_total"] for m in por_costo]
+    assert costos == sorted(costos, reverse=True), costos
+
+    # Y no es la misma lista que la de volumen: al menos el orden cambia.
+    assert [m["id"] for m in por_costo] != [m["id"] for m in d["machines"]], (
+        "las dos listas son idénticas: el orden por costo no está haciendo nada"
+    )
+
+
+async def test_machines_por_costo_no_inventa_equipos_fuera_del_top_de_volumen(client):
+    """Todo equipo de la lista por costo existe en la base y tiene costo positivo."""
+    d = await _stats(client)
+    for m in d["machines_por_costo"]:
+        assert m["costo_total"] >= 0, m
+        assert m["name"].strip(), m
 
 
 async def test_trend_y_machines_tienen_la_forma_esperada(client):
