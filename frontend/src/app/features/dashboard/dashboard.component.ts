@@ -339,9 +339,11 @@ export class DashboardComponent implements OnInit {
 
     // Supuestos del modelo, tal como los entrega el backend. No se hardcodean: si manana
     // cambian en config.py, el tooltip sigue diciendo la verdad.
+    // La cifra va en la MONEDA ACTIVA (CGBIDA-435): antes decia "CLP" fijo aunque el
+    // toggle estuviera en dolares.
     const costoMin = imp.supuestos?.costo_por_minuto ?? 2000;
-    const supuestoClp = `${this.currency.formatearClp(costoMin)} CLP`;
-    const notaUsd =
+    const supuesto = this.currency.formatearDetalle(costoMin);
+    const notaMoneda =
       this.currency.moneda() === 'USD' && !this.currency.sinTasa() ? ` ${tx.kpiUsdNote}` : '';
 
     return [
@@ -367,7 +369,7 @@ export class DashboardComponent implements OnInit {
         valor: cifra(f.costo_total_acumulado),
         descripcion: tx.directCostSub,
         color: 'text-gray-800 dark:text-gray-100',
-        tooltip: `${tx.kpiCostoTooltip}${notaUsd}`
+        tooltip: `${tx.kpiCostoTooltip}${notaMoneda}`
       },
       {
         clave: 'mtbf',
@@ -389,7 +391,7 @@ export class DashboardComponent implements OnInit {
         valor: cifra(f.ahorro_generado),
         descripcion: tx.savingsSub,
         color: 'text-orange-600 dark:text-orange-400',
-        tooltip: `${tx.kpiAhorroTooltip} Supuesto: ${supuestoClp} por minuto.${notaUsd}`
+        tooltip: `${tx.kpiAhorroTooltip} Supuesto: ${supuesto} por minuto.${notaMoneda}`
       }
     ];
   });
@@ -489,4 +491,5 @@ export class DashboardComponent implements OnInit {
     });
   }
 }
+
 

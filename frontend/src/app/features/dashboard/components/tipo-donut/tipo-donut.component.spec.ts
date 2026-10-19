@@ -60,24 +60,28 @@ function anguloDe(x: number, y: number): number {
 
 describe('TipoDonutComponent', () => {
   describe('estructura', () => {
-    it('dibuja un segmento por cada tipo recibido', () => {
+    it('dibuja un segmento por cada tipo VISIBLE: predictivo se oculta', () => {
       const { el } = setup(REAL);
-      expect(el.querySelectorAll('[data-testid^="segmento-"]').length).toBe(4);
+      // CGBIDA-435: «predictivo» se filtra, quedan 3.
+      expect(el.querySelectorAll('[data-testid^="segmento-"]').length).toBe(3);
+      expect(el.querySelector('[data-testid="segmento-predictive"]')).toBeNull();
     });
 
-    it('muestra el total de ordenes en el centro', () => {
+    it('muestra el total de los tipos visibles en el centro', () => {
       const { el } = setup(REAL);
-      expect(el.querySelector('[data-testid="dona-total"]')!.textContent!.trim()).toBe('146');
+      // 70 + 30 + 25 = 125 (ya sin los 21 predictivos).
+      expect(el.querySelector('[data-testid="dona-total"]')!.textContent!.trim()).toBe('125');
     });
 
-    it('la leyenda lista los cuatro tipos con su valor y porcentaje', () => {
+    it('la leyenda lista los tres tipos visibles con su valor y porcentaje', () => {
       const { el } = setup(REAL);
-      expect(el.querySelectorAll('[data-testid^="leyenda-"]').length).toBe(4);
+      expect(el.querySelectorAll('[data-testid^="leyenda-"]').length).toBe(3);
+      expect(el.querySelector('[data-testid="leyenda-predictive"]')).toBeNull();
 
       const corr = el.querySelector('[data-testid="leyenda-corrective"]')!.textContent ?? '';
       expect(corr).toContain('Correctivo');
       expect(corr).toContain('70');
-      expect(corr).toContain('48'); // 70/146 = 47.9 -> 48
+      expect(corr).toContain('56'); // 70/125 = 56 %
     });
 
     it('el tooltip aparece al pasar el cursor y desaparece al salir', () => {
@@ -99,7 +103,8 @@ describe('TipoDonutComponent', () => {
   describe('replica del legacy', () => {
     it('usa radio exterior 90 y radio interior 60', () => {
       const { el } = setup(REAL);
-      for (const tipo of ['corrective', 'preventive', 'inspection', 'predictive']) {
+      // CGBIDA-435: se miden los tres tipos visibles.
+      for (const tipo of ['corrective', 'preventive', 'inspection']) {
         const { ext, int } = radios(segmento(el, tipo).getAttribute('d')!);
         expect(ext).toBe(90);
         expect(int).toBe(60);
@@ -108,8 +113,9 @@ describe('TipoDonutComponent', () => {
 
     it('usa la paleta del legacy en orden, sin var(--*)', () => {
       const { el } = setup(REAL);
-      const esperado = ['#2563eb', '#059669', '#d97706', '#6d28d9'];
-      const tipos = ['corrective', 'preventive', 'inspection', 'predictive'];
+      // Con «predictivo» filtrado quedan los tres primeros colores de la paleta.
+      const esperado = ['#2563eb', '#059669', '#d97706'];
+      const tipos = ['corrective', 'preventive', 'inspection'];
       tipos.forEach((t, i) => {
         const fill = segmento(el, t).getAttribute('fill');
         expect(fill).toBe(esperado[i]);
@@ -141,13 +147,14 @@ describe('TipoDonutComponent', () => {
         expect(hueco).toBeCloseTo(4, 1);
       }
 
-      // Y el barrido total debe ser 360 - 4*n: queda un hueco por segmento.
+      // Y el barrido total debe ser 360 - 4*n: queda un hueco por segmento DIBUJADO
+      // (no por fila recibida: «predictivo» se filtra en CGBIDA-435).
       const barridos = angulos.map((a) => {
         let b = a.fin - a.inicio;
         if (b < 0) b += 360;
         return b;
       });
-      expect(barridos.reduce((x, y) => x + y, 0)).toBeCloseTo(360 - 4 * REAL.length, 1);
+      expect(barridos.reduce((x, y) => x + y, 0)).toBeCloseTo(360 - 4 * angulos.length, 1);
     });
   });
 
@@ -237,9 +244,10 @@ describe('TipoDonutComponent', () => {
       expect(porcentajes(el).reduce((a, b) => a + b, 0)).toBe(100);
     });
 
-    it('los porcentajes de la serie real son 48, 21, 17 y 14', () => {
+    it('los porcentajes de la serie real son 56, 24 y 20', () => {
+      // 70/125, 30/125 y 25/125 sobre los tres tipos visibles (CGBIDA-435).
       const { el } = setup(REAL);
-      expect(porcentajes(el)).toEqual([48, 21, 17, 14]);
+      expect(porcentajes(el)).toEqual([56, 24, 20]);
     });
 
     it('CASO BORDE: tres partes iguales suman 100, no 99', () => {
@@ -302,7 +310,7 @@ describe('TipoDonutComponent', () => {
       const orden = [...el.querySelectorAll('[data-testid^="segmento-"]')].map((n) =>
         (n as SVGPathElement).dataset['testid']!.replace('segmento-', '')
       );
-      expect(orden).toEqual(['corrective', 'preventive', 'inspection', 'predictive']);
+      expect(orden).toEqual(['corrective', 'preventive', 'inspection']);
     });
   });
 
@@ -343,6 +351,7 @@ describe('TipoDonutComponent', () => {
       // color, y esa variable no estaba definida en el tema claro, asi que la sexta barra
       // salia sin color. Aca la paleta es hex, y el sexto tipo debe tener color propio y
       // distinto de los cinco anteriores.
+      // CGBIDA-435 filtra «predictivo», así que con seis filas se dibujan cinco.
       const seis = [
         { tipo: 'corrective', total: 10 },
         { tipo: 'preventive', total: 9 },
@@ -351,19 +360,22 @@ describe('TipoDonutComponent', () => {
         { tipo: 'extra1', total: 6 },
         { tipo: 'extra2', total: 5 },
       ];
+      const visibles = seis.filter((d) => d.tipo !== 'predictive');
       const { el } = setup(seis);
-      const colores = seis.map((d) => segmento(el, d.tipo).getAttribute('fill')!);
+      const colores = visibles.map((d) => segmento(el, d.tipo).getAttribute('fill')!);
 
       // Todos son hex de 6 digitos y ninguno es un var().
       colores.forEach((c) => {
         expect(c).toMatch(/^#[0-9a-f]{6}$/i);
         expect(c).not.toContain('var(');
       });
-      // Y los seis son distintos entre si.
-      expect(new Set(colores).size).toBe(6);
+      // Y todos son distintos entre si.
+      expect(new Set(colores).size).toBe(visibles.length);
     });
   });
 });
+
+
 
 
 

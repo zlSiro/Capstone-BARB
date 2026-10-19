@@ -2,6 +2,7 @@ import { Component, ElementRef, computed, inject, input, signal } from '@angular
 import { CommonModule } from '@angular/common';
 import { MachineData } from '../../../../core/models';
 import { I18nService } from '../../../../core/i18n/i18n.service';
+import { CurrencyService } from '../../../../core/services/currency.service';
 
 /** Métricas que ofrece el selector, en el orden del legacy. */
 export type MetricaRanking = 'ots' | 'mttr' | 'ahorro';
@@ -200,6 +201,7 @@ const MIL = new Intl.NumberFormat('es-CL');
 export class MachineRankingComponent {
   private i18n = inject(I18nService);
   private host = inject(ElementRef<HTMLElement>);
+  private currency = inject(CurrencyService);
 
   /** Equipos del endpoint. Ya vienen limitados a 5 por el backend. */
   readonly maquinas = input.required<MachineData[]>();
@@ -289,7 +291,7 @@ export class MachineRankingComponent {
         // usuario ve todo el perfil del equipo sin tocar el selector.
         ots: MIL.format(m.total),
         mttr: `${MIL.format(Math.round(m.mttr))} min`,
-        ahorro: this.moneda(m.ahorroGenerado),
+        ahorro: this.currency.formatear(m.ahorroGenerado),
         sla: `${m.slaCompliance} %`,
         // Color por POSICIÓN en el ranking, no por equipo: si al cambiar de métrica un
         // equipo sube o baja, cambia de color. Es el comportamiento del legacy.
@@ -342,21 +344,13 @@ export class MachineRankingComponent {
   /**
    * Formatea el valor de la métrica activa.
    *
-   * El ahorro usa el MISMO formato de moneda que las tarjetas de KPI (CGBIDA-392), para
-   * que el dashboard sea coherente consigo mismo.
+   * El ahorro usa el MISMO formateador que las tarjetas de KPI, y por el mismo servicio de
+   * moneda (CGBIDA-435): antes tenía su propio `Intl.NumberFormat` fijo en CLP, así que con
+   * el toggle en dólares el ranking seguía mostrando pesos.
    */
   private formatear(valor: number): string {
-    if (this.metrica() === 'ahorro') return this.moneda(valor);
+    if (this.metrica() === 'ahorro') return this.currency.formatear(valor);
     if (this.metrica() === 'mttr') return `${MIL.format(Math.round(valor))} min`;
     return MIL.format(valor);
-  }
-
-  /** Moneda CLP, con el mismo formato que las tarjetas de KPI (CGBIDA-392). */
-  private moneda(valor: number): string {
-    return new Intl.NumberFormat('es-CL', {
-      style: 'currency',
-      currency: 'CLP',
-      maximumFractionDigits: 0,
-    }).format(valor);
   }
 }

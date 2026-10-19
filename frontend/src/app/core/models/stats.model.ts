@@ -54,6 +54,14 @@ export interface MachineData {
   mttr: number;
   /** Porcentaje de sus OTs completadas dentro del SLA. */
   slaCompliance: number;
+  /**
+   * Costo real acumulado de la maquina en el periodo, sin las OTs canceladas.
+   *
+   * Es una dimension distinta de `ahorroGenerado`: el ahorro valoriza la inactividad
+   * evitada y el costo es lo que efectivamente se gasto en repuestos y servicios. Por eso
+   * el ranking por costo no coincide con el ranking por volumen ni con el de ahorro.
+   */
+  costo_total: number;
 }
 
 /**

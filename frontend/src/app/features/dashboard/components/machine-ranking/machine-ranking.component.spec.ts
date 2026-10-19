@@ -23,6 +23,7 @@ function maquina(over: Partial<MachineData> & { id: string }): MachineData {
     ahorroGenerado: 0,
     mttr: 0,
     slaCompliance: 0,
+  costo_total: 0,
     ...over,
   } as MachineData;
 }
@@ -36,9 +37,19 @@ const CINCO: MachineData[] = [
   maquina({ id: '5', name: 'PLC Siemens S7', total: 2, mttr: 15, ahorroGenerado: 10_000 }),
 ];
 
-function setup(maquinas: MachineData[], lang: 'es' | 'en' = 'es') {
+function setup(maquinas: MachineData[], lang: 'es' | 'en' = 'es', moneda: 'CLP' | 'USD' = 'CLP') {
   TestBed.resetTestingModule();
   window.localStorage.setItem('barb.lang', lang);
+  // La moneda se lee al construir el servicio, así que hay que fijarla ANTES.
+  window.localStorage.setItem('barb.currency', moneda);
+  if (moneda === 'USD') {
+    window.localStorage.setItem(
+      'barb.usdRate',
+      JSON.stringify({ valor: 984.09, fecha: '2026-10-18T00:00:00.000Z' })
+    );
+  } else {
+    window.localStorage.removeItem('barb.usdRate');
+  }
   TestBed.configureTestingModule({ imports: [MachineRankingComponent] });
   const fixture = TestBed.createComponent(MachineRankingComponent);
   fixture.componentRef.setInput('maquinas', maquinas);
@@ -65,6 +76,47 @@ function cambiarA(fixture: ReturnType<typeof setup>['fixture'], valor: string): 
 }
 
 describe('MachineRankingComponent', () => {
+  // ===========================================================================
+  // Moneda (CGBIDA-435)
+  // ===========================================================================
+  describe('el ahorro respeta la moneda activa', () => {
+    /** Abre el tooltip de la primera fila y devuelve su texto. */
+    function tooltipDe(fixture: ReturnType<typeof setup>['fixture'], el: HTMLElement): string {
+      // El tooltip se abre sobre la ZONA (el área sensible), no sobre la barra.
+      (el.querySelector('[data-testid^="zona-"]') as SVGRectElement).dispatchEvent(
+        new MouseEvent('mouseenter')
+      );
+      fixture.detectChanges();
+      return el.querySelector('[data-testid="ranking-tooltip"]')!.textContent ?? '';
+    }
+
+    it('en CLP muestra pesos', () => {
+      const { fixture, el } = setup(CINCO);
+      cambiarA(fixture, 'ahorro');
+      fixture.detectChanges();
+      expect(tooltipDe(fixture, el)).toMatch(/\$\s?[\d.]+/);
+    });
+
+    it('en USD convierte: antes tenía su propio Intl fijo en CLP', () => {
+      // Este es el defecto que se corrigió: con el toggle en dólares el ranking seguía
+      // mostrando pesos porque formateaba por su cuenta, sin pasar por CurrencyService.
+      const { fixture, el } = setup(CINCO, 'es', 'USD');
+      cambiarA(fixture, 'ahorro');
+      fixture.detectChanges();
+      const texto = tooltipDe(fixture, el);
+      expect(texto).toContain('US$');
+      expect(texto).not.toMatch(/\$\s?638\.000/);
+    });
+
+    it('en USD solo la línea de ahorro lleva moneda', () => {
+      // El tooltip muestra el desglose completo de la máquina; la única línea monetaria es
+      // el ahorro, así que debe aparecer un solo símbolo de dólar.
+      const { fixture, el } = setup(CINCO, 'es', 'USD');
+      const texto = tooltipDe(fixture, el);
+      expect(texto.match(/US\$/g)?.length).toBe(1);
+    });
+  });
+
   describe('estructura', () => {
     it('renderiza el grafico con los equipos', () => {
       const { el } = setup(CINCO);
@@ -362,5 +414,6 @@ describe('MachineRankingComponent', () => {
     });
   });
 });
+
 
 

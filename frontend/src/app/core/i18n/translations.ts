@@ -190,7 +190,7 @@ export const translations = {
       chartMachines: 'Máquinas con más OTs', chartResolution: 'Tiempo de resolución',
       chartResolutionSub: 'Tiempo medio de reparación por máquina, en minutos',
       noData: 'Sin datos', strategyTitle: 'Distribución por Tipo de Mantenimiento',
-      strategySubtitle: 'Correctivo, preventivo, predictivo e inspección',
+      strategySubtitle: 'Correctivo, preventivo e inspección',
       totalOts: 'OTs',
       stalledAlertLabel: 'Alerta:',
       stalledLabel: 'ordenes de trabajo estancadas o criticas',
@@ -428,7 +428,7 @@ export const translations = {
       chartMachines: 'Top machines', chartResolution: 'Resolution time',
       chartResolutionSub: 'Average repair time per machine, in minutes',
       noData: 'No data', strategyTitle: 'Distribution by Maintenance Type',
-      strategySubtitle: 'Corrective, preventive, predictive and inspection',
+      strategySubtitle: 'Corrective, preventive and inspection',
       totalOts: 'WOs',
       stalledAlertLabel: 'Alert:',
       stalledLabel: 'stalled or critical work orders',
@@ -499,5 +499,6 @@ export const translations = {
 };
 
 export type TranslationTree = typeof translations['es'];
+
 
 
