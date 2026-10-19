@@ -24,7 +24,7 @@ from __future__ import annotations
 import logging
 import random
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
@@ -158,6 +158,199 @@ def _ots_del_mes(base: float, mes: int, indice: int, total_meses: int, rng: rand
     return max(0, round(base * factor * rng.uniform(1 - RUIDO, 1 + RUIDO)))
 
 
+# =============================================================================
+# Ventana reciente (CGBIDA-439)
+# =============================================================================
+# El historial de 24 meses reparte ~6 OTs por mes para la empresa de la demo, o sea
+# 0,2 por día. El gráfico de backlog dibuja los últimos 14 días, así que salía con un
+# solo punto: con esa densidad, 13 de los 14 días están vacíos por construcción.
+#
+# Esta ventana genera actividad diaria sobre los últimos 14 días, que es justo el tramo
+# que se mira en el dashboard. El resto del historial no se toca.
+
+VENTANA_DIAS = 14
+# OTs creadas ANTES de la ventana que se cierran dentro de ella. Sin este colchón, el
+# primer día de la ventana no tendría nada que cerrar y el gráfico arrancaría en cero.
+VENTANA_COLCHON_DIAS = 5
+VENTANA_MIN_DIA = 5
+VENTANA_MAX_DIA = 10
+# El ritmo mensual de cada empresa, llevado a OTs por día. La empresa de la demo queda
+# en 7,5 por día, que es el centro del rango [5, 10] que pide el gráfico.
+FACTOR_VENTANA = 1.25
+
+# Estados posibles de una OT que queda abierta al final de la ventana: trabajo en curso
+# de verdad, no "completed" con fecha de cierre nula.
+ESTADOS_ABIERTAS = ["pending", "assigned", "in_progress", "overdue"]
+PESOS_ABIERTAS = [35, 20, 30, 15]
+
+
+def _ritmo_ventana(empresa_id: int) -> float:
+    """OTs por día en la ventana reciente, derivado del ritmo mensual de la empresa."""
+    return RITMO_BASE.get(empresa_id, 0) * FACTOR_VENTANA
+
+
+def _cantidad_del_dia(ritmo: float, rng: random.Random) -> int:
+    """Cuántas OTs crear (o cerrar) un día, escalado al ritmo de la empresa."""
+    crudo = rng.randint(VENTANA_MIN_DIA, VENTANA_MAX_DIA)
+    # 7,5 es el ritmo de la empresa de la demo: para ella la escala es 1 y el rango
+    # queda tal cual [5, 10]. Las otras empresas conservan su proporción.
+    return max(1, round(crudo * ritmo / 7.5))
+
+
+def _ventana_tiempo(tipo: str, rng: random.Random) -> tuple[int, int]:
+    """Banda de duración de una OT, con los mismos pesos que el historial."""
+    if tipo == "corrective":
+        pesos = [b[0] for b in BANDAS_CORRECTIVA]
+        _, lo, hi = rng.choices(BANDAS_CORRECTIVA, weights=pesos, k=1)[0]
+        return lo, hi
+    regla = REGLAS_TIPO[tipo]
+    return regla["tiempo"][0], regla["tiempo"][1]
+
+
+def _ot_abierta(
+    datos: dict,
+    empresa_id: int,
+    creacion: datetime,
+    rng: random.Random,
+    numero: int,
+    turno: dict[int, int],
+) -> dict:
+    """Crea una OT sin cerrar, repartiendo las máquinas por turno.
+
+    El reparto round-robin es deliberado: con `rng.choice` algunas máquinas quedaban
+    casi sin OTs y el ranking mostraba siempre las mismas cuatro o cinco.
+    """
+    tipo = rng.choices(TIPOS, weights=PESOS_TIPO, k=1)[0]
+    maquinas = datos["maquinas"]
+    indice = turno.get(empresa_id, 0)
+    turno[empresa_id] = indice + 1
+    return {
+        "numero_ot": f"{PREFIJO}{numero:04d}",
+        "maquina_id": maquinas[indice % len(maquinas)],
+        "tecnico_id": rng.choice(datos["tecnicos"]),
+        "creado_por": datos["creador"],
+        "tipo": tipo,
+        "priority": rng.choice(PRIORIDAD_POR_TIPO[tipo][0]),
+        # Provisional: si no se cierra, al final se le asigna un estado de trabajo abierto.
+        "estado": "pending",
+        "descripcion_problema": DESCRIPCION,
+        "fecha_creacion": creacion,
+        "fecha_inicio": None,
+        "fecha_cierre": None,
+        "fecha_vencimiento": None,
+        "tiempo_reparacion_min": None,
+        "downtime_minutes": None,
+        "costo_estimado": round(rng.uniform(50_000, 500_000), 2),
+        "costo_real": None,
+        "empresa_id": empresa_id,
+    }
+
+
+def _cerrar(fila: dict, dia: datetime, rng: random.Random) -> None:
+    """Cierra la OT en `dia` (o lo antes posible después de su inicio).
+
+    El cierre es `max(día objetivo, inicio + duración)`: una OT creada a las 20:00 no
+    puede cerrarse a las 13:00 del mismo día. Cuando la duración empuja el cierre al día
+    siguiente, se acepta: es lo que pasa en la realidad y el gráfico lo refleja.
+    """
+    inicio = fila["fecha_creacion"] + timedelta(hours=rng.randint(1, 12))
+    lo, hi = _ventana_tiempo(fila["tipo"], rng)
+    t_min = rng.randint(lo, hi)
+    objetivo = dia.replace(hour=rng.randint(13, 20), minute=rng.choice([0, 15, 30, 45]))
+    fila.update({
+        "estado": "completed",
+        "fecha_inicio": inicio,
+        "fecha_cierre": max(objetivo, inicio + timedelta(minutes=t_min)),
+        "tiempo_reparacion_min": t_min,
+        "downtime_minutes": _downtime_de(fila["tipo"], t_min, rng),
+        "costo_real": _costo_de(fila["tipo"], t_min, rng),
+    })
+
+
+def _generar_ventana_reciente(
+    empresas: dict[int, dict],
+    hoy: datetime,
+    rng: random.Random,
+    contador_inicial: int,
+) -> tuple[list[dict], int]:
+    """Genera el tramo denso de los últimos `VENTANA_DIAS` días.
+
+    Garantiza, para la empresa de la demo, entre 5 y 10 OTs creadas y entre 5 y 10
+    cerradas cada día. Las que sobresalen del colchón quedan abiertas: es el trabajo en
+    curso real, y además alimenta el banner de estancadas y el indicador de salud.
+
+    Función pura, como `generar_ots`: no toca la base.
+    """
+    # Se normaliza a medianoche para que dos llamadas el mismo día den lo mismo.
+    base = hoy.replace(hour=0, minute=0, second=0, microsecond=0)
+    filas: list[dict] = []
+    contador = contador_inicial
+    turno: dict[int, int] = {}
+
+    for empresa_id, datos in sorted(empresas.items()):
+        ritmo = _ritmo_ventana(empresa_id)
+        if ritmo <= 0 or not datos["maquinas"] or not datos["tecnicos"]:
+            continue
+
+        # Colchón: OTs nacidas antes de la ventana que se cerrarán dentro de ella.
+        abiertas: list[dict] = []
+        # Todas las de la empresa, cerradas o no: `abiertas` es solo la cola de pendientes.
+        todas: list[dict] = []
+        for atras in range(VENTANA_DIAS + VENTANA_COLCHON_DIAS, VENTANA_DIAS, -1):
+            dia = base - timedelta(days=atras)
+            for _ in range(_cantidad_del_dia(ritmo, rng)):
+                contador += 1
+                creacion = dia.replace(hour=rng.randint(6, 12), minute=rng.choice([0, 15, 30, 45]))
+                fila = _ot_abierta(datos, empresa_id, creacion, rng, contador, turno)
+                abiertas.append(fila)
+                todas.append(fila)
+
+        # La ventana, del día más viejo al más nuevo.
+        for atras in range(VENTANA_DIAS - 1, -1, -1):
+            dia = base - timedelta(days=atras)
+
+            for _ in range(_cantidad_del_dia(ritmo, rng)):
+                contador += 1
+                creacion = dia.replace(hour=rng.randint(6, 20), minute=rng.choice([0, 15, 30, 45]))
+                fila = _ot_abierta(datos, empresa_id, creacion, rng, contador, turno)
+                abiertas.append(fila)
+                todas.append(fila)
+
+            # Se cierra lo más viejo primero (FIFO): es el orden real de una cola.
+            a_cerrar = min(len(abiertas), _cantidad_del_dia(ritmo, rng))
+            for _ in range(a_cerrar):
+                _cerrar(abiertas.pop(0), dia, rng)
+
+        # Lo que sobra sigue abierto.
+        for fila in abiertas:
+            estado = rng.choices(ESTADOS_ABIERTAS, weights=PESOS_ABIERTAS, k=1)[0]
+            fila["estado"] = estado
+            if estado == "overdue":
+                # Atrasada de verdad y sin ambigüedad de zona horaria: la base guarda UTC
+                # y el informe de atrasadas cuenta días en `America/Santiago`, así que hay
+                # una banda de ±1 día que puede caer en "hoy" para una de las dos. Dos días
+                # de piso dejan la diferencia fuera de esa banda.
+                fila["fecha_vencimiento"] = base - timedelta(
+                    days=rng.randint(2, 25), hours=rng.randint(0, 12)
+                )
+            else:
+                # Suficientemente en el futuro como para no aparecer como atrasada en
+                # ninguna de las dos zonas.
+                fila["fecha_vencimiento"] = base + timedelta(
+                    days=rng.randint(2, 15), hours=rng.randint(0, 12)
+                )
+            if estado == "in_progress":
+                lo, hi = _ventana_tiempo(fila["tipo"], rng)
+                t_min = rng.randint(lo, hi)
+                fila["fecha_inicio"] = fila["fecha_creacion"] + timedelta(hours=rng.randint(1, 24))
+                fila["tiempo_reparacion_min"] = t_min
+                fila["downtime_minutes"] = _downtime_de(fila["tipo"], t_min, rng)
+
+        filas.extend(todas)
+
+    return filas, contador
+
+
 def generar_ots(
     empresas: dict[int, dict],
     hoy: datetime | None = None,
@@ -167,7 +360,11 @@ def generar_ots(
     `empresas` es {empresa_id: {"maquinas": [ids], "tecnicos": [ids], "creador": id}}.
     """
     rng = random.Random(SEED)
-    hoy = hoy or datetime.now()
+    # UTC sin zona, igual que `CURRENT_DATE` en la base. Con `datetime.now()` local, en
+    # Chile el "hoy" del seed va tres horas atrás del de la base: pasada las 21:00 el
+    # gráfico de backlog dibuja un día más de los que el seed generó, y ese punto sale
+    # vacío. Se vio justo al densificar la ventana (CGBIDA-439).
+    hoy = hoy or datetime.now(timezone.utc).replace(tzinfo=None)
     meses = _meses_hacia_atras(hoy, MESES)
     filas: list[dict] = []
     contador = 0
@@ -244,7 +441,13 @@ def generar_ots(
                     "empresa_id": empresa_id,
                 })
 
+    # Tramo denso de los últimos 14 días (CGBIDA-439). Va DESPUÉS del historial mensual
+    # y ANTES del ajuste de largas: así el ajuste sigue normalizando la empresa de la demo
+    # a 2 o 3 OTs sobre el SLA, sin importar cuántas haya generado la ventana.
+    recientes, contador = _generar_ventana_reciente(empresas, hoy, rng, contador)
+    filas.extend(recientes)
     _garantizar_largas_de_demo(filas)
+
     return filas
 
 

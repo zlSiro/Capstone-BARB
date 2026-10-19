@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import sys
 from collections import Counter
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -26,6 +27,7 @@ from seed_history import (  # noqa: E402
     PREFIJO,
     REGLAS_TIPO,
     SEED,
+    VENTANA_DIAS,
     generar_ots,
 )
 
@@ -37,6 +39,12 @@ EMPRESAS = {
     2: {"maquinas": list(range(13, 20)), "tecnicos": [20, 21], "creador": 16},
     3: {"maquinas": [20, 21], "tecnicos": [24], "creador": 23},
 }
+
+
+@pytest.fixture(scope="module")
+def hoy() -> date:
+    """El mismo "hoy" que usa el generador: UTC, como CURRENT_DATE en la base."""
+    return datetime.now(timezone.utc).date()
 
 
 @pytest.fixture(scope="module")
@@ -61,14 +69,70 @@ def test_la_generacion_es_reproducible(filas):
 
 
 def test_genera_el_volumen_esperado(filas):
-    """Alrededor de 200 filas, con la empresa 1 por encima de 100."""
-    assert 150 <= len(filas) <= 260, f"{len(filas)} filas"
+    """24 meses de historial más la ventana densa de los últimos 14 días (CGBIDA-439).
+
+    La ventana agrega ~140 filas por empresa según su ritmo, así que el volumen sube de
+    ~200 a ~440. El rango se deja amplio a propósito: lo que importa no es el total exacto
+    sino que la empresa de la demo tenga actividad diaria, y eso se prueba aparte.
+    """
+    assert 380 <= len(filas) <= 520, f"{len(filas)} filas"
     por_empresa = Counter(
         1 if f["maquina_id"] <= 12 else (2 if f["maquina_id"] <= 19 else 3) for f in filas
     )
-    assert por_empresa[1] >= 100, f"empresa 1 con {por_empresa[1]} filas"
-    assert por_empresa[2] >= 20, f"empresa 2 con {por_empresa[2]} filas"
+    assert por_empresa[1] >= 200, f"empresa 1 con {por_empresa[1]} filas"
+    assert por_empresa[2] >= 40, f"empresa 2 con {por_empresa[2]} filas"
     assert por_empresa[3] >= 20, f"empresa 3 con {por_empresa[3]} filas"
+
+
+def test_la_ventana_reciente_esta_densa(filas, hoy):
+    """El gráfico de backlog necesita al menos 5 OTs abiertas y 5 cerradas cada día.
+
+    Es la razón de ser de la ventana (CGBIDA-439): con el historial mensual, la empresa de
+    la demo tenía 0,2 OTs por día y 13 de los 14 puntos salían vacíos.
+    """
+    e1 = [f for f in filas if f["empresa_id"] == 1]
+    for atras in range(VENTANA_DIAS - 1, -1, -1):
+        dia = hoy - timedelta(days=atras)
+        abiertas = sum(1 for f in e1 if f["fecha_creacion"].date() == dia)
+        cerradas = sum(
+            1 for f in e1 if f["fecha_cierre"] and f["fecha_cierre"].date() == dia
+        )
+        assert abiertas >= 5, f"{dia}: solo {abiertas} abiertas"
+        assert cerradas >= 5, f"{dia}: solo {cerradas} cerradas"
+
+
+def test_la_ventana_reparte_las_ots_entre_todas_las_maquinas(filas, hoy):
+    """Round-robin, no azar: con `rng.choice` algunas máquinas quedaban casi sin OTs."""
+    desde = hoy - timedelta(days=VENTANA_DIAS - 1)
+    recientes = [
+        f for f in filas if f["empresa_id"] == 1 and f["fecha_creacion"].date() >= desde
+    ]
+    assert len({f["maquina_id"] for f in recientes}) == 12, "faltan máquinas en la ventana"
+
+
+def test_las_ots_abiertas_de_la_ventana_siguen_en_trabajo(filas, hoy):
+    """Las que no se cerraron deben tener un estado abierto coherente, no `completed`."""
+    desde = hoy - timedelta(days=VENTANA_DIAS - 1)
+    abiertas = [
+        f
+        for f in filas
+        if f["empresa_id"] == 1 and f["fecha_creacion"].date() >= desde
+        and f["fecha_cierre"] is None
+    ]
+    assert abiertas, "la ventana debería dejar trabajo en curso"
+    for f in abiertas:
+        assert f["estado"] in {"pending", "assigned", "in_progress", "overdue"}, f["estado"]
+        assert f["fecha_vencimiento"] is not None, "una OT abierta necesita vencimiento"
+
+
+def test_lo_cerrado_en_la_ventana_nunca_cierra_antes_de_empezar(filas):
+    """Invariante de coherencia temporal en TODAS las filas cerradas."""
+    for f in filas:
+        if f["fecha_cierre"] is None:
+            continue
+        assert f["fecha_inicio"] is not None, f["numero_ot"]
+        assert f["fecha_cierre"] >= f["fecha_inicio"], f["numero_ot"]
+        assert f["fecha_inicio"] >= f["fecha_creacion"], f["numero_ot"]
 
 
 def test_cubre_24_meses_distintos(filas):
@@ -276,3 +340,4 @@ async def test_coherencia_por_muestreo_en_la_bd(client):
     assert int(r["canceladas_mal"]) == 0, "hay canceladas con costo distinto de cero"
     assert int(r["completadas_mal"]) == 0, "hay completadas sin cierre o sin costo"
     assert int(r["inspeccion_mal"]) == 0, "hay inspecciones completadas con inactividad"
+
