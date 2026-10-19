@@ -116,7 +116,9 @@ describe('ImpactoEscenariosComponent', () => {
         ahorro_proyectado: null,
         impacto_visible: false,
       });
-      expect(el.querySelector('[data-testid="impacto-escenarios"]')).toBeNull();
+      // La tarjeta sigue existiendo; lo que desaparece son las barras.
+      expect(el.querySelector('[data-testid="impacto-escenarios"]')).not.toBeNull();
+      expect(el.querySelector('[data-testid="barra-sin-barb"]')).toBeNull();
       const aviso = el.querySelector('[data-testid="impacto-vacio"]');
       expect(aviso).not.toBeNull();
       expect(aviso!.textContent).toContain('90 días');
@@ -134,7 +136,8 @@ describe('ImpactoEscenariosComponent', () => {
         escenario_con_barb: 0,
         ahorro_proyectado: 0,
       });
-      expect(el.querySelector('[data-testid="impacto-escenarios"]')).toBeNull();
+      expect(el.querySelector('[data-testid="barra-sin-barb"]')).toBeNull();
+      expect(el.querySelector('[data-testid="impacto-vacio"]')).not.toBeNull();
     });
   });
 
