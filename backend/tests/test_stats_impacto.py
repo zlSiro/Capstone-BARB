@@ -236,7 +236,10 @@ async def test_ahorro_negativo_no_se_recorta(client, monkeypatch):
     Es información real: el tiempo actual supera el objetivo del modelo de negocio.
     No debe recortarse a cero (decisión explícita en CGBIDA-406).
     """
-    _montar(monkeypatch, incidentes=4, tiempo_promedio=265.0)  # > supuesto
+    # El tiempo se deriva del supuesto y no se escribe fijo: cuando el supuesto subió de
+    # 180 a 480 min, un valor literal de 265 dejó de superarlo y la prueba pasó a medir
+    # un ahorro positivo sin querer.
+    _montar(monkeypatch, incidentes=4, tiempo_promedio=float(SIN_BARB) + 60)
     imp = await _impacto(client)
     assert imp["ahorro_proyectado"] < 0, imp
     assert imp["escenario_con_barb"] > imp["escenario_sin_barb"]
