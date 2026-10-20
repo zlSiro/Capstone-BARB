@@ -114,38 +114,56 @@ import { MtbfUnitService } from '../../../../core/services/mtbf-unit.service';
         denso.
       -->
       @if (mostrarTendencia() && puntos().length > 0) {
-        <div class="mt-3">
-          <div class="mb-1 flex items-center justify-between">
-            <p class="text-[11px] uppercase text-gray-500 dark:text-gray-400">
+        <!--
+          El gráfico va en su propio panel (fondo tenue + anillo) para separarlo de las
+          sub-tarjetas de arriba, y con padding interno para que la curva no se corte
+          contra el borde. La altura total se mantiene igual que antes: el padding que se
+          agrega se compensa bajando el SVG de 28 a 24 px, porque la tarjeta ya está en el
+          límite de los 368 px de la fila.
+        -->
+        <div
+          class="mt-2 rounded-lg bg-gray-50 px-3 py-1.5 ring-1 ring-gray-100
+                 dark:bg-gray-800/40 dark:ring-gray-700/60"
+          data-testid="tendencia-panel"
+        >
+          <div class="flex items-center justify-between gap-3">
+            <p class="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
               {{ t().healthTrendTitle }}
             </p>
-            <div class="flex gap-3 text-[11px] text-gray-500 dark:text-gray-400">
+            <div class="flex shrink-0 items-center gap-3 text-[10px] text-gray-500 dark:text-gray-400">
               <span class="flex items-center gap-1">
-                <span class="inline-block h-2 w-2 rounded-sm" [style.background]="COLOR_ABIERTAS"></span>
+                <span class="inline-block h-1.5 w-1.5 rounded-full" [style.background]="COLOR_ABIERTAS"></span>
                 {{ t().abiertas }}
               </span>
               <span class="flex items-center gap-1">
-                <span class="inline-block h-2 w-2 rounded-sm" [style.background]="COLOR_CERRADAS"></span>
+                <span class="inline-block h-1.5 w-1.5 rounded-full" [style.background]="COLOR_CERRADAS"></span>
                 {{ t().cerradas }}
               </span>
             </div>
           </div>
           <svg
             [attr.viewBox]="'0 0 ' + ANCHO_MINI + ' ' + ALTO_MINI"
-            class="h-7 w-full"
+            preserveAspectRatio="none"
+            class="mt-0.5 h-6 w-full overflow-visible"
             role="img"
             [attr.aria-label]="t().healthTrendTitle"
             data-testid="tendencia-salud"
           >
-            <polyline
-              [attr.points]="lineaAbiertas()"
-              fill="none" [attr.stroke]="COLOR_ABIERTAS" stroke-width="2"
-              stroke-linejoin="round" stroke-linecap="round"
+            <path
+              [attr.d]="lineaAbiertas()"
+              fill="none" [attr.stroke]="COLOR_ABIERTAS"
+              [attr.stroke-width]="GROSOR_LINEA"
+              vector-effect="non-scaling-stroke"
+              stroke-linecap="round" stroke-linejoin="round"
+              data-testid="tendencia-abiertas"
             />
-            <polyline
-              [attr.points]="lineaCerradas()"
-              fill="none" [attr.stroke]="COLOR_CERRADAS" stroke-width="2"
-              stroke-linejoin="round" stroke-linecap="round"
+            <path
+              [attr.d]="lineaCerradas()"
+              fill="none" [attr.stroke]="COLOR_CERRADAS"
+              [attr.stroke-width]="GROSOR_LINEA"
+              vector-effect="non-scaling-stroke"
+              stroke-linecap="round" stroke-linejoin="round"
+              data-testid="tendencia-cerradas"
             />
           </svg>
         </div>
@@ -189,9 +207,16 @@ export class SaludOperacionalComponent {
   private readonly CIRCUNFERENCIA = 2 * Math.PI * this.RADIO;
 
   protected readonly ANCHO_MINI = 600;
-  // La tendencia se dibuja en 28 px de alto (h-7): entra sin desplazar el anillo y sigue
-  // mostrando los 14 días con su forma.
-  protected readonly ALTO_MINI = 22;
+  // El SVG se dibuja a 24 px de alto (h-6), pero el sistema de coordenadas mide 28 para
+  // que los márgenes internos no obliguen a comprimir la curva.
+  protected readonly ALTO_MINI = 28;
+  // Aire interno: la curva arranca y termina lejos del borde del panel, y no toca el
+  // techo ni el piso. Antes iba de 0 a 600 y de 3 a 19: se veía pegada al marco.
+  protected readonly MARGEN_X_MINI = 8;
+  protected readonly MARGEN_Y_MINI = 6;
+  // 1,2 en el sistema de coordenadas equivale a ~1,4 px reales al escalar el viewBox al
+  // ancho de la tarjeta. Antes era 2, o sea el doble de grueso: parecía un electrocardiógrafo.
+  protected readonly GROSOR_LINEA = 1.2;
   protected readonly COLOR_ABIERTAS = '#d97706';
   protected readonly COLOR_CERRADAS = '#059669';
 
@@ -296,19 +321,65 @@ export class SaludOperacionalComponent {
     this.linea((p) => p.cerradas)
   );
 
-  /** Convierte una serie en puntos de la polilínea, normalizando al máximo de ambas. */
+  /**
+   * Convierte una serie en un trazado de curva suave, normalizando al máximo de ambas.
+   *
+   * Antes era una `polyline`: segmentos rectos entre los 14 días, que con datos que suben
+   * y bajan se veían como un pico de montaña rusa. Ahora se interpolan con curvas de
+   * Bézier (Catmull-Rom convertido), que es lo que hace que se lea como una tendencia.
+   */
   private linea(selector: (p: TrendData) => number): string {
     const pts = this.puntos();
     if (pts.length === 0) return '';
+
     const maximo = Math.max(1, ...pts.map((p) => Math.max(p.abiertas, p.cerradas)));
-    const paso = pts.length > 1 ? this.ANCHO_MINI / (pts.length - 1) : 0;
-    return pts
-      .map((p, i) => {
-        const x = i * paso;
-        const y = this.ALTO_MINI - (selector(p) / maximo) * (this.ALTO_MINI - 6) - 3;
-        return `${x.toFixed(1)},${y.toFixed(1)}`;
-      })
-      .join(' ');
+    const utilX = this.ANCHO_MINI - 2 * this.MARGEN_X_MINI;
+    const utilY = this.ALTO_MINI - 2 * this.MARGEN_Y_MINI;
+    const paso = pts.length > 1 ? utilX / (pts.length - 1) : 0;
+
+    const coords = pts.map((p, i) => ({
+      x: this.MARGEN_X_MINI + i * paso,
+      y: this.MARGEN_Y_MINI + utilY - (selector(p) / maximo) * utilY,
+    }));
+
+    return this.curvaSuave(coords);
+  }
+
+  /**
+   * Catmull-Rom → Bézier cúbica.
+   *
+   * Cada segmento usa como controles la dirección que marca el punto anterior y el
+   * siguiente, que es lo que produce la curva continua. Los controles se acotan al área
+   * de dibujo (`MARGEN_Y_MINI` … `MARGEN_Y_MINI + utilY`): sin esa acotación, un salto
+   * brusco entre dos días hace que la curva se dispare fuera del panel.
+   */
+  private curvaSuave(coords: { x: number; y: number }[]): string {
+    if (coords.length === 0) return '';
+    if (coords.length === 1) {
+      return `M ${coords[0].x.toFixed(1)},${coords[0].y.toFixed(1)}`;
+    }
+
+    const TENSION = 0.6;
+    const arriba = this.MARGEN_Y_MINI;
+    const abajo = this.ALTO_MINI - this.MARGEN_Y_MINI;
+    const acotar = (y: number) => Math.min(abajo, Math.max(arriba, y));
+    const n = (v: number) => v.toFixed(1);
+
+    let d = `M ${n(coords[0].x)},${n(coords[0].y)}`;
+    for (let i = 0; i < coords.length - 1; i++) {
+      const p0 = coords[i - 1] ?? coords[i];
+      const p1 = coords[i];
+      const p2 = coords[i + 1];
+      const p3 = coords[i + 2] ?? coords[i + 1];
+
+      const c1x = p1.x + ((p2.x - p0.x) / 6) * TENSION;
+      const c1y = acotar(p1.y + ((p2.y - p0.y) / 6) * TENSION);
+      const c2x = p2.x - ((p3.x - p1.x) / 6) * TENSION;
+      const c2y = acotar(p2.y - ((p3.y - p1.y) / 6) * TENSION);
+
+      d += ` C ${n(c1x)},${n(c1y)} ${n(c2x)},${n(c2y)} ${n(p2.x)},${n(p2.y)}`;
+    }
+    return d;
   }
 }
 

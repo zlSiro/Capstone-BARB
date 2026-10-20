@@ -187,13 +187,46 @@ describe('SaludOperacionalComponent', () => {
       const { el } = setup(ROJO, TENDENCIA, 'es', true);
       const svg = el.querySelector('[data-testid="tendencia-salud"]');
       expect(svg).not.toBeNull();
-      expect(svg!.querySelectorAll('polyline').length).toBe(2);
+      expect(svg!.querySelectorAll('path').length).toBe(2);
+    });
+
+    it('dibuja una curva suave, no segmentos rectos', () => {
+      // Antes era una `polyline` de 14 vértices: se veía como un pico de montaña rusa.
+      const { el } = setup(ROJO, TENDENCIA, 'es', true);
+      const d = el.querySelector('[data-testid="tendencia-abiertas"]')!.getAttribute('d')!;
+      expect(d).toContain('C');
+      expect(el.querySelector('[data-testid="tendencia-salud"] polyline')).toBeNull();
+    });
+
+    it('la curva no toca los bordes del panel: respeta los margenes internos', () => {
+      const { el } = setup(ROJO, TENDENCIA, 'es', true);
+      const d = el.querySelector('[data-testid="tendencia-abiertas"]')!.getAttribute('d')!;
+      const xs = [...d.matchAll(/([-\d.]+),([-\d.]+)/g)].map((m) => Number(m[1]));
+      const ys = [...d.matchAll(/([-\d.]+),([-\d.]+)/g)].map((m) => Number(m[2]));
+      // viewBox 600x28 con margen 8 horizontal y 6 vertical.
+      expect(Math.min(...xs)).toBeGreaterThanOrEqual(8);
+      expect(Math.max(...xs)).toBeLessThanOrEqual(592);
+      expect(Math.min(...ys)).toBeGreaterThanOrEqual(6);
+      expect(Math.max(...ys)).toBeLessThanOrEqual(22);
+    });
+
+    it('la linea es fina: grosor 1.2, no 2', () => {
+      const { el } = setup(ROJO, TENDENCIA, 'es', true);
+      const trazo = el.querySelector('[data-testid="tendencia-abiertas"]')!;
+      expect(Number(trazo.getAttribute('stroke-width'))).toBeLessThan(1.5);
+    });
+
+    it('va sobre un panel propio, separado de las sub-tarjetas', () => {
+      const { el } = setup(ROJO, TENDENCIA, 'es', true);
+      const panel = el.querySelector('[data-testid="tendencia-panel"]')!;
+      expect(panel.className).toContain('rounded-lg');
+      expect(panel.className).toContain('ring-1');
     });
 
     it('con un solo punto no divide por cero', () => {
       const { el } = setup(ROJO, [{ date: '2026-10-01', abiertas: 1, cerradas: 0 }], 'es', true);
-      const linea = el.querySelector('[data-testid="tendencia-salud"] polyline')!;
-      expect(linea.getAttribute('points')).not.toContain('NaN');
+      const linea = el.querySelector('[data-testid="tendencia-salud"] path')!;
+      expect(linea.getAttribute('d')).not.toContain('NaN');
     });
   });
 
