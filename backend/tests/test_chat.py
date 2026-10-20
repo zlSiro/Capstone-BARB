@@ -266,6 +266,38 @@ async def test_stream_sesion_existente_recupera_historial(client, override_auth,
     mock_repo["load_messages"].assert_called_once_with(fake_uuid, 1)
 
 
+@pytest.mark.asyncio
+async def test_busqueda_incluye_el_mensaje_previo_del_asistente(client, override_auth, mock_repo):
+    """D5 v1.1 (review HU-05): los seguimientos heredan el contexto del turno
+    anterior — p. ej. el equipo que el asistente identificó en un turno con imagen
+    ("es un chancador de mandíbulas") habilita que "¿cómo funciona?" encuentre el manual."""
+    fake_uuid = "99999999-9999-9999-9999-999999999999"
+    mock_repo["get_session"].return_value = {"session_id": fake_uuid, "usuario_id": 1}
+    mock_repo["load_messages"].return_value = [
+        {"role": "user", "content": "Descríbeme qué tipo de máquina es"},
+        {"role": "assistant", "content": "Es un chancador de mandíbulas, trituradora primaria."},
+    ]
+
+    with patch(
+        "barb.routers.chat.create_conversation_chain",
+        return_value=FakeChain(["ok"]),
+    ), patch(
+        "barb.routers.chat.search_chunks", return_value=[{"title": "Doc", "contenido": "x"}]
+    ) as search:
+        async with client.stream(
+            "POST",
+            "/api/chat/stream",
+            json={"message": "¿Cómo funciona el chancado?", "session_id": fake_uuid},
+        ) as resp:
+            _ = "".join([c async for c in resp.aiter_text()])
+
+    args = search.call_args.args
+    assert args[0] == 1
+    assert args[1] == "¿Cómo funciona el chancado?"
+    assert args[2] == "Descríbeme qué tipo de máquina es"  # último mensaje del usuario
+    assert args[3] == "Es un chancador de mandíbulas, trituradora primaria."  # último del asistente
+
+
 # =============================================================================
 # Persistencia
 # =============================================================================

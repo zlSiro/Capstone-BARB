@@ -26,7 +26,7 @@ from barb.core.rate_limit import chat_rate_limiter
 from barb.core.security import get_current_user
 from barb.core.token_limit import estimate_tokens, token_limiter
 from barb.main import app
-from barb.services.llm_service import MULTIMODAL_IMAGE_TOKENS
+from barb.services.llm_service import MULTIMODAL_IMAGE_TOKENS, _prepare_multimodal_input
 
 # =============================================================================
 # Fixtures
@@ -39,6 +39,17 @@ def _reset_state():
     yield
     chat_rate_limiter._hits.clear()
     token_limiter._usage.clear()
+
+
+@pytest.fixture(autouse=True)
+def mock_search():
+    """
+    D5 v1.1: el turno multimodal consulta search_chunks como el stream. Patch
+    autouse para que los tests no dependan de la BD; los que prueban el RAG
+    ajustan return_value.
+    """
+    with patch("barb.routers.chat.search_chunks", return_value=[]) as m:
+        yield m
 
 
 @pytest.fixture
@@ -548,11 +559,13 @@ async def test_tokens_se_consumen_aunque_falle_el_llm(client, override_auth, moc
 
 
 # =============================================================================
-# Multi-empresa (misma regla que el stream: super_usuario elige empresa)
+# RBAC del DocChat (v1.1: idéntico al stream tras la HU-12/PR #23)
 # =============================================================================
 
 @pytest.mark.asyncio
-async def test_super_usuario_sin_empresa_422(client, mock_repo):
+async def test_super_usuario_recibe_403_igual_que_el_stream(client, mock_repo):
+    """La política del DocChat completa es la misma: super_usuario no entra.
+    El empresa_id del body (si llega) se ignora — ya no forma parte del request."""
     app.dependency_overrides[get_current_user] = lambda: {
         "id": 9,
         "empresa_id": None,
@@ -561,36 +574,126 @@ async def test_super_usuario_sin_empresa_422(client, mock_repo):
         "role": "super_usuario",
     }
     try:
-        resp = await client.post("/api/chat/multimedia", json=_multimedia_body())
-        assert resp.status_code == 422
-        assert "empresa" in resp.json()["detail"].lower()
+        resp = await client.post(
+            "/api/chat/multimedia",
+            json=_multimedia_body(empresa_id=3),
+        )
+        assert resp.status_code == 403
+        assert "DocChat" in resp.json()["detail"]
+        mock_repo["create_session"].assert_not_called()
     finally:
         app.dependency_overrides.pop(get_current_user, None)
 
 
 @pytest.mark.asyncio
-async def test_super_usuario_con_empresa_crea_sesion_de_la_empresa(client, mock_repo):
+async def test_usuario_sin_empresa_recibe_403(client, mock_repo):
+    """Misma guarda que el stream: un usuario sin empresa no tiene DocChat."""
     app.dependency_overrides[get_current_user] = lambda: {
-        "id": 9,
+        "id": 10,
         "empresa_id": None,
-        "name": "Super",
-        "email": "super@barb.com",
-        "role": "super_usuario",
+        "name": "Sin Empresa",
+        "email": "ne@barb.com",
+        "role": "admin",
     }
     try:
-        with patch(
-            "barb.routers.chat.create_multimodal_chain",
-            return_value=FakeChain(["ok"]),
-        ):
-            async with client.stream(
-                "POST",
-                "/api/chat/multimedia",
-                json=_multimedia_body(empresa_id=3),
-            ) as resp:
-                assert resp.status_code == 200
-                _ = "".join([c async for c in resp.aiter_text()])
-
-        kwargs = mock_repo["create_session"].call_args.kwargs
-        assert kwargs["empresa_id"] == 3
+        resp = await client.post("/api/chat/multimedia", json=_multimedia_body())
+        assert resp.status_code == 403
+        mock_repo["create_session"].assert_not_called()
     finally:
         app.dependency_overrides.pop(get_current_user, None)
+
+
+# =============================================================================
+# RAG multimodal (D5 v1.1): el turno con imagen consulta la documentación
+# =============================================================================
+
+@pytest.mark.asyncio
+async def test_chunks_de_la_empresa_se_inyectan_al_chain(client, override_auth, mock_repo, mock_search):
+    """Con coincidencia en la documentación, el chain recibe el contexto formateado."""
+    mock_search.return_value = [{"title": "Manual Chancador CH-01", "contenido": "Torque 450 Nm"}]
+    fake_chain = FakeChain(["respuesta"])
+    with patch("barb.routers.chat.create_multimodal_chain", return_value=fake_chain):
+        async with client.stream(
+            "POST",
+            "/api/chat/multimedia",
+            json=_multimedia_body(message="¿Cómo se opera el chancador?"),
+        ) as resp:
+            _ = "".join([c async for c in resp.aiter_text()])
+
+    assert fake_chain.last_payload["context"] == (
+        "[Documento: Manual Chancador CH-01]\nTorque 450 Nm"
+    )
+
+
+@pytest.mark.asyncio
+async def test_sin_chunks_el_contexto_va_vacio(client, override_auth, mock_repo, mock_search):
+    """Sin coincidencia, el turno multimodal sigue funcionando (solo visual)."""
+    mock_search.return_value = []
+    fake_chain = FakeChain(["respuesta"])
+    with patch("barb.routers.chat.create_multimodal_chain", return_value=fake_chain):
+        async with client.stream(
+            "POST", "/api/chat/multimedia", json=_multimedia_body()
+        ) as resp:
+            _ = "".join([c async for c in resp.aiter_text()])
+
+    assert fake_chain.last_payload["context"] == ""
+
+
+@pytest.mark.asyncio
+async def test_la_busqueda_incluye_el_contexto_previo_del_asistente(client, override_auth, mock_repo, mock_search):
+    """El mensaje del asistente del turno con imagen aporta el equipo a la búsqueda."""
+    fake_uuid = "88888888-8888-8888-8888-888888888888"
+    mock_repo["get_session"].return_value = {"session_id": fake_uuid, "usuario_id": 1}
+    mock_repo["load_messages"].return_value = [
+        {"role": "user", "content": "Descríbeme qué tipo de máquina es"},
+        {"role": "assistant", "content": "Es un chancador de mandíbulas, trituradora primaria."},
+    ]
+
+    with patch("barb.routers.chat.create_multimodal_chain", return_value=FakeChain(["ok"])):
+        async with client.stream(
+            "POST",
+            "/api/chat/multimedia",
+            json=_multimedia_body(session_id=fake_uuid, message="¿Cómo funciona?"),
+        ) as resp:
+            _ = "".join([c async for c in resp.aiter_text()])
+
+    args = mock_search.call_args.args
+    assert args[0] == 1  # la empresa del usuario
+    assert args[1] == "¿Cómo funciona?"
+    assert args[2] == "Descríbeme qué tipo de máquina es"  # último mensaje del usuario
+    assert args[3] == "Es un chancador de mandíbulas, trituradora primaria."  # último del asistente
+
+
+# =============================================================================
+# System prompt multimodal (D5 v1.1): etiquetado del origen del conocimiento
+# =============================================================================
+
+def test_prepare_input_con_documentacion_la_agrega_al_system():
+    msgs = _prepare_multimodal_input(
+        {
+            "input": "¿Qué ves?",
+            "image": "data:image/png;base64,QQ==",
+            "context": "[Documento: Manual CH-01]\nTorque 450 Nm",
+        }
+    )
+    system = msgs[0].content
+    assert "DOCUMENTACIÓN DE LA EMPRESA" in system
+    assert "Torque 450 Nm" in system
+    # Reglas de etiquetado de origen (review HU-05)
+    assert "identificación visual" in system
+    # El mecanismo anti-razonamiento queda como última línea (validado vs NIM)
+    assert system.endswith("Reasoning strength: low")
+    # La documentación NO contamina el turno humano (solo texto + imagen)
+    human_content = msgs[-1].content
+    assert human_content[0] == {"type": "text", "text": "¿Qué ves?"}
+
+
+def test_prepare_input_sin_documentacion_no_mienta_sobre_el_origen():
+    msgs = _prepare_multimodal_input(
+        {"input": "x", "image": "data:image/png;base64,QQ==", "context": ""}
+    )
+    system = msgs[0].content
+    # La regla MENCIONA el bloque, pero el bloque inyectado (con formato ":\n") no está
+    assert "DOCUMENTACIÓN DE LA EMPRESA:\n" not in system
+    assert "identificación visual" in system
+    assert system.endswith("Reasoning strength: low")

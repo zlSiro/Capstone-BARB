@@ -215,9 +215,11 @@ free tier (4–20 s por request) hace un reintento peor que el error.
   solo en la sesión viva.
 - **Cada imagen suma ~4096 tokens visuales** (presupuesto del ViT-G/14 del
   modelo) al límite diario del usuario (D6), junto con entrada y salida.
-- **Sin RAG en v1** (D5): el turno multimodal consulta solo imagen+texto;
-  integrar "imagen + documentación de la empresa" quedó registrado como mejora
-  futura en el backlog (HU-23).
+- **RAG ligero (D5 v1.1)**: el turno multimodal consulta los fragmentos de la
+  documentación activa de la empresa y el prompt exige etiquetar el origen
+  ("identificación visual" ≠ documentación citada); sin documentación aplicable
+  no inventa datos de la empresa. El binding con la máquina del catálogo
+  (`machine_id`) quedó registrado como mejora futura en el backlog (HU-23).
 
 ### Configuración
 
