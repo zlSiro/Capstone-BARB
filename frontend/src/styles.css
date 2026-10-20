@@ -1,5 +1,28 @@
 @import "tailwindcss";
 
+/*
+ * Modo oscuro por CLASE, no por preferencia del sistema (CGBIDA-391 / CGBIDA-400).
+ *
+ * Por defecto Tailwind v4 resuelve `dark:` contra `prefers-color-scheme`, es decir contra
+ * el tema de Windows. Con eso, el boton sol/luna cambiaba el estado del ThemeService pero
+ * no se veia ningun cambio en pantalla: la clase `dark` se aplicaba al <html> y Tailwind
+ * la ignoraba.
+ *
+ * Con este custom-variant, `dark:` responde a `.dark` en el <html>, que es lo que el
+ * ThemeService agrega y quita. El tema elegido gana siempre sobre el del sistema.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+html {
+  color-scheme: light;
+}
+
+/* `color-scheme` hace que las barras de scroll y los controles nativos sigan al tema. */
+html.dark {
+  color-scheme: dark;
+  background-color: #030712; /* gray-950 */
+}
+
 
 html, body {
   height: 100%;

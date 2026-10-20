@@ -100,21 +100,86 @@ export const translations = {
       detailBack: 'Volver'
     },
     financial: {
+      dashboardTitle: 'Dashboard KPI',
+      dashboardSubtitle: 'Impacto basado en $2.000 CLP/min de inactividad operativa.',
+      loading: 'Cargando KPIs…',
+      loadError: 'No se pudieron cargar los KPIs. Vuelve a intentarlo en unos minutos.',
       roiTitle: 'Impacto Anual Proyectado (Modelo BARB v1.0)',
-      roiSubtitle: 'Basado en US$2.000/min de inactividad operativa.',
+      roiSubtitle: 'Basado en $2.000 CLP/min de inactividad operativa.',
+      // Descripciones de las tarjetas de KPI (CGBIDA-392). Las claves mttrGlobal,
+      // efficiency, directCost, mtbf y savingsGenerated ya existian; estas son los
+      // subtitulos que faltaban para que cada tarjeta diga QUE mide.
+      mttrSub: 'Tiempo medio de reparacion de las OTs completadas.',
+      savingsSub: 'Inactividad evitada por las OTs completadas, valorizada.',
+      impactCardTitle: 'Impacto Anual Proyectado',
+      impactCardSub: 'Comparativa de escenarios del modelo BARB.',
+      impactNoData: 'Requiere al menos 90 dias de historial.',
+      // Nombres de las series del grafico de backlog (CGBIDA-393). El legacy mostraba las
+      // claves crudas del dataKey; aqui se traducen.
+      abiertas: 'Abiertas',
+      cerradas: 'Cerradas',
+      // Nombres de la metrica activa en el tooltip del ranking (CGBIDA-394). El legacy
+      // mostraba la clave cruda del dataKey ('ahorroGenerado').
+      rankingMetricOts: 'Volumen de OTs',
+      rankingMetricMttr: 'MTTR',
+      rankingMetricAhorro: 'Ahorro generado',
+      rankingEmpty: 'Sin datos de equipos en el período.',
       withoutBarb: 'Escenario Sin BARB', withBarb: 'Escenario Con BARB',
       savingsGenerated: 'Ahorro Generado a la fecha',
       mttrGlobal: 'MTTR Global', mttrOptimal: '✓ Dentro de SLA',
-      efficiency: 'Eficiencia Resolución', efficiencySub: 'OTs completadas dentro del SLA (24h)',
+      efficiency: 'Cumplimiento de SLA', efficiencySub: 'OTs completadas dentro del SLA (24h)',
       directCost: 'Costo Directo', directCostSub: 'Repuestos y servicios facturados',
-      mtbf: 'MTBF Global', mtbfSub: 'Tiempo Medio Entre Fallas (Horas)',
+      // CGBIDA-434: el MTBF se muestra en días. El subtítulo tiene que decir la unidad
+      // que el usuario ve, no la que calcula el backend.
+      // La unidad ya no va en el subtítulo: la elige el usuario con el selector.
+      mtbf: 'MTBF Global', mtbfSub: 'Tiempo medio entre fallas',
+      mtbfUnitLabel: 'Unidad del MTBF',
+      mtbfUnitHoras: 'Horas', mtbfUnitDias: 'Días', mtbfUnitMeses: 'Meses',
+      mtbfUnitShortHoras: 'h', mtbfUnitShortDias: 'd', mtbfUnitShortMeses: 'mes',
       mtbfNeedData: 'Requiere historial min. 2 fallas',
+      // CGBIDA-435: tarjeta de semáforo. Reemplaza al gráfico de backlog suelto: el
+      // indicador va arriba y la tendencia queda como minigráfico debajo.
+      healthCardTitle: 'Salud Operacional',
+      healthCardSub: 'Índice compuesto por SLA, MTBF y semanas de backlog',
+      healthIndex: 'Índice',
+      healthEstadoVerde: 'Saludable',
+      healthEstadoAmarillo: 'Atención',
+      healthEstadoRojo: 'Crítico',
+      healthEstadoInsuficiente: 'Sin datos',
+      healthInsufficient: 'Faltan datos históricos para calcular el índice.',
+      healthComponentSla: 'SLA',
+      healthComponentMtbf: 'MTBF',
+      healthComponentBacklog: 'Backlog',
+      healthWeeks: 'sem',
+      healthTrendTitle: 'Tendencia de backlog (14 d)',
       healthTitle: 'Salud Operacional: Backlog',
       healthSub: 'Tendencia diaria de OTs Abiertas vs Cerradas (14 d).',
       performanceTitle: 'Rendimiento por Máquina',
       measured: 'Medido', estimated: 'Estimado',
-      topMachinesTitle: 'Top Equipos', topMachinesSubtitle: 'Rendimiento por métrica',
-      viewOts: 'Volumen OTs', viewMttr: 'MTTR (Minutos)', viewAhorro: 'Ahorro Generado'
+      // CGBIDA-437: los títulos decían algo distinto de lo que el gráfico muestra.
+      topMachinesTitle: 'Top 5 Equipos', topMachinesSubtitle: 'Rendimiento por KPI',
+      viewOts: 'Volumen OTs', viewMttr: 'MTTR (Minutos)', viewAhorro: 'Ahorro Generado',
+      // CGBIDA-432: toggle de moneda. Los datos base están en CLP y el backend no cambia.
+      currencyLabel: 'Moneda',
+      currencyClp: 'CLP',
+      currencyUsd: 'USD',
+      currencyRate: 'Tipo de cambio observado:',
+      currencyNoRate: 'No se pudo obtener el tipo de cambio. Se muestran montos en CLP.',
+      // CGBIDA-433: explicación de cada KPI. Las cifras del modelo están en CLP, así que
+      // el supuesto se enuncia siempre en pesos, aunque el resto de la tarjeta esté en USD.
+      kpiCostoTooltip:
+        'Suma del costo real de todas las OTs no canceladas del período. Las canceladas no suman: si el trabajo no se hizo, no hay costo que registrar.',
+      kpiAhorroTooltip:
+        'Inactividad evitada por las OTs completadas, valorizada al costo por minuto de inactividad. Solo cuentan las OTs completadas: las abiertas todavía no evitaron nada.',
+      kpiImpactoTooltip:
+        'Proyección a 12 meses comparando dos escenarios. Sin BARB, cada incidente tarda el tiempo de referencia del modelo en resolverse; con BARB, el tiempo real medido. La diferencia, valorizada por minuto, es el ahorro proyectado. Requiere al menos 90 días de historial.',
+      kpiUsdNote:
+        'Las cifras se convierten a USD con el tipo de cambio observado del día (mindicador.cl).',
+      // CGBIDA-436: reemplaza al gráfico de tiempo de resolución, que duplicaba el ranking.
+      impactChartTitle: 'Escenarios de Impacto Anual',
+      impactChartSub: 'Costo proyectado a 12 meses: sin BARB frente a con BARB',
+      impactSavingsLabel: 'Ahorro proyectado',
+      impactNoHistory: 'Requiere al menos 90 días de historial para proyectar.'
     },
     dashboard: {
       title: 'Órdenes de Trabajo', totalWorkOrders: 'Total OTs',
@@ -123,14 +188,24 @@ export const translations = {
       allMachines: 'Todas las máquinas', allTypes: 'Todos los tipos',
       createWorkOrder: 'Crear OT', chartStatus: 'Distribución por estado',
       chartMachines: 'Máquinas con más OTs', chartResolution: 'Tiempo de resolución',
-      noData: 'Sin datos', strategyTitle: 'Estrategia de Mantenimiento',
-      strategySubtitle: 'Preventivo vs Correctivo',
+      chartResolutionSub: 'Tiempo medio de reparación por máquina, en minutos',
+      noData: 'Sin datos', strategyTitle: 'Distribución por Tipo de Mantenimiento',
+      strategySubtitle: 'Correctivo, preventivo, predictivo e inspección',
+      totalOts: 'OTs',
+      stalledAlertLabel: 'Alerta:',
+      stalledLabel: 'ordenes de trabajo estancadas o criticas',
+      stalledBody: 'Revisa el listado de ordenes para gestionar las intervenciones y evitar tiempos muertos en la planta.',
+      stalledExpired: 'Vencidas',
+      stalledDelayed: 'Demoradas',
+      stalledThresholdBefore: 'En curso hace mas de',
+      stalledThresholdAfter: 'dias',
       costDeviationTitle: 'Desviación de Costos',
       costDeviationSubtitle: 'Costo Estimado vs Real (USD)',
       topAssetsTitle: 'Top 5 Activos Críticos',
       topAssetsSubtitle: 'Máquinas con mayor volumen de OTs',
       last7Days: 'Últimos 7 días', last30Days: 'Últimos 30 días',
-      last90Days: 'Últimos 90 días', allTime: 'Histórico'
+      last90Days: 'Últimos 90 días', allTime: 'Histórico',
+      rangeLabel: 'Período'
     },
     settings: {
       title: 'Configuración', appearanceLanguage: 'Apariencia e idioma',
@@ -168,7 +243,19 @@ export const translations = {
       emptyState: 'Inicia la conversación escribiendo tu primera pregunta.',
       inputPlaceholder: 'Escribe tu pregunta... (Enter para enviar, Shift+Enter para salto de línea)',
       unknownError: 'Error desconocido', connectionError: 'No se pudo conectar con el asistente.',
-      deleteError: 'No se pudo eliminar la conversación.'
+      deleteError: 'No se pudo eliminar la conversación.',
+      // --- Multimodal (HU-05) ---
+      attachImage: 'Adjuntar imagen', removeImage: 'Quitar imagen',
+      imageReady: 'Imagen lista para analizar',
+      imageHint: 'Puedes adjuntar una imagen (JPEG/PNG/WebP, máx. 5 MB) con 📎 y preguntar sobre ella.',
+      imageTooLarge: 'La imagen supera el máximo de {mb} MB.',
+      imageInvalidFormat: 'Formato no permitido: solo JPEG, PNG o WebP.',
+      imageReadError: 'No se pudo leer la imagen. Intenta de nuevo.',
+      errImageOrQuestionRequired: 'Debes adjuntar una imagen y una pregunta.',
+      errImageTooLarge: 'La imagen es demasiado grande (máx. 5 MB).',
+      errImageInvalidFormat: 'El formato de la imagen no está permitido (solo JPEG, PNG o WebP).',
+      errRateLimit: 'Demasiadas peticiones o límite diario alcanzado. Espera un momento.',
+      errMultimodalUnavailable: 'El análisis de imágenes no está disponible por ahora.'
     }
   },
 
@@ -268,21 +355,69 @@ export const translations = {
       detailBack: 'Back'
     },
     financial: {
+      dashboardTitle: 'KPI Dashboard',
+      dashboardSubtitle: 'Impact based on $2,000 CLP/min of operational downtime.',
+      loading: 'Loading KPIs…',
+      loadError: 'The KPIs could not be loaded. Please try again in a few minutes.',
       roiTitle: 'Projected Annual Impact (BARB v1.0 Model)',
-      roiSubtitle: 'Based on US$2,000/min of operational downtime.',
+      roiSubtitle: 'Based on $2,000 CLP/min of operational downtime.',
+      mttrSub: 'Average repair time of completed WOs.',
+      savingsSub: 'Downtime avoided by completed WOs, valued.',
+      impactCardTitle: 'Projected Annual Impact',
+      impactCardSub: 'BARB model scenario comparison.',
+      impactNoData: 'Requires at least 90 days of history.',
+      abiertas: 'Open',
+      cerradas: 'Closed',
+      rankingMetricOts: 'WO volume',
+      rankingMetricMttr: 'MTTR',
+      rankingMetricAhorro: 'Savings generated',
+      rankingEmpty: 'No machine data for this period.',
       withoutBarb: 'Without BARB Scenario', withBarb: 'With BARB Scenario',
       savingsGenerated: 'Savings Generated to Date',
       mttrGlobal: 'Global MTTR', mttrOptimal: '✓ Within SLA',
-      efficiency: 'Resolution Efficiency', efficiencySub: 'Work orders completed within SLA (24h)',
+      efficiency: 'SLA Compliance', efficiencySub: 'Work orders completed within SLA (24h)',
       directCost: 'Direct Cost', directCostSub: 'Billed parts and services',
-      mtbf: 'Global MTBF', mtbfSub: 'Mean Time Between Failures (Hours)',
+      mtbf: 'Global MTBF', mtbfSub: 'Mean time between failures',
+      mtbfUnitLabel: 'MTBF unit',
+      mtbfUnitHoras: 'Hours', mtbfUnitDias: 'Days', mtbfUnitMeses: 'Months',
+      mtbfUnitShortHoras: 'h', mtbfUnitShortDias: 'd', mtbfUnitShortMeses: 'mo',
       mtbfNeedData: 'Requires min. 2 failures history',
+      healthCardTitle: 'Operational Health',
+      healthCardSub: 'Composite index of SLA, MTBF and backlog weeks',
+      healthIndex: 'Index',
+      healthEstadoVerde: 'Healthy',
+      healthEstadoAmarillo: 'Attention',
+      healthEstadoRojo: 'Critical',
+      healthEstadoInsuficiente: 'No data',
+      healthInsufficient: 'Not enough historical data to compute the index.',
+      healthComponentSla: 'SLA',
+      healthComponentMtbf: 'MTBF',
+      healthComponentBacklog: 'Backlog',
+      healthWeeks: 'wk',
+      healthTrendTitle: 'Backlog trend (14 d)',
       healthTitle: 'Operational Health: Backlog',
       healthSub: 'Daily trend of Open vs Closed WOs (14 d).',
       performanceTitle: 'Machine Performance',
       measured: 'Measured', estimated: 'Estimated',
-      topMachinesTitle: 'Top Machines', topMachinesSubtitle: 'Performance by metric',
-      viewOts: 'WO Volume', viewMttr: 'MTTR (Minutes)', viewAhorro: 'Savings Generated'
+      topMachinesTitle: 'Top 5 Machines', topMachinesSubtitle: 'Performance by KPI',
+      viewOts: 'WO Volume', viewMttr: 'MTTR (Minutes)', viewAhorro: 'Savings Generated',
+      currencyLabel: 'Currency',
+      currencyClp: 'CLP',
+      currencyUsd: 'USD',
+      currencyRate: 'Observed exchange rate:',
+      currencyNoRate: 'Could not fetch the exchange rate. Amounts are shown in CLP.',
+      kpiCostoTooltip:
+        'Sum of the actual cost of all non-cancelled work orders in the period. Cancelled ones do not add: if the work was not done, there is no cost to record.',
+      kpiAhorroTooltip:
+        'Downtime avoided by completed work orders, valued at the downtime cost per minute. Only completed work orders count: open ones have not avoided anything yet.',
+      kpiImpactoTooltip:
+        'A 12-month projection comparing two scenarios. Without BARB, each incident takes the model reference time to resolve; with BARB, the actual measured time. The difference, valued per minute, is the projected savings. Requires at least 90 days of history.',
+      kpiUsdNote:
+        'Amounts are converted to USD using the daily observed exchange rate (mindicador.cl).',
+      impactChartTitle: 'Annual Impact Scenarios',
+      impactChartSub: 'Projected 12-month cost: without BARB vs with BARB',
+      impactSavingsLabel: 'Projected savings',
+      impactNoHistory: 'Requires at least 90 days of history to project.'
     },
     dashboard: {
       title: 'Work Orders', totalWorkOrders: 'Total WOs',
@@ -291,14 +426,24 @@ export const translations = {
       allMachines: 'All machines', allTypes: 'All types',
       createWorkOrder: 'Create WO', chartStatus: 'Status breakdown',
       chartMachines: 'Top machines', chartResolution: 'Resolution time',
-      noData: 'No data', strategyTitle: 'Maintenance Strategy',
-      strategySubtitle: 'Preventive vs Corrective',
+      chartResolutionSub: 'Average repair time per machine, in minutes',
+      noData: 'No data', strategyTitle: 'Distribution by Maintenance Type',
+      strategySubtitle: 'Corrective, preventive, predictive and inspection',
+      totalOts: 'WOs',
+      stalledAlertLabel: 'Alert:',
+      stalledLabel: 'stalled or critical work orders',
+      stalledBody: 'Review the work order list to manage interventions and avoid plant downtime.',
+      stalledExpired: 'Expired',
+      stalledDelayed: 'Delayed',
+      stalledThresholdBefore: 'In progress for more than',
+      stalledThresholdAfter: 'days',
       costDeviationTitle: 'Cost Deviation',
       costDeviationSubtitle: 'Estimated vs Real Cost (USD)',
       topAssetsTitle: 'Top 5 Critical Assets',
       topAssetsSubtitle: 'Machines with highest WO volume',
       last7Days: 'Last 7 days', last30Days: 'Last 30 days',
-      last90Days: 'Last 90 days', allTime: 'All Time'
+      last90Days: 'Last 90 days', allTime: 'All Time',
+      rangeLabel: 'Period'
     },
     settings: {
       title: 'Settings', appearanceLanguage: 'Appearance & language',
@@ -336,9 +481,23 @@ export const translations = {
       emptyState: 'Start the conversation by typing your first question.',
       inputPlaceholder: 'Type your question... (Enter to send, Shift+Enter for a new line)',
       unknownError: 'Unknown error', connectionError: 'Could not connect to the assistant.',
-      deleteError: 'Could not delete the conversation.'
+      deleteError: 'Could not delete the conversation.',
+      // --- Multimodal (HU-05) ---
+      attachImage: 'Attach image', removeImage: 'Remove image',
+      imageReady: 'Image ready to analyze',
+      imageHint: 'Attach an image (JPEG/PNG/WebP, max 5 MB) with 📎 and ask about it.',
+      imageTooLarge: 'The image exceeds the {mb} MB limit.',
+      imageInvalidFormat: 'Unsupported format: only JPEG, PNG or WebP.',
+      imageReadError: 'Could not read the image. Please try again.',
+      errImageOrQuestionRequired: 'You must attach an image and a question.',
+      errImageTooLarge: 'The image is too large (max 5 MB).',
+      errImageInvalidFormat: 'The image format is not allowed (JPEG, PNG or WebP only).',
+      errRateLimit: 'Too many requests or daily limit reached. Please wait a moment.',
+      errMultimodalUnavailable: 'Image analysis is currently unavailable.'
     }
   }
 };
 
 export type TranslationTree = typeof translations['es'];
+
+

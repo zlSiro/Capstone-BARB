@@ -29,6 +29,13 @@ import { ChatMessage } from '../../core/models/chat.model';
         @if (message.role === 'assistant') {
           <markdown [data]="message.content || '...'" />
         } @else {
+          @if (message.imageUrl) {
+            <img
+              [src]="message.imageUrl"
+              [alt]="message.content"
+              class="mb-2 max-h-40 rounded-lg"
+            />
+          }
           <span class="whitespace-pre-wrap break-words">{{ message.content }}</span>
         }
       </div>

@@ -1,6 +1,22 @@
 # Capstone-BARB
 ---
 
+## Documentación por tema
+
+| Documento | Contenido |
+|---|---|
+| [`DASHBOARD_KPIS.md`](./DASHBOARD_KPIS.md) | Las 6 fórmulas del dashboard, los 4 gráficos, el selector de rango, los tooltips flotantes, el modo oscuro y la deuda conocida (HU-08 + HU-16) |
+| [`WORK_ORDERS.md`](./WORK_ORDERS.md) | Órdenes de trabajo: modelo, contrato API, validaciones y permisos |
+| [`MULTIEMPRESA.md`](./MULTIEMPRESA.md) | Multi-empresa, documentación por empresa y `super_usuario` |
+| [`NOTIFICACIONES.md`](./NOTIFICACIONES.md) | Correo de OTs atrasadas |
+| [`MIGRACIONES.md`](./MIGRACIONES.md) | Migraciones de base de datos |
+| [`RAG_ARCHITECTURE.md`](./RAG_ARCHITECTURE.md) | Arquitectura RAG (HU-04) |
+| [`AI_ARCHITECTURE.md`](./AI_ARCHITECTURE.md) | Arquitectura de IA y gestión de memoria |
+| [`contrato_api_chat.md`](./contrato_api_chat.md) | Contrato API del chat |
+| [`contrato_api_documents.md`](./contrato_api_documents.md) | Contrato API de documentos (HU-04) |
+
+---
+
 ## 📄 3. `README.md` — versión completa
 
 Reemplaza todo el contenido por esto:

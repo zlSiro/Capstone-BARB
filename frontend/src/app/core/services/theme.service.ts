@@ -28,8 +28,18 @@ export class ThemeService {
     this._dark.set(value);
   }
 
+  /**
+   * Tema inicial.
+   *
+   * Si el usuario ya eligio, se respeta su eleccion guardada. Si es la primera visita,
+   * se arranca con el tema del sistema, que es lo que hacia Tailwind antes de que el
+   * modo oscuro pasara a ser por clase: asi nadie ve un cambio inesperado la primera vez.
+   */
   private loadStoredDark(): boolean {
     if (typeof window === 'undefined') return false;
-    return window.localStorage.getItem(DARK_STORAGE_KEY) === 'true';
+    const guardado = window.localStorage.getItem(DARK_STORAGE_KEY);
+    if (guardado === 'true') return true;
+    if (guardado === 'false') return false;
+    return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
   }
 }

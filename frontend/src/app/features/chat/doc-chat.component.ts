@@ -6,18 +6,21 @@ import { ActivatedRoute } from '@angular/router';
 import { ChatService } from '../../core/services/chat.service';
 import { ChatMessage, SessionListItem } from '../../core/models/chat.model';
 import { MessageBubbleComponent } from './message-bubble.component';
+import { ImageAttachmentComponent } from './image-attachment.component';
+import { ToastService } from '../../core/services/toast.service';
 import { I18nService } from '../../core/i18n/i18n.service';
 import { TranslatePipe } from '../../core/i18n/translate.pipe';
 
 @Component({
   selector: 'app-doc-chat',
-  imports: [FormsModule, MessageBubbleComponent, TranslatePipe],
+  imports: [FormsModule, MessageBubbleComponent, ImageAttachmentComponent, TranslatePipe],
   templateUrl: './doc-chat.component.html',
 })
 export class DocChatComponent {
   private readonly chatService = inject(ChatService);
   private readonly route = inject(ActivatedRoute);
   private readonly i18n = inject(I18nService);
+  private readonly toast = inject(ToastService);
 
   @ViewChild('messagesContainer') messagesContainer!: ElementRef<HTMLDivElement>;
 
@@ -27,6 +30,10 @@ export class DocChatComponent {
   readonly isLoading = signal(false);
   readonly errorMessage = signal<string | null>(null);
   readonly sessionId = signal<string | null>(null);
+
+  // ── Imagen adjunta (HU-05) ──
+  // Data URL de la imagen lista para analizar; null = sin imagen.
+  readonly attachedImage = signal<string | null>(null);
 
   // ── Sidebar state ──
   readonly sessions = signal<SessionListItem[]>([]);
@@ -124,10 +131,30 @@ export class DocChatComponent {
     this.sessionId.set(null);
     this.errorMessage.set(null);
     this.inputText.set('');
+    this.attachedImage.set(null);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Imagen adjunta (HU-05, CGBIDA-279)
+  // ---------------------------------------------------------------------------
+
+  onImageSelected(dataUrl: string): void {
+    this.attachedImage.set(dataUrl);
+  }
+
+  onImageError(message: string): void {
+    this.toast.show(message, 'error');
+  }
+
+  removeAttachedImage(): void {
+    this.attachedImage.set(null);
   }
 
   sendMessage(): void {
     const text = this.inputText().trim();
+    const image = this.attachedImage();
+    // El contrato exige pregunta junto a la imagen (message 1–2000): el botón
+    // de envío ya exige texto; esto es una doble guarda.
     if (!text || this.isLoading()) return;
 
     const userMsg: ChatMessage = {
@@ -135,9 +162,12 @@ export class DocChatComponent {
       role: 'user',
       content: text,
       createdAt: new Date(),
+      // La imagen se muestra solo en la burbuja viva: el backend no la persiste (D2).
+      ...(image ? { imageUrl: image } : {}),
     };
     this.messages.update((m) => [...m, userMsg]);
     this.inputText.set('');
+    this.attachedImage.set(null);
     this.isLoading.set(true);
     this.errorMessage.set(null);
 
@@ -152,9 +182,16 @@ export class DocChatComponent {
 
     const wasNewSession = this.sessionId() === null;
 
-    this.chatService
-      .streamChat({ session_id: this.sessionId(), message: text })
-      .subscribe({
+    // Con imagen → turno multimodal (CGBIDA-276); sin imagen → stream textual (HU-03).
+    const stream = image
+      ? this.chatService.streamMultimedia({
+          session_id: this.sessionId(),
+          message: text,
+          image_base64: image,
+        })
+      : this.chatService.streamChat({ session_id: this.sessionId(), message: text });
+
+    stream.subscribe({
         next: (event) => {
           if (event.type === 'session') {
             this.sessionId.set(event.data.session_id);

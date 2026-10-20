@@ -14,16 +14,25 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+
+# Historial sintético de 24 meses (CGBIDA-408). Se importa aquí para que el seed
+# completo lo incluya; también se puede ejecutar solo con `scripts/seed_history.py`.
+from seed_history import poblar_historial  # noqa: E402
 
 from barb.core.db import close_pool, open_pool, pool  # noqa: E402
 from barb.core.security import hash_password  # noqa: E402
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("barb.seed")
+
+# El historial sintético se puede omitir con esta variable, para sembrar solo el
+# catálogo y las OTs originales (por ejemplo en un entorno de pruebas).
+SKIP_HISTORY_ENV = "BARB_SKIP_SYNTHETIC_HISTORY"
 
 SEED_SQL_PATH = Path(__file__).resolve().parent.parent / "seeds" / "seed_data.sql"
 # Datos ficticios multi-empresa (super_usuario, más empresas, OTs y documentación por empresa).
@@ -128,6 +137,17 @@ async def main() -> None:
 
             async with conn.transaction():
                 await _ensure_multiempresa_seed(conn)
+
+            # Historial sintético de 24 meses (CGBIDA-408). Idempotente: si ya hay filas
+            # con el prefijo SYN-, no inserta nada.
+            #
+            # Para borrarlo por completo:
+            #     DELETE FROM orden_trabajo WHERE numero_ot LIKE 'SYN-%';
+            if os.getenv(SKIP_HISTORY_ENV):
+                logger.info("Historial sintético omitido por %s.", SKIP_HISTORY_ENV)
+            else:
+                async with conn.transaction():
+                    await poblar_historial(conn)
 
             async with conn.transaction():
                 actualizados = await _ensure_passwords_hashed(conn)

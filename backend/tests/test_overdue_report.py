@@ -168,9 +168,9 @@ async def test_config_aislada_por_empresa(client, empresa_id):
 
 
 async def test_job_envia_solo_abiertas_con_vencimiento_y_es_idempotente(client, empresa_id, smtp_falso):
-    await _crear_ot_atrasada(client, 5, "pending")
-    await _crear_ot_atrasada(client, 9, "in_progress")
-    await _crear_ot_atrasada(client, 20, "completed")  # final: no cuenta
+    ot_5 = await _crear_ot_atrasada(client, 5, "pending")
+    ot_9 = await _crear_ot_atrasada(client, 9, "in_progress")
+    ot_20 = await _crear_ot_atrasada(client, 20, "completed")  # final: no cuenta
     sup = await _auth(client, SUPERVISOR)
     await client.put("/api/notificaciones/config",
                      json={"activo": True, "frecuencia": "diaria", "hora": 0, "destinatarios": ["jefe@planta.cl"]}, headers=sup)
@@ -182,8 +182,20 @@ async def test_job_envia_solo_abiertas_con_vencimiento_y_es_idempotente(client, 
     assert len(smtp_falso) == 1
     correo = smtp_falso[0]
     assert correo["to"] == ["jefe@planta.cl"]
-    assert "9 día(s) de atraso" in correo["text"] and "5 día(s) de atraso" in correo["text"]
-    assert "20 día(s)" not in correo["text"]
+
+    # El reporte incluye las OTs abiertas y vencidas de la empresa. Se comprueba por
+    # identificador y no por los días de atraso: con el historial sintético (CGBIDA-408)
+    # la empresa ya tiene otras OTs atrasadas, así que el número de días dejó de ser
+    # único y una aserción por texto daría un falso positivo.
+    assert ot_5 in correo["text"] and ot_9 in correo["text"]
+    assert ot_20 not in correo["text"], "una OT final no debe aparecer en el reporte"
+
+    # Y se contrasta contra lo que el propio job considera atrasado para esa empresa.
+    from barb.services.overdue_report import fetch_ots_atrasadas
+
+    atrasadas = {o["numero_ot"] for o in await fetch_ots_atrasadas(empresa_id)}
+    assert ot_5 in atrasadas and ot_9 in atrasadas
+    assert ot_20 not in atrasadas
 
     # Segunda corrida en el mismo período: no reenvía.
     resp = await client.post(f"/api/jobs/ot-atrasadas?empresa_id={empresa_id}", headers=h)
