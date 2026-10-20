@@ -61,7 +61,7 @@ ESTADOS = ["completed", "pending", "assigned", "in_progress", "cancelled", "over
 ESTADOS_FINALES = ("completed", "cancelled")
 # Casi todo lo viejo esta cerrado: una planta no arrastra 70 OTs abiertas de hace dos anios.
 # El poco trabajo abierto que queda es el que alimenta el banner de estancadas.
-PESOS_ESTADO = [94, 2, 1.2, 1.1, 1.3, 0.4]
+PESOS_ESTADO = [92, 2.6, 1.7, 1.7, 1.7, 0.5]
 
 PRIORIDAD_POR_TIPO = {
     "corrective": (["urgent", "high", "high", "medium"], None),
@@ -133,7 +133,7 @@ LARGAS_MAXIMAS_DEMO = 12
 # Rango objetivo de órdenes ESTANCADAS (vencidas hace más de 7 días) en la empresa 1.
 # Una alerta que siempre marca 45 pierde impacto: se aprende a ignorarla.
 ESTANCADAS_MINIMAS_DEMO = 10
-ESTANCADAS_MAXIMAS_DEMO = 15
+ESTANCADAS_MAXIMAS_DEMO = 13
 # Tipo de OT que se promueve a la banda larga (ver el comentario de arriba).
 TIPO_LARGA_DEMO = "preventive"
 # Duraciones forzadas al PROMOVER una orden a la banda larga (dentro de 1460-1600).
@@ -721,6 +721,8 @@ if __name__ == "__main__":
     if sys.platform == "win32":
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     asyncio.run(main())
+
+
 
 
 

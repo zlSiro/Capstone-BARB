@@ -16,7 +16,7 @@ Propiedades que se fijan aquí:
 3. El conteo y el promedio usan el MISMO conjunto: solo las que tienen tiempo registrado.
 4. El ahorro NEGATIVO no se recorta: es información real.
 5. Solo se calcula si el rango lo justifica (`impacto_visible`, umbral 90 días).
-6. No hay literales de negocio en el router: el 180 y el 2000 salen de config.
+6. No hay literales de negocio en el router: el supuesto de minutos y el costo salen de config.
 """
 
 from __future__ import annotations
@@ -25,6 +25,10 @@ import pathlib
 
 from barb.core.db import fetch_all
 from barb.routers import stats
+
+# El supuesto de negocio se lee de config, no se escribe a mano: si cambia (180 -> 240),
+# las expectativas de estas pruebas siguen siendo válidas sin editarlas.
+SIN_BARB = stats.settings.impact_without_barb_minutes
 
 ADMIN_E1 = ("admin@barb.com", "admin123")
 STATS_PY = pathlib.Path(stats.__file__)
@@ -147,7 +151,7 @@ async def test_impacto_days_90_es_visible(client, monkeypatch):
     assert imp["impacto_visible"] is True
     assert imp["supuestos"]["dias_periodo"] == 90
     # Con 90 días el factor anual es 365/90, así que la proyección es mayor.
-    assert imp["escenario_sin_barb"] == round(4 * (365 / 90) * 180 * 2000, 2)
+    assert imp["escenario_sin_barb"] == round(4 * (365 / 90) * SIN_BARB * 2000, 2)
 
 
 async def test_impacto_days_30_no_visible_y_campos_null(client, monkeypatch):
@@ -178,7 +182,7 @@ async def test_supuestos_se_devuelven_siempre(client, monkeypatch):
     """Incluso sin cifras, el modelo debe poder explicarse."""
     _montar(monkeypatch, incidentes=4, tiempo_promedio=90.0)
     imp = await _impacto(client, "?days=30")
-    assert imp["supuestos"] == {"minutos_sin_barb": 180, "costo_por_minuto": 2000, "dias_periodo": 30}
+    assert imp["supuestos"] == {"minutos_sin_barb": SIN_BARB, "costo_por_minuto": 2000, "dias_periodo": 30}
 
 
 # =============================================================================
@@ -192,9 +196,9 @@ async def test_impacto_calcula_la_formula_exacta(client, monkeypatch):
 
     # factor = 365/365 = 1
     assert imp["incidentes_anuales"] == 10.0
-    assert imp["escenario_sin_barb"] == 10 * 180 * 2000      # 3.600.000
+    assert imp["escenario_sin_barb"] == 10 * SIN_BARB * 2000
     assert imp["escenario_con_barb"] == 10 * 45 * 2000       # 900.000
-    assert imp["ahorro_proyectado"] == 2_700_000.0
+    assert imp["ahorro_proyectado"] == 10 * (SIN_BARB - 45) * 2000
     assert imp["supuestos_incompletos"] is False
 
 
@@ -203,7 +207,7 @@ async def test_impacto_extrapola_con_rango_de_90_dias(client, monkeypatch):
     imp = await _impacto(client, "?days=90")
     factor = 365 / 90
     assert imp["incidentes_anuales"] == round(3 * factor, 2)
-    assert imp["escenario_sin_barb"] == round(3 * factor * 180 * 2000, 2)
+    assert imp["escenario_sin_barb"] == round(3 * factor * SIN_BARB * 2000, 2)
 
 
 async def test_impacto_sin_incidentes_devuelve_null(client, monkeypatch):
@@ -232,7 +236,7 @@ async def test_ahorro_negativo_no_se_recorta(client, monkeypatch):
     Es información real: el tiempo actual supera el objetivo del modelo de negocio.
     No debe recortarse a cero (decisión explícita en CGBIDA-406).
     """
-    _montar(monkeypatch, incidentes=4, tiempo_promedio=265.0)  # > 180
+    _montar(monkeypatch, incidentes=4, tiempo_promedio=265.0)  # > supuesto
     imp = await _impacto(client)
     assert imp["ahorro_proyectado"] < 0, imp
     assert imp["escenario_con_barb"] > imp["escenario_sin_barb"]

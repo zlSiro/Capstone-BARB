@@ -111,10 +111,12 @@ class Settings(BaseSettings):
     downtime_cost_per_minute: int = 2000
     # Tiempo medio de resolución SIN BARB, en minutos. Origen:
     # `Barb_Documento_de_Negocio.docx` §8.2 "Proyección de ahorro económico", que
-    # proyecta 180 min sin el sistema y 45 con él.
+    # proyectaba 180 min sin el sistema y 45 con él. Se subió a 240 por decisión de
+    # negocio: el escenario sin sistema asume gestión manual del aviso, sin historial
+    # de fallas ni asignación automática de técnico.
     # Es un SUPUESTO DE NEGOCIO, no un dato medido: por eso vive aquí y no
     # hardcodeado en el router. El escenario "sin BARB" del impacto anual lo usa.
-    impact_without_barb_minutes: int = 180
+    impact_without_barb_minutes: int = 240
     debug_history_limit: int = 5
 
     # --- Prompt del sistema ---
@@ -131,3 +133,4 @@ class Settings(BaseSettings):
 
 settings = Settings()
 settings.upload_dir.mkdir(parents=True, exist_ok=True)
+
