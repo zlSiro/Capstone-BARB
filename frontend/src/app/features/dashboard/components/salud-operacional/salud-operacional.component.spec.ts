@@ -88,8 +88,8 @@ describe('SaludOperacionalComponent', () => {
       const { el } = setup(ROJO);
       const dash = el.querySelector('[data-testid="arco-salud"]')!.getAttribute('stroke-dasharray')!;
       const avance = Number(dash.split(' ')[0]);
-      // CGBIDA-435: el anillo crecio a 200 px, o sea r=80.
-      const circunferencia = 2 * Math.PI * 80;
+      // CGBIDA-439: con la tendencia activa el anillo baja a 150 px, o sea r=60.
+      const circunferencia = 2 * Math.PI * 60;
       expect(avance / circunferencia).toBeCloseTo(0.428, 2);
     });
   });
@@ -217,3 +217,4 @@ describe('SaludOperacionalComponent', () => {
     });
   });
 });
+

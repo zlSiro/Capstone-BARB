@@ -260,7 +260,15 @@ async def get_financial_impact(
         ORDER BY d
         """
 
-    machines_query = f"""
+    def _maquinas_sql(orden: str) -> str:
+        """Top 5 de máquinas, con el criterio de orden que se pida.
+
+        Se ejecuta dos veces con criterios distintos porque **el top 5 por costo no es el
+        top 5 por volumen**: con el dataset de la demo, tres de los cinco equipos más caros
+        no están entre los de más OTs. Ordenar en el frontend el top 5 por volumen daría un
+        gráfico rotulado «Top 5 por costo» mostrando otros cinco equipos.
+        """
+        return f"""
         SELECT
             m.maquina_id AS id,
             m.nombre AS name,
@@ -271,15 +279,22 @@ async def get_financial_impact(
                 100.0 * COUNT(*) FILTER (WHERE ot.estado = 'completed' AND ot.tiempo_reparacion_min <= {sla_target})
                 / NULLIF(COUNT(*) FILTER (WHERE ot.estado = 'completed'), 0),
                 0
-            ) AS sla_compliance
+            ) AS sla_compliance,
+            -- Costo por maquina (CGBIDA-426 y siguientes): mismo criterio que el Costo
+            -- Directo del KPI, o sea sin las canceladas. Como el filtro de fecha va en el
+            -- ON del LEFT JOIN, tambien respeta el rango elegido.
+            COALESCE(SUM(ot.costo_real) FILTER (WHERE ot.estado != 'cancelled'), 0) AS costo_total
         FROM maquina m
         JOIN planta pl ON pl.planta_id = m.planta_id
         LEFT JOIN orden_trabajo ot ON ot.maquina_id = m.maquina_id {date_filter}
         WHERE (%(empresa_id)s::int IS NULL OR pl.empresa_id = %(empresa_id)s)
         GROUP BY m.maquina_id, m.nombre
-        ORDER BY total DESC
+        ORDER BY {orden}
         LIMIT 5
         """
+
+    machines_query = _maquinas_sql("total DESC")
+    machines_costo_query = _maquinas_sql("costo_total DESC, total DESC")
 
     # Órdenes estancadas (CGBIDA-396). Ver el comentario de UMBRAL_ESTANCADA_DIAS.
     #
@@ -384,6 +399,10 @@ async def get_financial_impact(
 
                 await cur.execute(machines_query, params)
                 machine_rows = await cur.fetchall()
+
+                # Misma consulta, otro criterio de orden: el top 5 por costo (CGBIDA-435).
+                await cur.execute(machines_costo_query, params)
+                machine_costo_rows = await cur.fetchall()
 
                 await cur.execute(por_tipo_query, params)
                 tipo_rows = await cur.fetchall()
@@ -499,8 +518,25 @@ async def get_financial_impact(
                     "ahorroGenerado": round(float(row["downtime_evitado_min"]) * downtime_cost, 2),
                     "mttr": round(float(row["mttr"]), 1),
                     "slaCompliance": round(float(row["sla_compliance"]), 1),
+                    # Costo real de la maquina en el periodo, sin canceladas.
+                    "costo_total": round(float(row["costo_total"]), 2),
                 }
                 for row in machine_rows
+            ],
+            # El MISMO top 5 pero por costo, no por volumen (CGBIDA-435). Va como lista
+            # aparte en vez de un parámetro de orden: el frontend cambia de métrica sin
+            # volver a pedir datos, y las dos listas conviven en la misma respuesta.
+            "machines_por_costo": [
+                {
+                    "id": str(row["id"]),
+                    "name": row["name"],
+                    "total": int(row["total"]),
+                    "ahorroGenerado": round(float(row["downtime_evitado_min"]) * downtime_cost, 2),
+                    "mttr": round(float(row["mttr"]), 1),
+                    "slaCompliance": round(float(row["sla_compliance"]), 1),
+                    "costo_total": round(float(row["costo_total"]), 2),
+                }
+                for row in machine_costo_rows
             ],
             # Distribución por tipo de intervención para la dona (CGBIDA-395).
             # `tipo` es el valor del enum; el frontend lo traduce con su bloque i18n.

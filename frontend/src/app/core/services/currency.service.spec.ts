@@ -231,5 +231,29 @@ describe('CurrencyService', () => {
       expect(s.formatearClp(2000)).toContain('2.000');
       expect(s.formatearClp(2000)).not.toContain('US$');
     });
+
+    describe('formatearDetalle (CGBIDA-435)', () => {
+      it('en CLP no agrega centavos: en pesos no existen', async () => {
+        const s = await conTasa();
+        expect(s.formatearDetalle(2000)).toBe('$2.000');
+      });
+
+      it('en USD conserva dos decimales, porque a esa escala importan', async () => {
+        const s = await conTasa();
+        s.setMoneda('USD');
+        // 2.000 / 984,09 = 2,0323 → US$2,03
+        expect(s.formatearDetalle(2000)).toBe('US$2,03');
+      });
+
+      it('sin tasa cae a CLP en vez de mentir con dólares', async () => {
+        stubFetch(() => {
+          throw new Error('sin red');
+        });
+        const s = crear();
+        await s.asegurarTasa();
+        s.setMoneda('USD');
+        expect(s.formatearDetalle(2000)).toBe('$2.000');
+      });
+    });
   });
 });

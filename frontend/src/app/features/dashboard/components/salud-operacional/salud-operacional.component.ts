@@ -43,7 +43,7 @@ import { MtbfUnitService } from '../../../../core/services/mtbf-unit.service';
       <div class="flex justify-center">
         <svg
           [attr.viewBox]="'0 0 ' + LADO + ' ' + LADO"
-          class="h-[200px] w-[200px]"
+          class="h-[150px] w-[150px]"
           role="img"
           [attr.aria-label]="t().healthCardTitle + ': ' + etiquetaEstado()"
           data-testid="anillo-salud"
@@ -132,7 +132,7 @@ import { MtbfUnitService } from '../../../../core/services/mtbf-unit.service';
           </div>
           <svg
             [attr.viewBox]="'0 0 ' + ANCHO_MINI + ' ' + ALTO_MINI"
-            class="h-14 w-full"
+            class="h-7 w-full"
             role="img"
             [attr.aria-label]="t().healthTrendTitle"
             data-testid="tendencia-salud"
@@ -176,16 +176,22 @@ export class SaludOperacionalComponent {
 
   protected readonly t = computed(() => this.i18n.tree().financial);
 
-  // Anillo de 200 px: r=80 con trazo de 18 deja un diámetro útil de 200 y un centro
-  // despejado para el porcentaje, que es lo que se mira primero.
-  protected readonly LADO = 200;
-  protected readonly CENTRO = 100;
-  protected readonly RADIO = 80;
-  protected readonly TRAZO = 18;
+  // Anillo de 150 px: r=60 con trazo de 14 deja el centro despejado para el porcentaje,
+  // que es lo que se mira primero.
+  //
+  // Nació de 200 px, pero con la tendencia de backlog activa (CGBIDA-439) la tarjeta medía
+  // 443 px y desbordaba 70 px sobre los 368 disponibles: el dashboard dejaba de entrar sin
+  // scroll. Con 150 px queda en 365 y entra. El anillo sigue siendo el elemento dominante.
+  protected readonly LADO = 150;
+  protected readonly CENTRO = 75;
+  protected readonly RADIO = 60;
+  protected readonly TRAZO = 14;
   private readonly CIRCUNFERENCIA = 2 * Math.PI * this.RADIO;
 
   protected readonly ANCHO_MINI = 600;
-  protected readonly ALTO_MINI = 56;
+  // La tendencia se dibuja en 28 px de alto (h-7): entra sin desplazar el anillo y sigue
+  // mostrando los 14 días con su forma.
+  protected readonly ALTO_MINI = 22;
   protected readonly COLOR_ABIERTAS = '#d97706';
   protected readonly COLOR_CERRADAS = '#059669';
 
@@ -325,5 +331,6 @@ const COLOR_POR_ESTADO: Record<EstadoSalud, string> = {
   rojo: '#c0281e',
   insuficiente: '#9ca3af',
 };
+
 
 

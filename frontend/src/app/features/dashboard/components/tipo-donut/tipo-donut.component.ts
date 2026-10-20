@@ -202,8 +202,23 @@ export class TipoDonutComponent {
     '#c0281e', '#0e7490', '#b45309', '#34d399',
   ];
 
+  /**
+   * Tipos que no se dibujan.
+   *
+   * «Predictivo» se excluye por pedido del usuario: sus 21 OTs no cambian la lectura de la
+   * estrategia y hacían la leyenda más ruidosa que informativa. El backend sigue enviando
+   * los cuatro tipos; el recorte es de presentación, así que si mañana se quiere de vuelta
+   * alcanza con sacarlo de este conjunto.
+   */
+  private readonly TIPOS_OCULTOS: ReadonlySet<string> = new Set(['predictive']);
+
+  /** Filas que efectivamente se dibujan. */
+  private readonly filasVisibles = computed(() =>
+    this.datos().filter((d) => !this.TIPOS_OCULTOS.has(d.tipo))
+  );
+
   protected readonly total = computed(() =>
-    this.datos().reduce((suma, d) => suma + d.total, 0)
+    this.filasVisibles().reduce((suma, d) => suma + d.total, 0)
   );
 
   /**
@@ -219,7 +234,7 @@ export class TipoDonutComponent {
    * exactamente 100, que es lo que un lector espera al ver una leyenda de porcentajes.
    */
   protected readonly segmentos = computed(() => {
-    const filas = this.datos();
+    const filas = this.filasVisibles();
     const total = this.total();
     if (filas.length === 0 || total === 0) return [];
 

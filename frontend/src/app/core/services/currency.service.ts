@@ -123,10 +123,29 @@ export class CurrencyService {
   }
 
   /**
+   * Formatea un monto CON decimales, para cifras chicas.
+   *
+   * Los KPI son millones y no necesitan centavos, pero los supuestos del modelo no:
+   * 2.000 CLP por minuto en dólares son US$2,03, y con cero decimales se leería «US$2»,
+   * que es un 1,5 % de error sobre una cifra que el usuario está comparando.
+   */
+  formatearDetalle(valorClp: number): string {
+    const monedaEfectiva: Moneda = this.sinTasa() ? 'CLP' : this._moneda();
+    const monto = monedaEfectiva === 'USD' ? this.convertir(valorClp) : valorClp;
+    return new Intl.NumberFormat('es-CL', {
+      style: 'currency',
+      currency: monedaEfectiva,
+      // En pesos los centavos no existen; en dólares sí, y a esta escala importan.
+      maximumFractionDigits: monedaEfectiva === 'USD' ? 2 : 0,
+      minimumFractionDigits: monedaEfectiva === 'USD' ? 2 : 0,
+    }).format(monto);
+  }
+
+  /**
    * Formatea siempre en CLP, sin importar la moneda activa.
    *
-   * Se usa para explicar los supuestos del modelo, que viven en pesos: mostrar
-   * «US$2,03 por minuto» en un tooltip confunde más de lo que aclara.
+   * Se usa para los montos del modelo que NO cambian con el toggle. Para los supuestos de
+   * los tooltips ya no se usa: ahí se muestra la cifra en la moneda activa (CGBIDA-435).
    */
   formatearClp(valorClp: number): string {
     return this.formatearEn(valorClp, 'CLP');

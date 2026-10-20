@@ -578,7 +578,7 @@ describe('DashboardComponent', () => {
       const { el } = setup(
         stats({
           machines: [
-            { id: '1', name: 'Bomba 1', total: 9, ahorroGenerado: 100_000, mttr: 40, slaCompliance: 95 },
+            { id: '1', name: 'Bomba 1', total: 9, ahorroGenerado: 100_000, mttr: 40, slaCompliance: 95, costo_total: 250_000 },
           ] as never,
         })
       );
@@ -828,11 +828,26 @@ describe('DashboardComponent — feedback de Samuel', () => {
       expect(boton.getAttribute('aria-describedby')).toBe(tip.getAttribute('id'));
     });
 
-    it('el tooltip del ahorro cita el supuesto en CLP, no inventado', () => {
+    it('el tooltip del ahorro cita el supuesto en la moneda activa', () => {
+      // En CLP: el supuesto son 2.000 pesos por minuto.
       const { el } = setup();
       const texto = el.querySelector('[data-testid="tooltip-kpi-ahorro"]')!.textContent ?? '';
       expect(texto).toContain('2.000');
-      expect(texto).toContain('CLP');
+      expect(texto).toContain('Supuesto');
+      expect(texto).not.toContain('US$');
+    });
+
+    it('con USD activo el supuesto del tooltip se convierte, no queda en CLP', async () => {
+      // CGBIDA-435: antes decía «CLP» fijo aunque el toggle estuviera en dólares.
+      const { fixture, el } = setup();
+      (el.querySelector('[data-testid="moneda-USD"]') as HTMLButtonElement).click();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const texto = el.querySelector('[data-testid="tooltip-kpi-ahorro"]')!.textContent ?? '';
+      // 2.000 / 984,09 = 2,03
+      expect(texto).toContain('US$2,03');
+      expect(texto).not.toContain('CLP');
     });
 
     it('el tooltip del impacto cita los 180 minutos sin BARB del modelo', () => {
@@ -872,6 +887,7 @@ describe('DashboardComponent — feedback de Samuel', () => {
             ahorroGenerado: 638_000,
             mttr: 52.7,
             slaCompliance: 100,
+            costo_total: 638_000,
           },
         ],
       });
@@ -889,5 +905,6 @@ describe('DashboardComponent — feedback de Samuel', () => {
     });
   });
 });
+
 
 
