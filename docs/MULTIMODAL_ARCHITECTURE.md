@@ -86,9 +86,23 @@ historial como cualquier otra).
   directas). **Hallazgo validado contra NIM (15-10):** sin esa línea, el
   razonamiento interno consume el `max_tokens` y `content` llega vacío — el
   equivalente multimodal del `enable_thinking: false` de nemotron.
-- **Sin RAG en v1**: el turno multimodal consulta solo el modelo (imagen+texto);
-  el RAG documental (HU-04) se mantiene en el flujo text-only. Integrar
-  "imagen + contexto documental" es mejora futura.
+- **RAG ligero desde v1.1 (review de la HU-05, 18-10)**: el turno multimodal
+  consulta `search_chunks` de la documentación ACTIVA de la empresa (mensaje +
+  último mensaje de usuario y de asistente) y el router inyecta los fragmentos
+  al system message bajo "DOCUMENTACIÓN DE LA EMPRESA". El prompt obliga a
+  **etiquetar el origen del conocimiento**: la identificación del equipo se
+  presenta como "identificación visual" (conocimiento general, no información
+  de la empresa); la documentación citada se marca igual que en el chat
+  documental; y sin documentación aplicable el modelo NO inventa valores ni
+  procedimientos de la empresa — remite a la sección Documentos. Motivo: en
+  pruebas reales el multimodal describía cualquier equipo con conocimiento
+  general mientras el chat textual negaba saber del tema (el asistente parecía
+  "amnésico" en la misma conversación). La vinculación con la máquina del
+  catálogo (binding por `machine_id`) queda en la **HU-23**.
+- Los seguimientos de texto también mejoraron (v1.1): el stream textual incluye
+  el último mensaje del **asistente** en los términos de búsqueda, para que un
+  turno con imagen ("es un chancador de mandíbulas") aporte el contexto que los
+  follow-ups ("¿cómo funciona?") necesitan para encontrar el manual.
 
 ### D6 — Contabilidad de tokens
 

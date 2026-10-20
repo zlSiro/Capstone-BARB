@@ -54,6 +54,7 @@ data: {}
 |--------|-------|---------|
 | `400` | Sin imagen o mensaje vacío | `{"detail": "Debes adjuntar una imagen y una pregunta."}` |
 | `401` | Token inválido/expirado | Igual que el resto del sistema |
+| `403` | Perfil sin acceso a DocChat (`super_usuario` o usuario sin empresa) | `{"detail": "Tu perfil no tiene acceso a DocChat."}` — misma política que `/api/chat/stream` |
 | `413` | Imagen > 5 MB | `{"detail": "La imagen supera el máximo de 5 MB."}` |
 | `422` | Formato no permitido (solo jpeg/png/webp) | Array de errores Pydantic |
 | `429` | Rate limit / límite diario de tokens | Igual que el chat |
@@ -84,3 +85,9 @@ curl -i -N -X POST http://localhost:9000/api/chat/multimedia \
   límite diario del usuario (D6).
 - El frontend valida formato/tamaño antes de enviar (feedback inmediato);
   el backend revalida (nunca confiar solo en el cliente).
+- **Desde v1.1 (review de la HU-05):** el turno multimodal también consulta la
+  documentación ACTIVA de la empresa (fragmentos relevantes rankeados con el
+  mensaje y el historial reciente); el modelo etiqueta el origen de su
+  respuesta — "identificación visual" vs documentación citada — y sin
+  documentación aplicable no inventa valores ni procedimientos de la empresa.
+  El binding con la máquina del catálogo está reservado para la HU-23.

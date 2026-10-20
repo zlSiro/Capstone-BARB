@@ -192,16 +192,34 @@ MULTIMODAL_IMAGE_TOKENS = 4096
 # "Reasoning strength: low" es el mecanismo oficial del modelo (model card) para
 # respuestas directas: sin él, el razonamiento interno consume el max_tokens y
 # `content` llega vacío (verificado empíricamente contra NIM, 15-10-2026).
-MULTIMODAL_SYSTEM_PROMPT = (
+#
+# D5 v1.1 (review de la HU-05, 17/18-10): el turno multimodal también consulta
+# la documentación activa de la empresa cuando hay coincidencia — pero distingue
+# el origen del conocimiento: identificación visual ≠ información de la empresa.
+# Hallazgo que motiva las reglas: el modelo describía cualquier equipo con
+# conocimiento general y luego el chat textual negaba saber del tema (el asistente
+# parecía "amnésico" dentro de la misma conversación).
+_MULTIMODAL_VISUAL_INSTRUCTIONS = (
     settings.barb_system_prompt
     + "\n\n"
     + "El usuario adjuntó una imagen de su planta (foto de máquina, panel, pantalla o componente). "
     "Analízala visualmente en el contexto de su pregunta: describe lo observado, señala posibles "
     "causas del problema y orienta el diagnóstico o el siguiente paso de mantenimiento. "
     "Si la imagen no es suficiente para diagnosticar, dilo y pide una foto más clara o específica. "
-    "No inventes lecturas, códigos o valores que no se distingan en la imagen.\n"
-    "Reasoning strength: low"
+    "No inventes lecturas, códigos o valores que no se distingan en la imagen.\n\n"
+    "ORIGEN DE TU CONOCIMIENTO (reglas obligatorias):\n"
+    "1. La identificación del equipo (tipo, marca, componentes visibles) es conocimiento VISUAL "
+    "general: preséntala como 'identificación visual', nunca como información de la empresa.\n"
+    "2. Si más abajo aparece DOCUMENTACIÓN DE LA EMPRESA y corresponde al equipo o a la pregunta, "
+    "respóndela con ella y cita el documento de origen entre paréntesis, igual que el chat documental.\n"
+    "3. Si la documentación no aplica o no está, y te piden procedimientos o valores específicos de "
+    "la empresa (torques, presiones, frecuencias, pasos), dilo claramente: NO inventes esos datos, y "
+    "sugiere revisar la sección Documentos o pedir que suban el manual correspondiente."
 )
+
+# Se arma en _prepare_multimodal_input: instrucciones + (documentación si hay) +
+# Reasoning strength al final (se mantiene como última línea del system prompt).
+_REASONING_SUFFIX = "\nReasoning strength: low"
 
 
 def _build_multimodal_llm():
@@ -236,14 +254,26 @@ def _prepare_multimodal_input(payload: dict[str, Any]) -> list[BaseMessage]:
     [{type: "text", ...}, {type: "image_url", image_url: {url: "data:..."}}]
     — el formato que muse-glimmer espera (prototipo oficial de su model card).
     La imagen NO se persiste: vive solo en este request (D2).
+
+    D5 v1.1: si el payload trae `context` (fragmentos de la documentación activa
+    de la empresa, rankeados por el router), se añade al system message bajo
+    "DOCUMENTACIÓN DE LA EMPRESA" — el modelo la usa y cita el origen; sin ella
+    la respuesta es solo identificación visual, etiquetada como tal.
     """
     history = _dicts_to_messages(payload.get("history", []))
+    context = (payload.get("context") or "").strip()
+
+    system_content = _MULTIMODAL_VISUAL_INSTRUCTIONS
+    if context:
+        system_content += f"\n\nDOCUMENTACIÓN DE LA EMPRESA:\n{context}"
+    system_content += _REASONING_SUFFIX
+
     content = [
         {"type": "text", "text": payload.get("input", "")},
         {"type": "image_url", "image_url": {"url": payload.get("image", "")}},
     ]
     return [
-        SystemMessage(content=MULTIMODAL_SYSTEM_PROMPT),
+        SystemMessage(content=system_content),
         *history,
         HumanMessage(content=content),
     ]
