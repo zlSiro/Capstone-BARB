@@ -213,17 +213,10 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
           porque su contenido (dona de 200 px + leyenda de 214 px) es angosto y se centra.
         -->
         <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <!-- Salud Operacional (CGBIDA-435). Sustituye al grafico de backlog suelto:
-               el indicador va como hero y la tendencia queda de minigrafico en la misma
-               tarjeta, asi el dashboard sigue entrando sin scroll. -->
-          <!-- Tendencia activa (CGBIDA-439): con datos en los 14 días deja de ser una
-               línea plana. Para que entre sin scroll, el anillo baja a 150 px. -->
-          <app-salud-operacional
-            class="min-w-0"
-            [salud]="salud()"
-            [tendencia]="tendencia()"
-            [mostrarTendencia]="true"
-          />
+          <!-- Salud Operacional (CGBIDA-435): el indicador como heroe de la tarjeta, con
+               el anillo y el desglose de SLA, MTBF y backlog. Sin la tendencia al pie, que
+               se quito por ruidosa. -->
+          <app-salud-operacional class="min-w-0" [salud]="salud()" />
 
           <!-- El ranking muestra su propio estado vacío si no hay equipos. -->
           <app-machine-ranking
@@ -301,14 +294,6 @@ export class DashboardComponent implements OnInit {
 
   /** Textos del bloque `financial`. Reactivo al cambio de idioma. */
   protected readonly t = computed(() => this.i18n.tree().financial);
-
-  /**
-   * Tendencia de 14 dias para el grafico de backlog.
-   *
-   * Sale tal cual del backend: son siempre 14 puntos y NO dependen del selector de rango
-   * temporal, porque el backend no parametriza esa serie (CGBIDA-391, decision (c)).
-   */
-  protected readonly tendencia = computed(() => this.stats()?.trend14Days ?? []);
 
   /** Equipos del ranking. El backend ya los limita a 5. */
   protected readonly equipos = computed(() => this.stats()?.machines ?? []);
