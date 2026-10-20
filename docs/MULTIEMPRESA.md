@@ -102,3 +102,17 @@ Un manual está marcado **Excluido** para ver cómo la IA lo ignora.
 permisos del super_usuario, alta/suspensión/eliminación de empresa con admin inicial, límites de licencia, extracción/fragmentación/búsqueda
 y comportamiento del chat con y sin documentación.
 `test_admin_tiene_acceso_total_a_rutas` se ajustó: la ruta `empresas` es exclusiva del super_usuario.
+
+## 9. Vista de transacciones (super_usuario)
+
+Pantalla `/transacciones` (ruta `transacciones`, exclusiva del super_usuario) sobre la tabla `transacciones`, que
+llenan los triggers de las migraciones 0008–0009 con cada INSERT/UPDATE/DELETE hecho por un usuario autenticado.
+**Nunca** devuelve filas sin usuario identificado (`usuario_id IS NOT NULL`).
+
+- `GET /api/transacciones` — filtros opcionales: `empresa_id`, `rol` (perfil al momento de la acción), `usuario_id` y período
+  `rango` = `24h` | `7d` | `30d` | `1y` | `custom` (`custom` exige `desde` y `hasta`, fechas `YYYY-MM-DD`, ambas inclusivas).
+  Paginado con `limit` (1–200, def. 50) y `offset`; responde `{items, total, limit, offset}`, más recientes primero.
+- `GET /api/transacciones/filtros` — empresas, roles y usuarios (con su empresa) para poblar los selectores en cascada.
+- El interceptor del frontend no agrega el `empresa_id` global del super_usuario a estas llamadas: esta vista tiene su propio filtro de empresa.
+
+Pruebas: `backend/tests/test_transacciones.py` y `frontend/src/app/features/transacciones/transacciones.component.spec.ts`.

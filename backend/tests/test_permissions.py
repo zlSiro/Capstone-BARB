@@ -23,11 +23,11 @@ def test_todas_las_acciones_cubren_todos_los_roles():
 
 
 # Rutas de administración de la plataforma: exclusivas del super_usuario (ver test_multiempresa.py).
-RUTAS_SOLO_SUPER = {"empresas"}
+RUTAS_SOLO_SUPER = {"empresas", "transacciones"}
 
 
-def test_super_usuario_solo_tiene_empresas_y_usuarios():
-    assert {r for r in RUTAS if puede_acceder_ruta("super_usuario", r)} == {"empresas", "usuarios"}
+def test_super_usuario_solo_tiene_empresas_usuarios_y_transacciones():
+    assert {r for r in RUTAS if puede_acceder_ruta("super_usuario", r)} == {"empresas", "usuarios", "transacciones"}
 
 
 def test_admin_tiene_acceso_total_a_rutas():

@@ -8,8 +8,9 @@ import { TenantContextService } from '../services/tenant-context.service';
 import { ToastService } from '../services/toast.service';
 import { I18nService } from '../i18n/i18n.service';
 
-// Endpoints que no se filtran por empresa (el mantenedor de empresas lista todas).
-const NO_TENANT_FILTER = ['/api/empresas', '/api/auth', '/auth/'];
+// Endpoints que no se filtran por empresa (el mantenedor de empresas lista todas; la vista de
+// transacciones tiene su propio filtro de empresa).
+const NO_TENANT_FILTER = ['/api/empresas', '/api/auth', '/auth/', '/api/transacciones'];
 
 /**
  * Llamadas de autenticación excluidas del manejo de sesión expirada:

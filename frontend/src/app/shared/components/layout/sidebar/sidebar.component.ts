@@ -14,6 +14,7 @@ interface NavItem {
 // (el backend igualmente valida cada endpoint).
 const NAV_ITEMS: NavItem[] = [
   { path: '/empresas', icon: '🏢', label: 'Empresas', ruta: 'empresas' },
+  { path: '/transacciones', icon: '📜', label: 'Transacciones', ruta: 'transacciones' },
   { path: '/dashboard', icon: '📊', label: 'Dashboard', ruta: 'dashboard' },
   { path: '/work-orders', icon: '🔧', label: 'Órdenes de Trabajo', ruta: 'menu' },
   { path: '/topology', icon: '🌐', label: 'Topología', ruta: 'topology' },
