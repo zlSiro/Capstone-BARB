@@ -39,7 +39,7 @@ MESES = 24
 
 # Ritmo base de OTs por mes y empresa, ANTES de estacionalidad y tendencia.
 # La empresa 4 no aparece: no tiene máquinas, así que no puede tener OTs.
-RITMO_BASE = {1: 6.0, 2: 2.6, 3: 1.1}
+RITMO_BASE = {1: 10.0, 2: 2.6, 3: 1.1}
 
 # Estacionalidad mensual: más fallas en invierno (jun-ago) y en enero (parada de planta),
 # menos en abril y noviembre. Es lo que justifica generar 24 meses en vez de 12.
@@ -53,9 +53,15 @@ TENDENCIA_POR_MES = -0.015
 RUIDO = 0.20
 
 TIPOS = ["corrective", "preventive", "predictive", "inspection"]
-PESOS_TIPO = [45, 20, 20, 15]
+# Mezcla por antigüedad: la planta venía correctiva y migró a preventiva (ver `_pesos_tipo`).
+PESOS_TIPO_ANTIGUO = [45, 32, 10, 13]
+PESOS_TIPO_RECIENTE = [2, 75, 10, 13]
 ESTADOS = ["completed", "pending", "assigned", "in_progress", "cancelled", "overdue"]
-PESOS_ESTADO = [70, 10, 8, 6, 4, 2]
+# Estados en los que la OT ya no requiere trabajo (mismo criterio que `stats.py`).
+ESTADOS_FINALES = ("completed", "cancelled")
+# Casi todo lo viejo esta cerrado: una planta no arrastra 70 OTs abiertas de hace dos anios.
+# El poco trabajo abierto que queda es el que alimenta el banner de estancadas.
+PESOS_ESTADO = [94, 2, 1.2, 1.1, 1.3, 0.4]
 
 PRIORIDAD_POR_TIPO = {
     "corrective": (["urgent", "high", "high", "medium"], None),
@@ -67,7 +73,7 @@ PRIORIDAD_POR_TIPO = {
 # Reglas de coherencia por tipo (CGBIDA-408).
 # (min, max) de tiempo de reparación y costo en CLP.
 REGLAS_TIPO = {
-    "corrective": {"costo": (200_000, 3_000_000)},
+    "corrective": {"costo": (200_000, 1_200_000)},
     "preventive": {"tiempo": (20, 90), "costo": (100_000, 800_000)},
     "predictive": {"tiempo": (20, 90), "costo": (80_000, 900_000)},
     "inspection": {"tiempo": (0, 30), "costo": (30_000, 250_000)},
@@ -101,9 +107,9 @@ DOWNTIME_RATIO_POR_TIPO = {
     "inspection": (0.0, 0.0),
 }
 # Costo por minuto de reparación, para que el costo sea proporcional al tiempo.
-COSTO_POR_MINUTO = (2_500, 12_000)
+COSTO_POR_MINUTO = (350, 1_400)
 # Tope de la componente variable del costo, para no dispararse en las reparaciones largas.
-COSTO_VARIABLE_MAX = 4_000_000
+COSTO_VARIABLE_MAX = 450_000
 
 # SLA del sistema, en minutos. Debe coincidir con `settings.sla_target_minutes`.
 SLA_MINUTOS = 24 * 60
@@ -112,11 +118,24 @@ SLA_MINUTOS = 24 * 60
 # Solo para la empresa 1, que es la que se muestra en la demo. Las otras empresas se
 # rigen por el sorteo natural: si alguna queda sin largas, está bien.
 EMPRESA_DEMO = 1
-# Rango objetivo de órdenes que superan el SLA en la empresa 1. Ni menos de 2 (el KPI
-# de Cumplimiento de SLA quedaría en 100%) ni más de 3 (el promedio correctivo pasaría
-# de 180 min y el ahorro proyectado volvería a ser negativo).
-LARGAS_MINIMAS_DEMO = 2
-LARGAS_MAXIMAS_DEMO = 3
+# Rango objetivo de OTs que superan el SLA (1440 min) en la empresa 1.
+#
+# Antes se forzaba sobre las CORRECTIVAS, con un rango de 2 a 3, porque el promedio
+# correctivo tenía que quedar bajo los 180 min del modelo de negocio. Con el volumen
+# realista de ahora (unas 9 correctivas al año) forzar 9 largas correctivas dispararía ese
+# promedio y el ahorro proyectado saldría negativo.
+#
+# Las largas pasan a ser PARADAS MAYORES PREVENTIVAS: un overhaul de varios días es
+# perfectamente normal y no toca el promedio correctivo. El Cumplimiento de SLA queda en
+# ~95 %, que es la franja pedida (92-97 %).
+LARGAS_MINIMAS_DEMO = 9
+LARGAS_MAXIMAS_DEMO = 12
+# Rango objetivo de órdenes ESTANCADAS (vencidas hace más de 7 días) en la empresa 1.
+# Una alerta que siempre marca 45 pierde impacto: se aprende a ignorarla.
+ESTANCADAS_MINIMAS_DEMO = 10
+ESTANCADAS_MAXIMAS_DEMO = 15
+# Tipo de OT que se promueve a la banda larga (ver el comentario de arriba).
+TIPO_LARGA_DEMO = "preventive"
 # Duraciones forzadas al PROMOVER una orden a la banda larga (dentro de 1460-1600).
 DURACIONES_PROMOVIDAS = (1500, 1550)
 # Duraciones forzadas al DEVOLVER una orden larga a la banda media (dentro de 90-350).
@@ -131,7 +150,7 @@ def _downtime_de(tipo: str, t_min: int, rng: random.Random) -> int:
 def _costo_de(tipo: str, t_min: int, rng: random.Random) -> float:
     """Costo proporcional al tiempo: a más horas, más repuestos y mano de obra."""
     variable = min(t_min * rng.uniform(*COSTO_POR_MINUTO), COSTO_VARIABLE_MAX)
-    return round(rng.uniform(*REGLAS_TIPO[tipo]["costo"]) * 0.2 + variable, 2)
+    return round(rng.uniform(*REGLAS_TIPO[tipo]["costo"]) * 0.09 + variable, 2)
 
 # Estados que no han empezado: sin tiempo de reparación y sin costo.
 SIN_EMPEZAR = {"pending", "assigned"}
@@ -158,6 +177,25 @@ def _ots_del_mes(base: float, mes: int, indice: int, total_meses: int, rng: rand
     return max(0, round(base * factor * rng.uniform(1 - RUIDO, 1 + RUIDO)))
 
 
+def _pesos_tipo(indice: int, total_meses: int) -> list[int]:
+    """Mezcla de tipos según la antigüedad del mes: la planta migró a preventivo.
+
+    POR QUÉ VARÍA EN EL TIEMPO
+    -------------------------
+    El MTBF se calcula solo con las fallas de los últimos 365 días, pero la dona cuenta
+    todos los meses del rango. Con una mezcla fija esas dos métricas se pelean: un 25 %
+    de correctivo en todo el historial (lo que pide la dona) da ~30 fallas por año y un
+    MTBF de 12 días, que es el de una planta en llamas.
+
+    La salida es contar la historia real de una planta que implementó mantenimiento
+    preventivo: hace dos años era correctiva, hoy es mayoritariamente preventiva. Así la
+    dona muestra la mezcla acumulada (25 % correctivo) y el MTBF mide la operación actual
+    (unas 9 fallas al año, o sea ~40 días entre fallas).
+    """
+    # Los primeros 12 meses (0..0,5) correctivos; los últimos 12, preventivos.
+    return PESOS_TIPO_ANTIGUO if indice < total_meses / 2 else PESOS_TIPO_RECIENTE
+
+
 # =============================================================================
 # Ventana reciente (CGBIDA-439)
 # =============================================================================
@@ -172,8 +210,8 @@ VENTANA_DIAS = 14
 # OTs creadas ANTES de la ventana que se cierran dentro de ella. Sin este colchón, el
 # primer día de la ventana no tendría nada que cerrar y el gráfico arrancaría en cero.
 VENTANA_COLCHON_DIAS = 5
-VENTANA_MIN_DIA = 5
-VENTANA_MAX_DIA = 10
+VENTANA_MIN_DIA = 1
+VENTANA_MAX_DIA = 3
 # El ritmo mensual de cada empresa, llevado a OTs por día. La empresa de la demo queda
 # en 7,5 por día, que es el centro del rango [5, 10] que pide el gráfico.
 FACTOR_VENTANA = 1.25
@@ -192,9 +230,9 @@ def _ritmo_ventana(empresa_id: int) -> float:
 def _cantidad_del_dia(ritmo: float, rng: random.Random) -> int:
     """Cuántas OTs crear (o cerrar) un día, escalado al ritmo de la empresa."""
     crudo = rng.randint(VENTANA_MIN_DIA, VENTANA_MAX_DIA)
-    # 7,5 es el ritmo de la empresa de la demo: para ella la escala es 1 y el rango
+    # La referencia es el ritmo de la empresa de la demo: para ella la escala es 1 y el
     # queda tal cual [5, 10]. Las otras empresas conservan su proporción.
-    return max(1, round(crudo * ritmo / 7.5))
+    return max(1, round(crudo * ritmo / _ritmo_ventana(EMPRESA_DEMO)))
 
 
 def _ventana_tiempo(tipo: str, rng: random.Random) -> tuple[int, int]:
@@ -220,7 +258,7 @@ def _ot_abierta(
     El reparto round-robin es deliberado: con `rng.choice` algunas máquinas quedaban
     casi sin OTs y el ranking mostraba siempre las mismas cuatro o cinco.
     """
-    tipo = rng.choices(TIPOS, weights=PESOS_TIPO, k=1)[0]
+    tipo = rng.choices(TIPOS, weights=PESOS_TIPO_RECIENTE, k=1)[0]
     maquinas = datos["maquinas"]
     indice = turno.get(empresa_id, 0)
     turno[empresa_id] = indice + 1
@@ -316,8 +354,9 @@ def _generar_ventana_reciente(
                 abiertas.append(fila)
                 todas.append(fila)
 
-            # Se cierra lo más viejo primero (FIFO): es el orden real de una cola.
-            a_cerrar = min(len(abiertas), _cantidad_del_dia(ritmo, rng))
+            # Se cierra lo más viejo primero (FIFO): es el orden real de una cola. Se cierra
+            # un poco más de lo que se crea para que el backlog no crezca sin control.
+            a_cerrar = min(len(abiertas), _cantidad_del_dia(ritmo, rng) + 1)
             for _ in range(a_cerrar):
                 _cerrar(abiertas.pop(0), dia, rng)
 
@@ -380,7 +419,7 @@ def generar_ots(
             cantidad = _ots_del_mes(base, mes, indice, len(meses), rng)
             for _ in range(cantidad):
                 contador += 1
-                tipo = rng.choices(TIPOS, weights=PESOS_TIPO, k=1)[0]
+                tipo = rng.choices(TIPOS, weights=_pesos_tipo(indice, len(meses)), k=1)[0]
                 estado = rng.choices(ESTADOS, weights=PESOS_ESTADO, k=1)[0]
                 regla = REGLAS_TIPO[tipo]
 
@@ -398,7 +437,9 @@ def generar_ots(
                 if estado in SIN_EMPEZAR:
                     # No ha empezado: sin tiempo, sin costo, sin cierre.
                     downtime = None
-                    if estado in ("pending", "overdue"):
+                    # `assigned` también lleva vencimiento: sin él la OT queda abierta para
+                    # siempre pero NO cuenta como estancada, y el banner de alerta subestima.
+                    if estado in ("pending", "assigned", "overdue"):
                         fecha_vencimiento = creacion + timedelta(hours=rng.randint(24, 240))
                 elif estado == "cancelled":
                     # El trabajo no se hizo: sin costo (coherente con CGBIDA-407).
@@ -441,12 +482,14 @@ def generar_ots(
                     "empresa_id": empresa_id,
                 })
 
-    # Tramo denso de los últimos 14 días (CGBIDA-439). Va DESPUÉS del historial mensual
-    # y ANTES del ajuste de largas: así el ajuste sigue normalizando la empresa de la demo
-    # a 2 o 3 OTs sobre el SLA, sin importar cuántas haya generado la ventana.
+    # Tramo denso de los últimos 14 días (CGBIDA-439). Va DESPUÉS del historial mensual y
+    # ANTES de los ajustes: así los dos normalizan la empresa de la demo sin importar
+    # cuántas OTs haya generado la ventana.
     recientes, contador = _generar_ventana_reciente(empresas, hoy, rng, contador)
     filas.extend(recientes)
+    # SLA en 92-97 % (paradas mayores preventivas) y banner de estancadas en 10-15.
     _garantizar_largas_de_demo(filas)
+    _garantizar_estancadas_de_demo(filas, hoy)
 
     return filas
 
@@ -465,17 +508,19 @@ def _aplicar_duracion(fila: dict, t_min: int, rng: random.Random) -> None:
 
 
 def _garantizar_largas_de_demo(filas: list[dict]) -> int:
-    """Ajuste de demo (CGBIDA-408): garantiza que la empresa 1 tenga entre
-    2 y 3 OTs por encima del SLA para que el KPI "Cumplimiento de SLA" y el
-    futuro gráfico de resolución muestren variedad. No es una regla de
-    negocio, es calibración del dataset sintético para la demo.
+    """Ajuste de demo: deja la empresa 1 con 9-12 OTs por encima del SLA.
 
-    El rango es [2, 3] y no "al menos 2": con 4 o más órdenes largas el promedio
-    correctivo pasa de 180 min y el ahorro proyectado vuelve a ser negativo.
+    Calibración del dataset sintético, no una regla de negocio. Sirve para que el KPI de
+    Cumplimiento de SLA quede en la franja realista (92-97 %) en vez de 100 % o 60 %.
 
-    Es determinístico: si el sorteo ya dejó entre 2 y 3, no hace nada. Si dejó 0 o 1,
-    promueve las de mayor duración de la banda media. Si dejó 4 o más, devuelve las
-    sobrantes (las de mayor duración de la banda larga) a la banda media.
+    Ahora se aplica a las PREVENTIVAS (`TIPO_LARGA_DEMO`): son paradas mayores de varios
+    días, y así el promedio de reparación correctiva se mantiene bajo los 180 min del
+    modelo. Cuando esto se forzaba sobre las correctivas, subir de 3 largas habría dejado
+    el ahorro proyectado en negativo.
+
+    Es determinístico: si el sorteo ya dejó entre el mínimo y el máximo, no hace nada. Si
+    dejó menos, promueve las de mayor duración; si dejó más, devuelve las sobrantes a la
+    banda media.
 
     Solo afecta a la empresa de la demo. Las demás se rigen por el sorteo natural.
     Devuelve cuántas filas ajustó.
@@ -483,7 +528,7 @@ def _garantizar_largas_de_demo(filas: list[dict]) -> int:
     candidatas = [
         f for f in filas
         if f["empresa_id"] == EMPRESA_DEMO
-        and f["tipo"] == "corrective"
+        and f["tipo"] == TIPO_LARGA_DEMO
         and f["estado"] == "completed"
         and f["tiempo_reparacion_min"] is not None
     ]
@@ -494,14 +539,13 @@ def _garantizar_largas_de_demo(filas: list[dict]) -> int:
     ajustadas = 0
 
     if len(largas) < LARGAS_MINIMAS_DEMO:
-        # Promover: las de mayor duración dentro de la banda media.
-        _, lo_media, hi_media = BANDAS_CORRECTIVA[1]
-        media = sorted(
-            (f for f in candidatas if lo_media <= f["tiempo_reparacion_min"] <= hi_media),
+        # Promover las más largas de las que no llegan al SLA.
+        cortas = sorted(
+            (f for f in candidatas if f["tiempo_reparacion_min"] <= SLA_MINUTOS),
             key=lambda f: f["tiempo_reparacion_min"],
             reverse=True,
         )
-        for i, fila in enumerate(media[: LARGAS_MINIMAS_DEMO - len(largas)]):
+        for i, fila in enumerate(cortas[: LARGAS_MINIMAS_DEMO - len(largas)]):
             _aplicar_duracion(fila, DURACIONES_PROMOVIDAS[i % len(DURACIONES_PROMOVIDAS)], rng)
             ajustadas += 1
 
@@ -510,6 +554,64 @@ def _garantizar_largas_de_demo(filas: list[dict]) -> int:
         sobran = sorted(largas, key=lambda f: f["tiempo_reparacion_min"], reverse=True)
         for i, fila in enumerate(sobran[: len(largas) - LARGAS_MAXIMAS_DEMO]):
             _aplicar_duracion(fila, DURACIONES_REVERTIDAS[i % len(DURACIONES_REVERTIDAS)], rng)
+            ajustadas += 1
+
+    return ajustadas
+
+
+def _garantizar_estancadas_de_demo(filas: list[dict], hoy: datetime) -> int:
+    """Deja la empresa 1 con entre 10 y 15 órdenes estancadas.
+
+    Calibración del dataset, no una regla de negocio: el banner de alerta pierde todo su
+    impacto si siempre marca lo mismo. Con 45 (lo que salía con el seed denso anterior)
+    el usuario aprende a ignorarlo; con 10-15 se lee como una anomalía a atender.
+
+    Se resuelve de forma DETERMINÍSTICA y no ajustando probabilidades: las métricas del
+    dashboard comparten un único flujo de `random`, así que mover un peso cambia también
+    los estados y el conteo salta de 6 a 10 entre corridas. Acá se corrige el resultado,
+    igual que hace `_garantizar_largas_de_demo` con el SLA.
+
+    "Estancada" replica el criterio del backend (`UMBRAL_ESTANCADA_DIAS = 7`): vencida hace
+    más de 7 días, o en curso con inicio de hace más de 7 días. Se usa un margen de 8 para
+    que el corte no quede en el borde.
+    """
+    umbral = timedelta(days=8)
+    abiertas = [
+        f
+        for f in filas
+        if f["empresa_id"] == EMPRESA_DEMO and f["estado"] not in ESTADOS_FINALES
+    ]
+
+    def esta_estancada(fila: dict) -> bool:
+        if fila["estado"] == "in_progress":
+            inicio = fila["fecha_inicio"] or fila["fecha_creacion"]
+            return inicio < hoy - umbral
+        vence = fila.get("fecha_vencimiento")
+        return vence is not None and vence < hoy - umbral
+
+    estancadas = [f for f in abiertas if esta_estancada(f)]
+    ajustadas = 0
+
+    if len(estancadas) < ESTANCADAS_MINIMAS_DEMO:
+        # Empujar el vencimiento al pasado en las que hoy no están estancadas. Se eligen
+        # las más antiguas primero: es lo que una OT abandonada haría de verdad.
+        candidatas = sorted(
+            (f for f in abiertas if not esta_estancada(f)),
+            key=lambda f: f["fecha_creacion"],
+        )
+        for fila in candidatas[: ESTANCADAS_MINIMAS_DEMO - len(estancadas)]:
+            fila["fecha_vencimiento"] = hoy - timedelta(days=15, hours=6)
+            if fila["estado"] == "in_progress" and fila["fecha_inicio"]:
+                fila["fecha_inicio"] = hoy - timedelta(days=20)
+            ajustadas += 1
+
+    elif len(estancadas) > ESTANCADAS_MAXIMAS_DEMO:
+        # Empujar el vencimiento al futuro en las más nuevas: siguen abiertas pero en plazo.
+        sobran = sorted(estancadas, key=lambda f: f["fecha_creacion"], reverse=True)
+        for fila in sobran[: len(estancadas) - ESTANCADAS_MAXIMAS_DEMO]:
+            fila["fecha_vencimiento"] = hoy + timedelta(days=10)
+            if fila["estado"] == "in_progress":
+                fila["fecha_inicio"] = hoy - timedelta(days=1)
             ajustadas += 1
 
     return ajustadas
@@ -619,3 +721,12 @@ if __name__ == "__main__":
     if sys.platform == "win32":
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     asyncio.run(main())
+
+
+
+
+
+
+
+
+

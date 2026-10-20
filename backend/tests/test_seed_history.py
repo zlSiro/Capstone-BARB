@@ -85,10 +85,11 @@ def test_genera_el_volumen_esperado(filas):
 
 
 def test_la_ventana_reciente_esta_densa(filas, hoy):
-    """El gráfico de backlog necesita al menos 5 OTs abiertas y 5 cerradas cada día.
+    """Ningún día de los últimos 14 puede quedar vacío: el gráfico se vería plano.
 
-    Es la razón de ser de la ventana (CGBIDA-439): con el historial mensual, la empresa de
-    la demo tenía 0,2 OTs por día y 13 de los 14 puntos salían vacíos.
+    La densidad es de 1 a 3 OTs creadas y cerradas por día, no de 5 a 10: con 5-10 la
+    planta pasaba a 434 OTs en dos años y el MTBF caía a 3 días, que era justo el dato que
+    restaba credibilidad.
     """
     e1 = [f for f in filas if f["empresa_id"] == 1]
     for atras in range(VENTANA_DIAS - 1, -1, -1):
@@ -97,8 +98,8 @@ def test_la_ventana_reciente_esta_densa(filas, hoy):
         cerradas = sum(
             1 for f in e1 if f["fecha_cierre"] and f["fecha_cierre"].date() == dia
         )
-        assert abiertas >= 5, f"{dia}: solo {abiertas} abiertas"
-        assert cerradas >= 5, f"{dia}: solo {cerradas} cerradas"
+        assert abiertas >= 1, f"{dia}: ninguna OT creada"
+        assert cerradas >= 1, f"{dia}: ninguna OT cerrada"
 
 
 def test_la_ventana_reparte_las_ots_entre_todas_las_maquinas(filas, hoy):
@@ -110,19 +111,21 @@ def test_la_ventana_reparte_las_ots_entre_todas_las_maquinas(filas, hoy):
     assert len({f["maquina_id"] for f in recientes}) == 12, "faltan máquinas en la ventana"
 
 
-def test_las_ots_abiertas_de_la_ventana_siguen_en_trabajo(filas, hoy):
-    """Las que no se cerraron deben tener un estado abierto coherente, no `completed`."""
+def test_la_ventana_cierra_casi_todo_lo_que_crea(filas, hoy):
+    """La ventana drena su cola: si dejara trabajo abierto, inflaría el backlog.
+
+    Con 5-10 OTs por día y cierres parejos la cola dejaba ~40 abiertas y el backlog se iba
+    a 25 semanas. El trabajo abierto lo aporta el historial, que es lo que alimenta el
+    banner de estancadas.
+    """
     desde = hoy - timedelta(days=VENTANA_DIAS - 1)
-    abiertas = [
-        f
-        for f in filas
-        if f["empresa_id"] == 1 and f["fecha_creacion"].date() >= desde
-        and f["fecha_cierre"] is None
+    de_la_ventana = [
+        f for f in filas if f["empresa_id"] == 1 and f["fecha_creacion"].date() >= desde
     ]
-    assert abiertas, "la ventana debería dejar trabajo en curso"
-    for f in abiertas:
-        assert f["estado"] in {"pending", "assigned", "in_progress", "overdue"}, f["estado"]
-        assert f["fecha_vencimiento"] is not None, "una OT abierta necesita vencimiento"
+    abiertas = [f for f in de_la_ventana if f["fecha_cierre"] is None]
+    assert len(abiertas) <= len(de_la_ventana) * 0.2, (
+        f"{len(abiertas)} de {len(de_la_ventana)} quedaron abiertas"
+    )
 
 
 def test_lo_cerrado_en_la_ventana_nunca_cierra_antes_de_empezar(filas):
