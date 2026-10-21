@@ -336,7 +336,7 @@ interface GrupoEnPanel {
             @if (seleccionado(); as n) {
               <div
                 data-testid="panel-detalle"
-                class="absolute top-3 right-3 w-72 max-h-[85%] overflow-y-auto rounded-lg border border-gray-200 bg-white p-4 shadow-lg dark:border-gray-700 dark:bg-gray-900"
+                class="absolute top-3 right-3 w-72 max-h-[90%] overflow-y-auto rounded-lg border border-gray-200 bg-white p-4 shadow-lg dark:border-gray-700 dark:bg-gray-900"
               >
                 <div class="flex items-start justify-between gap-2">
                   <div class="min-w-0">
