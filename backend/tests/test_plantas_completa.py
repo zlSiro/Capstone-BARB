@@ -1,5 +1,5 @@
 """
-Alta masiva de plantas con sus disciplinas y máquinas (HU-24).
+Alta masiva de plantas con sus disciplinas y máquinas — HU-25 (CGBIDA-461), subtarea CGBIDA-467.
 
 `POST /api/plantas/completa` tiene que ser atómico: si una máquina falla, la planta no puede
 quedar creada "a medias". Estos tests comprueban eso contra la base real, no con mocks.

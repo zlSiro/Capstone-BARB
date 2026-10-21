@@ -107,7 +107,8 @@ async def get_technicians(empresa_id: int | None = Query(default=None), sesion: 
 
 
 # =============================================================================
-# HU-24: alta masiva de una planta con sus disciplinas y máquinas
+# HU-25 (CGBIDA-461), subtarea CGBIDA-464: alta masiva de una planta con sus
+# disciplinas y sus máquinas.
 # =============================================================================
 
 
@@ -168,9 +169,15 @@ async def create_planta_completa(
     """
     Crea una planta, resuelve sus disciplinas y da de alta sus máquinas en UNA transacción.
 
+    HU-25 (CGBIDA-461), subtarea CGBIDA-464. El contrato vive en CGBIDA-462.
+
     Si cualquiera de las filas falla —código de máquina repetido, nombre de planta ya usado—
     no queda nada a medias: la planta no existe sin sus máquinas. El actor de la sesión queda
     en `app.usuario_id`, así que los triggers de auditoría registran cada fila insertada.
+
+    Las disciplinas se resuelven contra la EMPRESA, no contra la planta: `disciplina` cuelga
+    de `empresa` y se comparte entre plantas. Se reutiliza la existente (comparando por
+    `lower()`) o se crea; nunca se duplica.
     """
     empresa_id = empresa_obligatoria(sesion)
 

@@ -4,7 +4,7 @@ Revision ID: 0011_planta_activa_unica
 Revises: 0010_merge_heads
 Create Date: 2026-10-21
 
-Soporte del mantenedor masivo (HU-24).
+Soporte del mantenedor masivo — HU-25 (CGBIDA-461), subtarea CGBIDA-463.
 
 - `activa`: permite retirar una planta sin borrarla. Borrarla de verdad es imposible en
   cuanto tiene maquinas (`fk_maquina_planta` no tiene CASCADE) y, aunque se pudiera,
@@ -16,6 +16,11 @@ Soporte del mantenedor masivo (HU-24).
 
 La constraint falla si ya hubiera duplicados; por eso el upgrade primero comprueba y solo
 crea la restriccion si no existe (idempotente en un entorno ya migrado a mano).
+
+Nota sobre el id: `alembic_version.version_num` es VARCHAR(32), asi que el nombre de la
+revision no puede pasar de ahi. El primer intento (`0011_plantas_activa_y_nombre_unico`,
+34 caracteres) fallo al registrar la version; la transaccion se revirtio sola y no dejo
+nada a medias.
 """
 
 from __future__ import annotations
