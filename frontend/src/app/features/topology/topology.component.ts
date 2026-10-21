@@ -79,6 +79,9 @@ const CLAVE_ESTADO: Record<TopologyNodeState, string> = {
 
 type GrupoOt = 'groupPendientes' | 'groupEnCurso' | 'groupCerradas' | 'groupCanceladas';
 
+/** Orden dentro de cada grupo: por número de OT (A-Z) o por fecha de creación. */
+type OrdenOt = 'az' | 'recientes';
+
 /** Orden de presentación de los grupos; el usuario ve primero lo que exige acción. */
 const ORDEN_GRUPOS: GrupoOt[] = ['groupPendientes', 'groupEnCurso', 'groupCerradas', 'groupCanceladas'];
 
@@ -299,7 +302,7 @@ interface GrupoEnPanel {
 
                 <!-- CGBIDA-383: órdenes de trabajo, solo en nodos Máquina -->
                 @if (n.tipo === 'Máquina') {
-                  <div class="mt-4 border-t border-gray-100 pt-3 dark:border-gray-700">
+                  <div class="mt-3 border-t border-gray-100 pt-2 dark:border-gray-700">
                     <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                       {{ t().ordersTitle }}
                     </p>
@@ -317,44 +320,97 @@ interface GrupoEnPanel {
                       }
                       @default {
                         @if (gruposDeOrdenes().length) {
-                          @for (grupo of gruposDeOrdenes(); track grupo.nombre) {
-                            <p
-                              class="sticky top-0 z-10 -mx-1 mt-3 bg-white px-1 text-xs font-medium text-gray-700 dark:bg-gray-900 dark:text-gray-200"
-                              [attr.data-testid]="'grupo-' + grupo.nombre"
-                            >{{ t()[grupo.nombre] }} ({{ grupo.ordenes.length }})</p>
-                            <ul class="mt-1 flex flex-col gap-1">
-                              @for (item of grupo.ordenes; track item.orden.numero_ot) {
-                                <li
-                                  class="rounded border border-gray-200 px-2 py-1 dark:border-gray-700"
-                                  data-testid="orden-item"
-                                >
-                                  <div class="flex items-center gap-1">
-                                    <span
-                                      class="truncate text-xs font-medium text-gray-800 dark:text-gray-100"
-                                      data-testid="orden-numero"
-                                    >{{ item.orden.numero_ot }}</span>
-                                    <span
-                                      class="ml-auto shrink-0 rounded px-1 text-[10px]"
-                                      [class]="item.color"
-                                      data-testid="orden-estado"
-                                    >{{ item.etiqueta }}</span>
-                                  </div>
-                                  <!-- Badge rojo de vencida (CGBIDA-378) -->
-                                  @if (item.vencida) {
-                                    <span
-                                      class="mt-1 inline-block rounded bg-red-600 px-1 text-[10px] font-semibold text-white"
-                                      data-testid="orden-vencida"
-                                    >{{ t().overdueBadge }}</span>
-                                  }
-                                  <button
-                                    type="button"
-                                    data-testid="orden-ver-detalle"
-                                    (click)="abrirDetalleOt(item.orden)"
-                                    class="mt-1 block text-[11px] text-blue-700 underline hover:text-blue-900 dark:text-blue-200 dark:hover:text-white"
-                                  >{{ t().viewOrderDetail }}</button>
-                                </li>
+                          <!--
+                            Fila de controles. 40 px de alto y una sola línea: el panel mide
+                            288 px (256 internos) y el listado ya scrollea, así que el costo
+                            vertical es despreciable y el horizontal entra con holgura.
+                          -->
+                          <div class="mt-1.5 flex items-center gap-1.5" data-testid="ordenes-controles">
+                            <select
+                              class="min-w-0 flex-1 rounded border border-gray-300 bg-white px-1.5 py-1 text-xs
+                                     text-gray-800 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                              [value]="filtroEstado()"
+                              (change)="cambiarFiltro($any($event.target).value)"
+                              data-testid="filtro-estado"
+                            >
+                              <option value="todos">{{ t().filterAll }} ({{ totalOrdenes() }})</option>
+                              @for (opcion of gruposDeOrdenes(); track opcion.nombre) {
+                                <option [value]="opcion.nombre">
+                                  {{ t()[opcion.nombre] }} ({{ opcion.ordenes.length }})
+                                </option>
                               }
-                            </ul>
+                            </select>
+                            <button
+                              type="button"
+                              (click)="alternarOrden()"
+                              class="shrink-0 rounded border border-gray-300 bg-white px-1.5 py-1 text-xs
+                                     text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800
+                                     dark:text-gray-100 dark:hover:bg-gray-700"
+                              [attr.aria-label]="t().sortAz + ' / ' + t().sortRecent"
+                              [attr.title]="etiquetaOrden()"
+                              data-testid="orden-ot"
+                            >
+                              <span aria-hidden="true">⇅</span> {{ etiquetaOrden() }}
+                            </button>
+                          </div>
+
+                          @for (grupo of gruposVisibles(); track grupo.nombre) {
+                            <!--
+                              La cabecera es un botón: pliega el grupo. El chevron rota 90°
+                              cuando está abierto y aria-expanded lo anuncia.
+                            -->
+                            <button
+                              type="button"
+                              class="sticky top-0 z-10 -mx-1 mt-1 flex w-full cursor-pointer items-center gap-1
+                                     bg-white px-1 py-0.5 text-left text-xs font-medium text-gray-700
+                                     hover:text-gray-900 dark:bg-gray-900 dark:text-gray-200 dark:hover:text-white"
+                              [attr.data-testid]="'grupo-' + grupo.nombre"
+                              [attr.aria-expanded]="!estaPlegado(grupo.nombre)"
+                              (click)="alternarGrupo(grupo.nombre)"
+                            >
+                              <span
+                                class="inline-block w-3 shrink-0 transition-transform"
+                                [class.rotate-90]="!estaPlegado(grupo.nombre)"
+                                aria-hidden="true"
+                              >▸</span>
+                              {{ t()[grupo.nombre] }} ({{ grupo.ordenes.length }})
+                            </button>
+
+                            @if (!estaPlegado(grupo.nombre)) {
+                              <ul class="mt-0.5 flex flex-col gap-1" data-testid="grupo-lista">
+                                @for (item of grupo.ordenes; track item.orden.numero_ot) {
+                                  <li
+                                    class="rounded border border-gray-200 px-2 py-1 dark:border-gray-700"
+                                    data-testid="orden-item"
+                                  >
+                                    <div class="flex items-center gap-1">
+                                      <span
+                                        class="truncate text-xs font-medium text-gray-800 dark:text-gray-100"
+                                        data-testid="orden-numero"
+                                      >{{ item.orden.numero_ot }}</span>
+                                      <span
+                                        class="ml-auto shrink-0 rounded px-1 text-[10px]"
+                                        [class]="item.color"
+                                        data-testid="orden-estado"
+                                      >{{ item.etiqueta }}</span>
+                                    </div>
+                                    <!-- Badge rojo de vencida (CGBIDA-378) -->
+                                    @if (item.vencida) {
+                                      <span
+                                        class="mt-1 inline-block rounded bg-red-600 px-1 text-[10px] font-semibold text-white"
+                                        data-testid="orden-vencida"
+                                      >{{ t().overdueBadge }}</span>
+                                    }
+                                    <button
+                                      type="button"
+                                      data-testid="orden-ver-detalle"
+                                      (click)="abrirDetalleOt(item.orden)"
+                                      class="mt-1 block text-[11px] text-blue-700 underline hover:text-blue-900 dark:text-blue-200 dark:hover:text-white"
+                                    >{{ t().viewOrderDetail }}</button>
+                                  </li>
+                                }
+                              </ul>
+                            }
                           }
                         } @else {
                           <p class="mt-2 text-sm text-gray-500 dark:text-gray-400" data-testid="ordenes-vacio">
@@ -368,7 +424,7 @@ interface GrupoEnPanel {
 
                 <!-- CGBIDA-384: hijos del nodo, para Planta y Disciplina -->
                 @if (n.tipo !== 'Máquina') {
-                  <div class="mt-4 border-t border-gray-100 pt-3 dark:border-gray-700">
+                  <div class="mt-3 border-t border-gray-100 pt-2 dark:border-gray-700">
                     <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                       {{ t().childrenTitle }}
                     </p>
@@ -701,6 +757,74 @@ export class TopologyComponent {
     }));
   });
 
+  /** Grupo elegido en el selector. `todos` deja el listado completo. */
+  protected readonly filtroEstado = signal<GrupoOt | 'todos'>('todos');
+
+  /** Orden aplicado DENTRO de cada grupo; el orden de los grupos no cambia. */
+  protected readonly ordenOt = signal<OrdenOt>('recientes');
+
+  /**
+   * Grupos plegados.
+   *
+   * «Cerradas» y «Canceladas» arrancan cerradas porque son las que sepultan lo accionable:
+   * con 26 cerradas, las 2 pendientes y la 1 en curso quedaban a cuatro pantallas de scroll
+   * en un panel de 476 px.
+   */
+  private readonly plegados = signal<Record<GrupoOt, boolean>>({
+    groupPendientes: false,
+    groupEnCurso: false,
+    groupCerradas: true,
+    groupCanceladas: true,
+  });
+
+  protected estaPlegado(grupo: GrupoOt): boolean {
+    return this.plegados()[grupo];
+  }
+
+  protected alternarGrupo(grupo: GrupoOt): void {
+    this.plegados.update((p) => ({ ...p, [grupo]: !p[grupo] }));
+  }
+
+  protected cambiarFiltro(valor: string): void {
+    this.filtroEstado.set(valor === 'todos' ? 'todos' : (valor as GrupoOt));
+  }
+
+  protected alternarOrden(): void {
+    this.ordenOt.update((o) => (o === 'az' ? 'recientes' : 'az'));
+  }
+
+  /** Etiqueta del botón de orden: muestra el criterio activo, no el que aplicaría. */
+  protected readonly etiquetaOrden = computed(() =>
+    this.ordenOt() === 'az' ? this.t().sortAz : this.t().sortRecent,
+  );
+
+  /** Total de OTs del equipo, para el contador de la opción «Todos». */
+  protected readonly totalOrdenes = computed(() =>
+    this.gruposDeOrdenes().reduce((n, g) => n + g.ordenes.length, 0),
+  );
+
+  /**
+   * Grupos tal como se pintan: filtrados por estado y con las OTs ordenadas por dentro.
+   *
+   * El filtro NO reordena los grupos ni los fusiona: sólo descarta los que no coinciden.
+   */
+  protected readonly gruposVisibles = computed<GrupoEnPanel[]>(() => {
+    const filtro = this.filtroEstado();
+    const orden = this.ordenOt();
+    const grupos = this.gruposDeOrdenes();
+    const visibles = filtro === 'todos' ? grupos : grupos.filter((g) => g.nombre === filtro);
+
+    const comparar = (a: OtEnPanel, b: OtEnPanel): number => {
+      if (orden === 'az') return a.orden.numero_ot.localeCompare(b.orden.numero_ot);
+      // Más recientes primero. Una fecha ilegible cae al final en vez de romper el orden.
+      const fa = Date.parse(a.orden.created_at) || 0;
+      const fb = Date.parse(b.orden.created_at) || 0;
+      return fb - fa;
+    };
+
+    return visibles.map((g) => ({ ...g, ordenes: [...g.ordenes].sort(comparar) }));
+  });
+
   // --- CGBIDA-385: detalle de una OT -----------------------------------------
 
   /** OT abierta en el sheet de detalle. El sheet se reutiliza, no se reimplementa. */
@@ -726,5 +850,6 @@ export class TopologyComponent {
     return textos[clave] ?? estado;
   }
 }
+
 
 

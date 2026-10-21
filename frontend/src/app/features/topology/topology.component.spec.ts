@@ -572,6 +572,25 @@ describe('TopologyComponent', () => {
       fixture.detectChanges();
     }
 
+    /**
+     * Despliega los grupos que arrancan plegados.
+     *
+     * «Cerradas» y «Canceladas» vienen cerradas por defecto, así que cualquier aserción
+     * sobre el total de tarjetas tiene que abrirlas primero.
+     */
+    function desplegarPlegados(
+      fixture: ReturnType<typeof TestBed.createComponent>,
+      el: HTMLElement,
+    ): void {
+      for (const nombre of ['groupCerradas', 'groupCanceladas']) {
+        const cabecera = el.querySelector<HTMLElement>(`[data-testid="grupo-${nombre}"]`);
+        if (cabecera?.getAttribute('aria-expanded') === 'false') {
+          cabecera.click();
+          fixture.detectChanges();
+        }
+      }
+    }
+
     it('agrupa los 6 estados en Pendientes, En curso, Cerradas y Canceladas', () => {
       const { fixture, el } = setupConOrdenes([
         ot({ numero_ot: 'OT-P', estado: 'pending' }),
@@ -659,6 +678,8 @@ describe('TopologyComponent', () => {
     it('renderiza 20 OTs repartidas en los 4 grupos sin perder ninguna', () => {
       const { fixture, el } = setupConOrdenes(ORDENES_VOLUMEN);
       abrirMaquina(fixture, el);
+      // Cerradas y Canceladas arrancan plegadas: se abren para contar todas.
+      desplegarPlegados(fixture, el);
 
       // Los 4 encabezados existen, con su conteo.
       expect(el.querySelector('[data-testid="grupo-groupPendientes"]')?.textContent).toContain('(8)');
@@ -666,7 +687,7 @@ describe('TopologyComponent', () => {
       expect(el.querySelector('[data-testid="grupo-groupCerradas"]')?.textContent).toContain('(6)');
       expect(el.querySelector('[data-testid="grupo-groupCanceladas"]')?.textContent).toContain('(1)');
 
-      // Hoy no hay límite: se renderizan TODAS.
+      // Sin límite: se renderizan TODAS.
       expect(el.querySelectorAll('[data-testid="orden-item"]').length).toBe(20);
 
       // Cada grupo tiene exactamente sus tarjetas, sin mezclarse.
@@ -693,6 +714,7 @@ describe('TopologyComponent', () => {
     it('con volumen, todas las OTs tienen su enlace de detalle', () => {
       const { fixture, el } = setupConOrdenes(ORDENES_VOLUMEN);
       abrirMaquina(fixture, el);
+      desplegarPlegados(fixture, el);
 
       // Un enlace por tarjeta: si alguno faltara, habría OTs inaccesibles.
       expect(el.querySelectorAll('[data-testid="orden-ver-detalle"]').length).toBe(20);
@@ -705,6 +727,154 @@ describe('TopologyComponent', () => {
       const panel = el.querySelector('[data-testid="panel-detalle"]') as HTMLElement;
       expect(panel.className).toContain('overflow-y-auto');
       expect(panel.className).toContain('max-h-');
+    });
+
+    // --- Grupos colapsables, filtro y orden -------------------------------------
+
+    describe('grupos colapsables', () => {
+      it('Pendientes y En curso arrancan abiertos; Cerradas y Canceladas, cerrados', () => {
+        const { fixture, el } = setupConOrdenes(ORDENES_VOLUMEN);
+        abrirMaquina(fixture, el);
+
+        const abierto = (nombre: string) =>
+          el.querySelector(`[data-testid="grupo-${nombre}"]`)?.getAttribute('aria-expanded');
+
+        expect(abierto('groupPendientes')).toBe('true');
+        expect(abierto('groupEnCurso')).toBe('true');
+        expect(abierto('groupCerradas')).toBe('false');
+        expect(abierto('groupCanceladas')).toBe('false');
+      });
+
+      it('por defecto solo se pintan las OTs de los grupos abiertos', () => {
+        // 8 pendientes + 5 en curso; las 6 cerradas y la cancelada quedan plegadas.
+        const { fixture, el } = setupConOrdenes(ORDENES_VOLUMEN);
+        abrirMaquina(fixture, el);
+        expect(el.querySelectorAll('[data-testid="orden-item"]').length).toBe(13);
+      });
+
+      it('al hacer clic en la cabecera se despliega y se vuelve a plegar', () => {
+        const { fixture, el } = setupConOrdenes(ORDENES_VOLUMEN);
+        abrirMaquina(fixture, el);
+
+        const cabecera = el.querySelector<HTMLElement>('[data-testid="grupo-groupCerradas"]')!;
+        cabecera.click();
+        fixture.detectChanges();
+        expect(cabecera.getAttribute('aria-expanded')).toBe('true');
+        expect(el.querySelectorAll('[data-testid="orden-item"]').length).toBe(19);
+
+        cabecera.click();
+        fixture.detectChanges();
+        expect(cabecera.getAttribute('aria-expanded')).toBe('false');
+        expect(el.querySelectorAll('[data-testid="orden-item"]').length).toBe(13);
+      });
+
+      it('la cabecera se anuncia como botón y lleva cursor pointer', () => {
+        const { fixture, el } = setupConOrdenes(ORDENES_VOLUMEN);
+        abrirMaquina(fixture, el);
+        const cabecera = el.querySelector<HTMLElement>('[data-testid="grupo-groupPendientes"]')!;
+        expect(cabecera.tagName).toBe('BUTTON');
+        expect(cabecera.className).toContain('cursor-pointer');
+        // El conteo sigue visible aunque el grupo esté plegado.
+        expect(cabecera.textContent).toContain('(8)');
+      });
+    });
+
+    describe('filtro por estado', () => {
+      it('el selector ofrece Todos más los grupos presentes, con sus conteos', () => {
+        const { fixture, el } = setupConOrdenes(ORDENES_VOLUMEN);
+        abrirMaquina(fixture, el);
+
+        const select = el.querySelector<HTMLSelectElement>('[data-testid="filtro-estado"]')!;
+        const opciones = Array.from(select.options).map((o) => o.textContent?.trim());
+        expect(opciones[0]).toContain('Todos (20)');
+        expect(opciones).toHaveLength(5);
+        expect(select.value).toBe('todos');
+      });
+
+      it('filtrar deja solo el grupo elegido', () => {
+        const { fixture, el } = setupConOrdenes(ORDENES_VOLUMEN);
+        abrirMaquina(fixture, el);
+
+        const select = el.querySelector<HTMLSelectElement>('[data-testid="filtro-estado"]')!;
+        select.value = 'groupCerradas';
+        select.dispatchEvent(new Event('change'));
+        fixture.detectChanges();
+
+        // Solo queda la cabecera de Cerradas (aunque esté plegada, no se pinta su lista).
+        expect(el.querySelector('[data-testid="grupo-groupPendientes"]')).toBeNull();
+        expect(el.querySelector('[data-testid="grupo-groupEnCurso"]')).toBeNull();
+        expect(el.querySelector('[data-testid="grupo-groupCerradas"]')).not.toBeNull();
+        expect(el.querySelectorAll('[data-testid="orden-item"]').length).toBe(0);
+
+        // Y al desplegarla aparecen sus 6.
+        el.querySelector<HTMLElement>('[data-testid="grupo-groupCerradas"]')!.click();
+        fixture.detectChanges();
+        expect(el.querySelectorAll('[data-testid="orden-item"]').length).toBe(6);
+      });
+
+      it('volver a Todos restaura los cuatro grupos', () => {
+        const { fixture, el } = setupConOrdenes(ORDENES_VOLUMEN);
+        abrirMaquina(fixture, el);
+        const select = el.querySelector<HTMLSelectElement>('[data-testid="filtro-estado"]')!;
+
+        select.value = 'groupEnCurso';
+        select.dispatchEvent(new Event('change'));
+        fixture.detectChanges();
+        expect(el.querySelectorAll('[data-testid^="grupo-group"]').length).toBe(1);
+
+        select.value = 'todos';
+        select.dispatchEvent(new Event('change'));
+        fixture.detectChanges();
+        expect(el.querySelectorAll('[data-testid^="grupo-group"]').length).toBe(4);
+      });
+    });
+
+    describe('orden dentro de cada grupo', () => {
+      const DESORDENADAS = [
+        ot({ numero_ot: 'OT-B', estado: 'pending', created_at: '2026-03-01T10:00:00Z' }),
+        ot({ numero_ot: 'OT-C', estado: 'pending', created_at: '2026-05-01T10:00:00Z' }),
+        ot({ numero_ot: 'OT-A', estado: 'pending', created_at: '2026-01-01T10:00:00Z' }),
+      ];
+
+      const numeros = (el: HTMLElement) =>
+        Array.from(el.querySelectorAll('[data-testid="orden-numero"]')).map((n) =>
+          n.textContent?.trim(),
+        );
+
+      it('por defecto ordena por fecha, la más reciente primero', () => {
+        const { fixture, el } = setupConOrdenes(DESORDENADAS);
+        abrirMaquina(fixture, el);
+        expect(numeros(el)).toEqual(['OT-C', 'OT-B', 'OT-A']);
+      });
+
+      it('el botón alterna a A-Z por número de OT', () => {
+        const { fixture, el } = setupConOrdenes(DESORDENADAS);
+        abrirMaquina(fixture, el);
+
+        const boton = el.querySelector<HTMLElement>('[data-testid="orden-ot"]')!;
+        boton.click();
+        fixture.detectChanges();
+
+        expect(numeros(el)).toEqual(['OT-A', 'OT-B', 'OT-C']);
+        expect(boton.textContent).toContain('A-Z');
+      });
+
+      it('el orden NO cambia el orden de los grupos', () => {
+        const { fixture, el } = setupConOrdenes(ORDENES_VOLUMEN);
+        abrirMaquina(fixture, el);
+        el.querySelector<HTMLElement>('[data-testid="orden-ot"]')!.click();
+        fixture.detectChanges();
+
+        const grupos = Array.from(el.querySelectorAll('[data-testid^="grupo-group"]')).map((g) =>
+          g.getAttribute('data-testid'),
+        );
+        expect(grupos).toEqual([
+          'grupo-groupPendientes',
+          'grupo-groupEnCurso',
+          'grupo-groupCerradas',
+          'grupo-groupCanceladas',
+        ]);
+      });
     });
 
     // --- Encabezados de grupo fijos (CGBIDA-386) --------------------------------
@@ -757,6 +927,7 @@ describe('TopologyComponent', () => {
     it('cada tarjeta de OT lleva al menos una clase dark:text-*', () => {
       const { fixture, el } = setupConOrdenes(ORDENES_VOLUMEN);
       abrirMaquina(fixture, el);
+      desplegarPlegados(fixture, el);
 
       const tarjetas = Array.from(el.querySelectorAll<HTMLElement>('[data-testid="orden-item"]'));
       expect(tarjetas.length).toBe(20);
