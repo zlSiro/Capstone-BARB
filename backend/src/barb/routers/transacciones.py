@@ -58,19 +58,8 @@ def _filtros(
     return " AND ".join(where), params
 
 
-@router.get("/api/transacciones")
-async def list_transacciones(
-    empresa_id: int | None = Query(default=None),
-    rol: str | None = Query(default=None),
-    usuario_id: int | None = Query(default=None),
-    rango: Rango | None = Query(default=None),
-    desde: date | None = Query(default=None),
-    hasta: date | None = Query(default=None),
-    limit: int = Query(default=50, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
-):
-    where, params = _filtros(empresa_id, rol, usuario_id, rango, desde, hasta)
-
+async def listar_transacciones(where: str, params: dict, limit: int, offset: int) -> dict:
+    """Página de transacciones que cumplen `where` (ya validado). Compartida con la vista del gerente."""
     total = await fetch_one(f"SELECT COUNT(*) AS n FROM transacciones t WHERE {where}", params)
     rows = await fetch_all(
         f"""
@@ -107,6 +96,21 @@ async def list_transacciones(
             }
         )
     return {"items": items, "total": int(total["n"]), "limit": limit, "offset": offset}
+
+
+@router.get("/api/transacciones")
+async def list_transacciones(
+    empresa_id: int | None = Query(default=None),
+    rol: str | None = Query(default=None),
+    usuario_id: int | None = Query(default=None),
+    rango: Rango | None = Query(default=None),
+    desde: date | None = Query(default=None),
+    hasta: date | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+):
+    where, params = _filtros(empresa_id, rol, usuario_id, rango, desde, hasta)
+    return await listar_transacciones(where, params, limit, offset)
 
 
 @router.get("/api/transacciones/filtros")

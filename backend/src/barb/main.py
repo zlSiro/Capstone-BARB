@@ -22,6 +22,7 @@ from barb.routers import (
     stats,
     topology,
     transacciones,
+    transacciones_empresa,
     users,
     work_orders,
 )
@@ -100,3 +101,4 @@ app.include_router(preferences.router)
 app.include_router(chat.router)
 app.include_router(notifications.router)
 app.include_router(transacciones.router)
+app.include_router(transacciones_empresa.router)

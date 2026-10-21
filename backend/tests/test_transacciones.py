@@ -8,7 +8,7 @@ no depende de las contraseñas del seed. Requiere la BD migrada hasta 0009 y sem
 from __future__ import annotations
 
 import uuid
-from datetime import date, timedelta
+from datetime import timedelta
 
 import pytest
 import pytest_asyncio
@@ -125,7 +125,8 @@ async def test_rangos_relativos(client, tokens, filas):
 @pytest.mark.asyncio
 async def test_rango_personalizado(client, tokens, filas):
     h = tokens["super"]
-    hoy = date.today()
+    # "Hoy" según la BD (UTC): con la fecha local de Python el día puede no coincidir cerca de medianoche.
+    hoy = (await fetch_one("SELECT CURRENT_DATE AS d"))["d"]
     desde, hasta = (hoy - timedelta(days=5)).isoformat(), (hoy - timedelta(days=2)).isoformat()
     ids = await _ids(client, h, usuario_id=GERENTE_ID, rango="custom", desde=desde, hasta=hasta)
     assert filas["hace_3_dias"] in ids

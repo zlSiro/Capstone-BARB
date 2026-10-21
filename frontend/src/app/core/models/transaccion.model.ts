@@ -53,6 +53,9 @@ export interface TransaccionesFiltros {
   offset: number;
 }
 
+/** Opciones de filtro del gerente: solo roles y usuarios de su empresa. */
+export type TransaccionesEmpresaOpciones = Pick<TransaccionesOpciones, 'roles' | 'usuarios'>;
+
 export interface TransaccionesOpciones {
   empresas: { empresa_id: number; nombre: string }[];
   roles: string[];

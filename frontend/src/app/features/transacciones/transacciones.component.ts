@@ -10,49 +10,15 @@ import {
 } from '../../core/models';
 import { TransaccionesService } from '../../core/services/transacciones.service';
 import { apiErrorMessage } from '../../core/utils/http-error';
-
-const PAGE_SIZE = 50;
-
-const RANGOS: { value: RangoTransacciones; label: string }[] = [
-  { value: '24h', label: 'Hace 24 horas' },
-  { value: '7d', label: 'Hace una semana' },
-  { value: '30d', label: 'Hace un mes' },
-  { value: '1y', label: 'Hace un año' },
-  { value: 'custom', label: 'Personalizar' },
-];
-
-const OPERACION_LABEL: Record<OperacionTransaccion, string> = {
-  INSERT: 'Creó',
-  UPDATE: 'Modificó',
-  DELETE: 'Eliminó',
-};
-
-const OPERACION_STYLE: Record<OperacionTransaccion, string> = {
-  INSERT: 'bg-green-100 text-green-800',
-  UPDATE: 'bg-blue-100 text-blue-800',
-  DELETE: 'bg-red-100 text-red-800',
-};
-
-const TABLA_LABEL: Record<string, string> = {
-  orden_trabajo: 'orden de trabajo',
-  usuario: 'usuario',
-  empresa: 'empresa',
-  documento: 'documento',
-  notificacion_config: 'configuración de notificaciones',
-  ot_foto: 'foto de OT',
-  ot_repuesto: 'repuesto de OT',
-};
-
-const ROL_LABEL: Record<string, string> = {
-  operador: 'Operador',
-  tecnico: 'Técnico',
-  supervisor: 'Supervisor',
-  engineer: 'Engineer',
-  gerente: 'Gerente',
-  admin: 'Admin',
-  visitante: 'Visitante',
-  super_usuario: 'Super usuario',
-};
+import {
+  OPERACION_LABEL,
+  OPERACION_STYLE,
+  PAGE_SIZE,
+  RANGOS,
+  columnasDeTransaccion,
+  rolLabel,
+  tablaLabel,
+} from './etiquetas';
 
 /** Vista del super_usuario con todo lo que hacen los usuarios de las empresas (INSERT/UPDATE/DELETE). */
 @Component({
@@ -253,25 +219,11 @@ export class TransaccionesComponent {
     this.load();
   }
 
-  protected rolLabel = (r: string) => ROL_LABEL[r] ?? r;
+  protected readonly rolLabel = rolLabel;
+  protected readonly tablaLabel = tablaLabel;
+  protected readonly columnas = columnasDeTransaccion;
   protected operacionLabel = (o: OperacionTransaccion) => OPERACION_LABEL[o];
   protected operacionStyle = (o: OperacionTransaccion) => OPERACION_STYLE[o];
-  protected tablaLabel = (t: string | null) => (t ? (TABLA_LABEL[t] ?? t.replaceAll('_', ' ')) : '');
-
-  /** Columnas modificadas (UPDATE: "antes → después") o datos guardados (INSERT/DELETE). */
-  protected columnas(t: Transaccion): { nombre: string; valor: string }[] {
-    const d = t.detalle;
-    if (d.cambios) {
-      return Object.entries(d.cambios).map(([nombre, c]) => ({ nombre, valor: `${this.fmt(c.antes)} → ${this.fmt(c.despues)}` }));
-    }
-    return Object.entries(d.datos ?? {}).map(([nombre, v]) => ({ nombre, valor: this.fmt(v) }));
-  }
-
-  private fmt(v: unknown): string {
-    if (v === null || v === undefined || v === '') return '—';
-    const s = typeof v === 'object' ? JSON.stringify(v) : String(v);
-    return s.length > 120 ? s.slice(0, 117) + '…' : s;
-  }
 
   protected onEmpresa(value: string): void {
     this.empresaId.set(value ? Number(value) : null);
