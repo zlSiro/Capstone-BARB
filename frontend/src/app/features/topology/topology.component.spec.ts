@@ -191,16 +191,30 @@ describe('TopologyComponent', () => {
     }
   });
 
-  it('dibuja una arista por conexión, entre los centros de sus nodos', () => {
+  it('dibuja una arista por conexión, recortada en el borde de cada nodo', () => {
     const { el } = setup(TOPOLOGIA);
     const lineas = Array.from(canvas(el)!.querySelectorAll('line'));
     expect(lineas).toHaveLength(2);
-    // p_1 centro = (500+65, 100+42.5) ; d_1 centro = (200+65, 300+42.5)
-    const jerarquia = lineas.find((l) => l.getAttribute('data-relacion') === 'jerarquia');
-    expect(jerarquia?.getAttribute('x1')).toBe('565');
-    expect(jerarquia?.getAttribute('y1')).toBe('142.5');
-    expect(jerarquia?.getAttribute('x2')).toBe('265');
-    expect(jerarquia?.getAttribute('y2')).toBe('342.5');
+    // p_1 centro = (565, 142.5) ; d_1 centro = (265, 342.5)
+    const jerarquia = lineas.find((l) => l.getAttribute('data-relacion') === 'jerarquia')!;
+    const [x1, y1, x2, y2] = ['x1', 'y1', 'x2', 'y2'].map((a) => Number(jerarquia.getAttribute(a)));
+
+    // La arista ya NO arranca ni termina en el centro: si lo hiciera, la punta de flecha
+    // quedaría tapada por la tarjeta, que se dibuja después.
+    expect([x1, y1]).not.toEqual([565, 142.5]);
+    expect([x2, y2]).not.toEqual([265, 342.5]);
+
+    // Cada extremo cae sobre el borde del rectángulo, con 4 de aire hacia afuera.
+    const sobreBorde = (x: number, y: number, cx: number, cy: number) => {
+      const dx = Math.abs(x - cx);
+      const dy = Math.abs(y - cy);
+      // Al menos uno de los dos ejes alcanza su semi-lado; ninguno se pasa del aire.
+      expect(dx).toBeLessThanOrEqual(65 + 4 + 0.001);
+      expect(dy).toBeLessThanOrEqual(42.5 + 4 + 0.001);
+      expect(Math.max(dx / 65, dy / 42.5)).toBeGreaterThanOrEqual(1);
+    };
+    sobreBorde(x1, y1, 565, 142.5);
+    sobreBorde(x2, y2, 265, 342.5);
   });
 
   it('descarta aristas que apunten a un nodo ausente, sin romper el render', () => {
@@ -431,6 +445,98 @@ describe('TopologyComponent', () => {
       expect(rect.getAttribute('fill')).toBeNull();
       expect(rect.getAttribute('class')).toContain('fill-white');
       expect(rect.getAttribute('class')).toContain('dark:fill-slate-800');
+    });
+
+    // --- Aristas con dirección (HU-07) ------------------------------------------
+
+    describe('aristas con dirección', () => {
+      it('define dos puntas de flecha, la normal y la del hover', () => {
+        const { el } = setup(TOPOLOGIA);
+        const svg = canvas(el)!;
+        expect(svg.querySelector('marker#flecha-topo')).not.toBeNull();
+        expect(svg.querySelector('marker#flecha-topo-activa')).not.toBeNull();
+      });
+
+      it('las flechas siguen el tema con clases, no con fill fijo', () => {
+        const { el } = setup(TOPOLOGIA);
+        const flecha = canvas(el)!.querySelector('marker#flecha-topo path')!;
+        expect(flecha.getAttribute('fill')).toBeNull();
+        expect(flecha.getAttribute('class')).toContain('dark:fill-gray-600');
+      });
+
+      it('cada arista lleva la clase que le pone la punta y el hover', () => {
+        // El marker-end y el :hover viven en el CSS del componente (styles), no en un
+        // atributo: en jsdom no se resuelve CSS, así que se comprueba la clase.
+        const { el } = setup(TOPOLOGIA);
+        const aristas = [...canvas(el)!.querySelectorAll('line')];
+        expect(aristas.length).toBe(TOPOLOGIA.conexiones.length);
+        for (const a of aristas) expect(a.getAttribute('class')).toContain('arista');
+      });
+    });
+
+    // --- Nombres largos (HU-07) -------------------------------------------------
+
+    describe('nombres que no entran en la tarjeta', () => {
+      const LARGO = 'Planta Central San Bernardo';
+
+      const conNombres = (nombre: string) => ({
+        nodos: [{ ...TOPOLOGIA.nodos[0], nombre_visual: nombre }],
+        conexiones: [],
+      });
+
+      it('un nombre largo se comprime con textLength y lengthAdjust', () => {
+        const { el } = setup(conNombres(LARGO));
+        const texto = el.querySelector('.topo-node-name')!;
+        // 130 de ancho menos 8 de aire por lado.
+        expect(texto.getAttribute('textLength')).toBe('114');
+        expect(texto.getAttribute('lengthAdjust')).toBe('spacingAndGlyphs');
+      });
+
+      it('un nombre corto se dibuja sin comprimir', () => {
+        const { el } = setup(conNombres('HVAC'));
+        const texto = el.querySelector('.topo-node-name')!;
+        expect(texto.getAttribute('textLength')).toBeNull();
+      });
+    });
+
+    // --- Zoom con rueda (HU-07) -------------------------------------------------
+
+    describe('zoom con rueda', () => {
+      it('la rueda hacia arriba acerca y respeta el centro', () => {
+        const { fixture, el } = setup(TOPOLOGIA);
+        const svg = canvas(el)!;
+        const antes = svg.getAttribute('viewBox')!.split(' ').map(Number);
+
+        svg.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, bubbles: true, cancelable: true }));
+        fixture.detectChanges();
+
+        const despues = svg.getAttribute('viewBox')!.split(' ').map(Number);
+        expect(despues[2]).toBeCloseTo(antes[2] / 1.15, 5);
+        expect(despues[3]).toBeCloseTo(antes[3] / 1.15, 5);
+        // El centro no se mueve: es el mismo criterio que los botones de zoom.
+        expect(despues[0] + despues[2] / 2).toBeCloseTo(antes[0] + antes[2] / 2, 5);
+        expect(despues[1] + despues[3] / 2).toBeCloseTo(antes[1] + antes[3] / 2, 5);
+      });
+
+      it('la rueda hacia abajo aleja', () => {
+        const { fixture, el } = setup(TOPOLOGIA);
+        const svg = canvas(el)!;
+        const antes = svg.getAttribute('viewBox')!.split(' ').map(Number);
+
+        svg.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, bubbles: true, cancelable: true }));
+        fixture.detectChanges();
+
+        const despues = svg.getAttribute('viewBox')!.split(' ').map(Number);
+        expect(despues[2]).toBeCloseTo(antes[2] * 1.15, 5);
+      });
+
+      it('la rueda no deja scrollear la página', () => {
+        const { el } = setup(TOPOLOGIA);
+        const svg = canvas(el)!;
+        const evento = new WheelEvent('wheel', { deltaY: -100, bubbles: true, cancelable: true });
+        svg.dispatchEvent(evento);
+        expect(evento.defaultPrevented).toBe(true);
+      });
     });
 
     it('las aristas y los textos de cada nodo tienen variante dark', () => {

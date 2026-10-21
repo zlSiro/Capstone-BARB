@@ -21,6 +21,22 @@ const NODE_W = 130;
 const NODE_H = 85;
 
 /**
+ * Ancho útil para el nombre dentro de la tarjeta: el ancho del nodo menos 8 unidades de
+ * aire a cada lado. Es el límite que `textLength` impone a los nombres largos.
+ */
+const ANCHO_NOMBRE_NODO = NODE_W - 16;
+
+/** Factor de zoom por paso de rueda. 1,15 se siente continuo sin saltar de golpe. */
+const FACTOR_RUEDA = 1.15;
+
+/**
+ * Aire entre el borde de la tarjeta y la punta de flecha.
+ *
+ * Sin él la flecha se apoya en el borde y se confunde con el trazo del rectángulo.
+ */
+const AIRE_FLECHA = 4;
+
+/**
  * Aire alrededor del grafo, en unidades del viewBox.
  *
  * Sin este margen el nodo de la izquierda queda pegado al borde del lienzo y el de la
@@ -133,6 +149,20 @@ interface GrupoEnPanel {
   selector: 'app-topology',
   standalone: true,
   imports: [OtDetailSheetComponent],
+  // El hover de las aristas no se puede expresar con atributos: cambiar el grosor, el
+  // color y la punta de flecha a la vez pide CSS.
+  styles: `
+    .arista {
+      marker-end: url(#flecha-topo);
+      transition: stroke 120ms ease, stroke-width 120ms ease;
+    }
+
+    .arista:hover {
+      stroke-width: 3;
+      stroke: var(--color-blue-600);
+      marker-end: url(#flecha-topo-activa);
+    }
+  `,
   template: `
     <div class="flex flex-col gap-4">
       <div class="flex items-center justify-between">
@@ -207,11 +237,44 @@ interface GrupoEnPanel {
               (mousemove)="onMouseMove($event)"
               (mouseup)="onMouseUp()"
               (mouseleave)="onMouseUp()"
+              (wheel)="onWheel($event)"
             >
+              <!--
+                Dos puntas de flecha: la normal y la del hover. El color va en clases para
+                que siga al tema; si se cambiara sólo el trazo, la flecha quedaría gris.
+              -->
+              <defs>
+                <marker
+                  id="flecha-topo"
+                  viewBox="0 0 8 8"
+                  refX="7"
+                  refY="4"
+                  markerWidth="9"
+                  markerHeight="9"
+                  markerUnits="userSpaceOnUse"
+                  orient="auto"
+                >
+                  <path d="M0,0 L8,4 L0,8 z" class="fill-gray-300 dark:fill-gray-600" />
+                </marker>
+                <marker
+                  id="flecha-topo-activa"
+                  viewBox="0 0 8 8"
+                  refX="7"
+                  refY="4"
+                  markerWidth="11"
+                  markerHeight="11"
+                  markerUnits="userSpaceOnUse"
+                  orient="auto"
+                >
+                  <path d="M0,0 L8,4 L0,8 z" class="fill-blue-600 dark:fill-blue-400" />
+                </marker>
+              </defs>
+
               <!-- Conexiones -->
               <g class="stroke-gray-300 dark:stroke-gray-600" stroke-width="2" fill="none">
                 @for (e of aristas(); track e.conexion_id) {
                   <line
+                    class="arista"
                     [attr.x1]="e.x1"
                     [attr.y1]="e.y1"
                     [attr.x2]="e.x2"
@@ -249,6 +312,8 @@ interface GrupoEnPanel {
                     font-size="11"
                     font-weight="600"
                     class="topo-node-name fill-gray-800 dark:fill-gray-100"
+                    [attr.textLength]="anchoNombre(n.nombre_visual)"
+                    lengthAdjust="spacingAndGlyphs"
                   >{{ n.nombre_visual }}</text>
                   <text
                     x="65"
@@ -542,13 +607,47 @@ export class TopologyComponent {
   });
 
   /** Aristas resueltas: se descartan las que apunten a un nodo ausente. */
+  /**
+   * Punto donde la recta centro→centro corta el borde de la tarjeta.
+   *
+   * Sin este recorte la arista termina en el centro del nodo destino y la punta de flecha
+   * queda TAPADA por la tarjeta, que se dibuja después. El `AIRE_FLECHA` deja la punta
+   * separada del borde para que se lea completa.
+   */
+  private bordeNodo(
+    desde: { x: number; y: number },
+    hasta: { x: number; y: number },
+  ): { x: number; y: number } {
+    const dx = hasta.x - desde.x;
+    const dy = hasta.y - desde.y;
+    const largo = Math.hypot(dx, dy);
+    if (!largo) return { x: desde.x, y: desde.y };
+
+    const ux = dx / largo;
+    const uy = dy / largo;
+    // Distancia del centro al borde del rectángulo en la dirección de la recta.
+    const t = Math.min(
+      Math.abs((NODE_W / 2) / (ux || Number.EPSILON)),
+      Math.abs((NODE_H / 2) / (uy || Number.EPSILON)),
+    );
+
+    return { x: desde.x + ux * (t + AIRE_FLECHA), y: desde.y + uy * (t + AIRE_FLECHA) };
+  }
+
+  /**
+   * Aristas resueltas: se descartan las que apunten a un nodo ausente y se recortan al
+   * borde de la tarjeta para que la flecha quede a la vista.
+   */
   protected readonly aristas = computed(() => {
     const centros = this.centros();
     return this.conexiones()
       .map((c) => {
         const o = centros.get(c.origen_nodo_id);
         const d = centros.get(c.destino_nodo_id);
-        return o && d ? { ...c, x1: o.x, y1: o.y, x2: d.x, y2: d.y } : null;
+        if (!o || !d) return null;
+        const inicio = this.bordeNodo(o, d);
+        const fin = this.bordeNodo(d, o);
+        return { ...c, x1: inicio.x, y1: inicio.y, x2: fin.x, y2: fin.y };
       })
       .filter((e): e is NonNullable<typeof e> => e !== null);
   });
@@ -595,6 +694,32 @@ export class TopologyComponent {
       const h = v.h / factor;
       return { x: v.x + v.w / 2 - w / 2, y: v.y + v.h / 2 - h / 2, w, h };
     });
+  }
+
+  /**
+   * Zoom con la rueda (HU-07).
+   *
+   * Reutiliza `zoom()`, así que respeta el centro actual igual que los botones. El
+   * `preventDefault` es imprescindible: sin él la rueda scrollea la página entera mientras
+   * el usuario intenta acercarse al mapa.
+   */
+  protected onWheel(event: WheelEvent): void {
+    event.preventDefault();
+    // deltaY negativo = rueda hacia arriba = acercar.
+    this.zoom(event.deltaY < 0 ? FACTOR_RUEDA : 1 / FACTOR_RUEDA);
+  }
+
+  /**
+   * `textLength` para el nombre del nodo, o `null` si entra sin comprimir.
+   *
+   * Los nombres largos («Planta Central San Bernardo») se salían del rectángulo y se
+   * montaban sobre el nodo vecino. Se estima el ancho con el tamaño real del texto (11 px,
+   * peso 600) y, si excede el ancho útil, se devuelve ese ancho para que `lengthAdjust`
+   * lo comprima. Con `null` Angular omite el atributo y el nombre se dibuja natural.
+   */
+  protected anchoNombre(nombre: string): number | null {
+    const estimado = nombre.length * 11 * 0.56;
+    return estimado > ANCHO_NOMBRE_NODO ? ANCHO_NOMBRE_NODO : null;
   }
 
   protected resetView(): void {
