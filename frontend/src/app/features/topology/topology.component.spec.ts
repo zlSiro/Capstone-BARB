@@ -330,13 +330,55 @@ describe('TopologyComponent', () => {
 
   it('acerca la vista reduciendo el ancho del viewBox', () => {
     const { fixture, el } = setup(TOPOLOGIA);
-    const antes = canvas(el)!.getAttribute('viewBox')!;
+    const antes = canvas(el)!.getAttribute('viewBox')!.split(' ').map(Number);
     (el.querySelector('[data-testid="zoom-in"]') as HTMLButtonElement).click();
     fixture.detectChanges();
-    const despues = canvas(el)!.getAttribute('viewBox')!;
-    expect(despues).not.toBe(antes);
-    // 1200 / 1.2 = 1000
-    expect(despues.split(' ')[2]).toBe('1000');
+    const despues = canvas(el)!.getAttribute('viewBox')!.split(' ').map(Number);
+
+    // El ancho se divide por el factor...
+    expect(despues[2]).toBeCloseTo(antes[2] / 1.2, 5);
+    expect(despues[3]).toBeCloseTo(antes[3] / 1.2, 5);
+    // ...y el centro se mantiene, que es lo que hace que el zoom "no se escape".
+    expect(despues[0] + despues[2] / 2).toBeCloseTo(antes[0] + antes[2] / 2, 5);
+    expect(despues[1] + despues[3] / 2).toBeCloseTo(antes[1] + antes[3] / 2, 5);
+  });
+
+  it('el encuadre inicial contiene todos los nodos del grafo', () => {
+    // Antes la cámara arrancaba en una vista fija de 1200x800 y el mapa llegaba a x=2160:
+    // diez de los veintiún nodos quedaban fuera de cuadro al cargar.
+    const { el } = setup(TOPOLOGIA);
+    const [vx, vy, vw, vh] = canvas(el)!.getAttribute('viewBox')!.split(' ').map(Number);
+    const nodos = [...el.querySelectorAll('g[data-nodo-id]')];
+    expect(nodos.length).toBeGreaterThan(1);
+
+    for (const g of nodos) {
+      const m = /translate\(([-\d.]+),([-\d.]+)\)/.exec(g.getAttribute('transform')!)!;
+      const nx = Number(m[1]);
+      const ny = Number(m[2]);
+      expect(nx).toBeGreaterThanOrEqual(vx);
+      expect(ny).toBeGreaterThanOrEqual(vy);
+      expect(nx + 130).toBeLessThanOrEqual(vx + vw);
+      expect(ny + 85).toBeLessThanOrEqual(vy + vh);
+    }
+  });
+
+  it('el encuadre deja aire alrededor del grafo', () => {
+    const { el } = setup(TOPOLOGIA);
+    const [vx, vy, vw, vh] = canvas(el)!.getAttribute('viewBox')!.split(' ').map(Number);
+    const nodos = [...el.querySelectorAll('g[data-nodo-id]')].map((g) => {
+      const m = /translate\(([-\d.]+),([-\d.]+)\)/.exec(g.getAttribute('transform')!)!;
+      return { x: Number(m[1]), y: Number(m[2]) };
+    });
+    const minX = Math.min(...nodos.map((n) => n.x));
+    const minY = Math.min(...nodos.map((n) => n.y));
+    const maxX = Math.max(...nodos.map((n) => n.x + 130));
+    const maxY = Math.max(...nodos.map((n) => n.y + 85));
+
+    // 80 unidades de padding a cada lado (PADDING_VISTA).
+    expect(vx).toBeCloseTo(minX - 80, 5);
+    expect(vy).toBeCloseTo(minY - 80, 5);
+    expect(vx + vw).toBeCloseTo(maxX + 80, 5);
+    expect(vy + vh).toBeCloseTo(maxY + 80, 5);
   });
 
   it('vuelve a la vista inicial con el botón de reset', () => {
@@ -363,11 +405,53 @@ describe('TopologyComponent', () => {
     fixture.detectChanges();
 
     const despues = svg.getAttribute('viewBox')!.split(' ').map(Number);
-    // dx_pantalla=60 sobre 600px de ancho con viewBox.w=1200 -> 120 unidades; x inicial -100
-    expect(despues[0]).toBeCloseTo(-220, 5);
-    expect(despues[1]).toBeCloseTo(-50, 5);
-    expect(despues[2]).toBeCloseTo(1200, 5);
-    expect(despues).not.toEqual(inicial.split(' ').map(Number));
+    const base = inicial.split(' ').map(Number);
+    // dx_pantalla=60 sobre un lienzo de 600px, escalado a las unidades del viewBox.
+    const dxUnidades = (60 * base[2]) / 600;
+    expect(despues[0]).toBeCloseTo(base[0] - dxUnidades, 5);
+    expect(despues[1]).toBeCloseTo(base[1], 5);
+    expect(despues[2]).toBeCloseTo(base[2], 5);
+    expect(despues).not.toEqual(base);
+  });
+
+  // --- Modo oscuro (HU-07) -----------------------------------------------------
+
+  describe('modo oscuro', () => {
+    it('el lienzo sigue el tema en vez de quedarse blanco', () => {
+      const { el } = setup(TOPOLOGIA);
+      const lienzo = canvas(el)!.parentElement!;
+      expect(lienzo.className).toContain('dark:bg-slate-900');
+      expect(lienzo.className).toContain('dark:border-gray-800');
+    });
+
+    it('los nodos no llevan relleno fijo: usan clases con variante dark', () => {
+      // Antes era fill="#ffffff" y fill="#1f2937": en oscuro el mapa quedaba blanco puro.
+      const { el } = setup(TOPOLOGIA);
+      const rect = el.querySelector('g[data-nodo-id] rect')!;
+      expect(rect.getAttribute('fill')).toBeNull();
+      expect(rect.getAttribute('class')).toContain('fill-white');
+      expect(rect.getAttribute('class')).toContain('dark:fill-slate-800');
+    });
+
+    it('las aristas y los textos de cada nodo tienen variante dark', () => {
+      const { el } = setup(TOPOLOGIA);
+      const aristas = el.querySelector('[data-testid="topo-canvas"] g')!;
+      expect(aristas.getAttribute('stroke')).toBeNull();
+      expect(aristas.getAttribute('class')).toContain('dark:stroke-gray-600');
+
+      const nombre = el.querySelector('.topo-node-name')!;
+      expect(nombre.getAttribute('fill')).toBeNull();
+      expect(nombre.getAttribute('class')).toContain('dark:fill-gray-100');
+
+      const tipo = el.querySelector('.topo-node-type')!;
+      expect(tipo.getAttribute('class')).toContain('dark:fill-gray-400');
+    });
+
+    it('la cabecera y los botones de zoom tienen variante dark', () => {
+      const { el } = setup(TOPOLOGIA);
+      expect(el.querySelector('h1')!.className).toContain('dark:text-gray-100');
+      expect(el.querySelector('[data-testid="zoom-in"]')!.className).toContain('dark:bg-gray-800');
+    });
   });
 
   // --- CGBIDA-368: i18n --------------------------------------------------------

@@ -20,7 +20,21 @@ import { filterGroup } from '../work-orders/utils/work-order-labels';
 const NODE_W = 130;
 const NODE_H = 85;
 
-/** Vista inicial del lienzo (CGBIDA-362). El zoom de CGBIDA-363 la modifica. */
+/**
+ * Aire alrededor del grafo, en unidades del viewBox.
+ *
+ * Sin este margen el nodo de la izquierda queda pegado al borde del lienzo y el de la
+ * derecha también, así que el mapa se ve recortado aunque esté completo.
+ */
+const PADDING_VISTA = 80;
+
+/**
+ * Vista de respaldo cuando todavía no hay nodos (CGBIDA-362).
+ *
+ * Con datos, la cámara arranca en el rectángulo que contiene el grafo (`cajaContenido`).
+ * La vista fija anterior era 1200x800 en (-100,-50), y el mapa real llega a x=2160: diez
+ * de los veintiún nodos quedaban fuera de cuadro al cargar.
+ */
 const INITIAL_VIEW = { x: -100, y: -50, w: 1200, h: 800 };
 
 /**
@@ -120,29 +134,29 @@ interface GrupoEnPanel {
     <div class="flex flex-col gap-4">
       <div class="flex items-center justify-between">
         <div>
-          <h1 class="text-2xl font-bold text-gray-800">{{ t().title }}</h1>
-          <p class="text-sm text-gray-500">{{ t().subtitle }}</p>
+          <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100">{{ t().title }}</h1>
+          <p class="text-sm text-gray-500 dark:text-gray-400">{{ t().subtitle }}</p>
         </div>
         <div class="flex gap-2">
           <button
             type="button"
             data-testid="zoom-in"
             (click)="zoom(1.2)"
-            class="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
+            class="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
             [attr.aria-label]="t().zoomIn"
           >+</button>
           <button
             type="button"
             data-testid="zoom-out"
             (click)="zoom(0.8)"
-            class="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
+            class="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
             [attr.aria-label]="t().zoomOut"
           >−</button>
           <button
             type="button"
             data-testid="zoom-reset"
             (click)="resetView()"
-            class="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
+            class="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
           >{{ t().resetView }}</button>
         </div>
       </div>
@@ -160,20 +174,20 @@ interface GrupoEnPanel {
         }
       </div>
 
-      <div class="relative bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
+      <div class="relative bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden dark:border-gray-800 dark:bg-slate-900">
         @switch (estado()) {
           @case ('cargando') {
-            <div class="p-10 text-center text-gray-500" data-testid="estado-cargando">
+            <div class="p-10 text-center text-gray-500 dark:text-gray-400" data-testid="estado-cargando">
               {{ t().loading }}
             </div>
           }
           @case ('error') {
-            <div class="p-10 text-center text-red-600" data-testid="estado-error" role="alert">
+            <div class="p-10 text-center text-red-600 dark:text-red-400" data-testid="estado-error" role="alert">
               {{ t().loadError }}
             </div>
           }
           @case ('vacio') {
-            <div class="p-10 text-center text-gray-500" data-testid="estado-vacio">
+            <div class="p-10 text-center text-gray-500 dark:text-gray-400" data-testid="estado-vacio">
               {{ t().empty }}
             </div>
           }
@@ -192,7 +206,7 @@ interface GrupoEnPanel {
               (mouseleave)="onMouseUp()"
             >
               <!-- Conexiones -->
-              <g stroke="#cbd5e1" stroke-width="2" fill="none">
+              <g class="stroke-gray-300 dark:stroke-gray-600" stroke-width="2" fill="none">
                 @for (e of aristas(); track e.conexion_id) {
                   <line
                     [attr.x1]="e.x1"
@@ -220,7 +234,7 @@ interface GrupoEnPanel {
                     [attr.width]="nodeW"
                     [attr.height]="nodeH"
                     rx="12"
-                    fill="#ffffff"
+                    class="fill-white dark:fill-slate-800"
                     [attr.stroke]="colorDe(n.estado_actual)"
                     stroke-width="2"
                   />
@@ -231,16 +245,14 @@ interface GrupoEnPanel {
                     text-anchor="middle"
                     font-size="11"
                     font-weight="600"
-                    fill="#1f2937"
-                    class="topo-node-name"
+                    class="topo-node-name fill-gray-800 dark:fill-gray-100"
                   >{{ n.nombre_visual }}</text>
                   <text
                     x="65"
                     y="65"
                     text-anchor="middle"
                     font-size="10"
-                    fill="#6b7280"
-                    class="topo-node-type"
+                    class="topo-node-type fill-gray-500 dark:fill-gray-400"
                   >{{ n.tipo }}</text>
                   <circle
                     [attr.cx]="nodeW - 14"
@@ -487,6 +499,30 @@ export class TopologyComponent {
 
   // --- CGBIDA-363: cámara del lienzo -----------------------------------------
 
+  /**
+   * Rectángulo que contiene todos los nodos, con padding.
+   *
+   * Es la vista inicial y el destino del botón de reset. Se calcula a partir de las
+   * posiciones que manda el backend, no de una constante: el mapa crece y se mueve, y una
+   * vista fija deja nodos fuera de cuadro sin que nadie se entere.
+   */
+  protected readonly cajaContenido = computed(() => {
+    const nodos = this.nodos();
+    if (nodos.length === 0) return null;
+
+    const minX = Math.min(...nodos.map((n) => n.pos_x));
+    const minY = Math.min(...nodos.map((n) => n.pos_y));
+    const maxX = Math.max(...nodos.map((n) => n.pos_x + NODE_W));
+    const maxY = Math.max(...nodos.map((n) => n.pos_y + NODE_H));
+
+    return {
+      x: minX - PADDING_VISTA,
+      y: minY - PADDING_VISTA,
+      w: maxX - minX + 2 * PADDING_VISTA,
+      h: maxY - minY + 2 * PADDING_VISTA,
+    };
+  });
+
   protected readonly viewBox = signal({ ...INITIAL_VIEW });
   protected readonly arrastrando = signal(false);
   private ultimoPunto = { x: 0, y: 0 };
@@ -506,7 +542,10 @@ export class TopologyComponent {
   }
 
   protected resetView(): void {
-    this.viewBox.set({ ...INITIAL_VIEW });
+    // Vuelve al encuadre que contiene el grafo, no a una constante: si el mapa cambió,
+    // el reset debe mostrar el mapa nuevo completo.
+    const caja = this.cajaContenido();
+    this.viewBox.set(caja ? { ...caja } : { ...INITIAL_VIEW });
   }
 
   protected onMouseDown(event: MouseEvent): void {
@@ -585,6 +624,14 @@ export class TopologyComponent {
   private readonly errorDetalle = signal(false);
 
   constructor() {
+    // Encuadre inicial: cuando llegan los nodos, la cámara se ajusta al grafo completo.
+    // Corre una sola vez porque `cajaContenido` depende únicamente de `nodos`, que se
+    // resuelve con la carga; después el usuario manda con el zoom y el paneo.
+    effect(() => {
+      const caja = this.cajaContenido();
+      if (caja) this.viewBox.set(caja);
+    });
+
     effect((onCleanup) => {
       const nodo = this.seleccionado();
       if (!nodo) {
@@ -679,3 +726,5 @@ export class TopologyComponent {
     return textos[clave] ?? estado;
   }
 }
+
+
