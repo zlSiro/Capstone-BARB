@@ -35,7 +35,6 @@ async def get_machines(empresa_id: int | None = Query(default=None), sesion: dic
             FROM maquina m
             JOIN planta p ON p.planta_id = m.planta_id
             WHERE (%(empresa_id)s::int IS NULL OR p.empresa_id = %(empresa_id)s)
-              AND COALESCE(p.activa, true) = true
             ORDER BY m.nombre
             """,
             {"empresa_id": resolver_empresa(sesion, empresa_id)},
@@ -76,7 +75,6 @@ async def get_plants(empresa_id: int | None = Query(default=None), sesion: dict 
             SELECT planta_id AS id, nombre, ubicacion
             FROM planta
             WHERE (%(empresa_id)s::int IS NULL OR empresa_id = %(empresa_id)s)
-              AND COALESCE(activa, true) = true
             ORDER BY planta_id
             """,
             {"empresa_id": resolver_empresa(sesion, empresa_id)},

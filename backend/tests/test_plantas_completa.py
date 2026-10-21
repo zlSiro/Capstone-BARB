@@ -56,7 +56,7 @@ async def marcas(db_pool):
 
 async def _planta(nombre: str) -> dict | None:
     return await fetch_one(
-        "SELECT planta_id, empresa_id, nombre, ubicacion, activa FROM planta WHERE nombre = %(n)s",
+        "SELECT planta_id, empresa_id, nombre, ubicacion FROM planta WHERE nombre = %(n)s",
         {"n": nombre},
     )
 
@@ -109,7 +109,6 @@ async def test_crea_planta_disciplinas_y_maquinas_en_una_llamada(client, marcas)
     # Y la base quedó consistente.
     planta = await _planta(nombre)
     assert planta is not None
-    assert planta["activa"] is True
     assert planta["empresa_id"] == 1
 
     maquinas = await _maquinas(datos["planta_id"])
@@ -286,35 +285,6 @@ async def test_sin_sesion_no_puede_crear(client, marcas):
     assert await _planta(f"Planta Anónima {marcas['sufijo']}") is None
 
 
-# =============================================================================
-# Baja lógica
-# =============================================================================
-
-
-async def test_una_planta_inactiva_no_aparece_en_el_catalogo(client, marcas):
-    sufijo = marcas["sufijo"]
-    nombre = f"Planta Inactiva {sufijo}"
-    r = await client.post(
-        "/api/plantas/completa",
-        headers=marcas["tokens"]["gerente"],
-        json={"nombre": nombre, "maquinas": [{"nombre": "M1", "codigo": f"I-{sufijo}"}]},
-    )
-    assert r.status_code == 201, r.text
-    planta_id = r.json()["planta_id"]
-
-    antes = await client.get("/api/plants", headers=marcas["tokens"]["gerente"])
-    assert any(p["name"] == nombre for p in antes.json())
-
-    # Baja lógica directa: todavía no hay endpoint de baja.
-    await execute("UPDATE planta SET activa = false WHERE planta_id = %(p)s", {"p": planta_id})
-
-    despues = await client.get("/api/plants", headers=marcas["tokens"]["gerente"])
-    assert not any(p["name"] == nombre for p in despues.json())
-
-    # Y sus máquinas tampoco.
-    maquinas = await client.get("/api/machines", headers=marcas["tokens"]["gerente"])
-    assert not any(m["plant_id"] == planta_id for m in maquinas.json())
-
 
 @pytest.mark.parametrize("campo", ["nombre"])
 async def test_valida_el_nombre_minimo(client, marcas, campo):
@@ -324,3 +294,4 @@ async def test_valida_el_nombre_minimo(client, marcas, campo):
         json={campo: "x"},
     )
     assert r.status_code == 422, r.text
+
