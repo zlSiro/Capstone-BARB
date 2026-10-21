@@ -116,3 +116,22 @@ llenan los triggers de las migraciones 0008–0009 con cada INSERT/UPDATE/DELETE
 - El interceptor del frontend no agrega el `empresa_id` global del super_usuario a estas llamadas: esta vista tiene su propio filtro de empresa.
 
 Pruebas: `backend/tests/test_transacciones.py` y `frontend/src/app/features/transacciones/transacciones.component.spec.ts`.
+
+## 10. Vista de transacciones del gerente
+
+Pantalla `/transacciones-empresa` (ruta `transacciones_empresa`, exclusiva del rol `gerente`): lo que hicieron los usuarios
+**de su empresa**, sobre la misma tabla `transacciones` de §9. No requiere migración nueva (no cambia el esquema; los índices
+`(empresa_id, fecha)` y `(empresa_id, usuario_id, fecha)` de la 0008 cubren sus consultas).
+
+- `GET /api/empresa/transacciones` — filtros opcionales: `rol`, `usuario_id` y período `rango` = `24h` | `7d` | `30d` | `1y` | `custom`
+  (`custom` exige `desde` y `hasta`). Paginado igual que §9.
+- `GET /api/empresa/transacciones/filtros` — roles y usuarios de su empresa para los selectores en cascada.
+- **Aislamiento:** la empresa sale siempre de la sesión; no existe parámetro `empresa_id` (cualquiera que envíe el cliente se ignora).
+  Nunca incluye filas sin usuario identificado ni acciones del `super_usuario` (no pertenece a la empresa). El `admin` de empresa no tiene acceso.
+- Reutiliza `listar_transacciones` y `_filtros` de `routers/transacciones.py` (la vista del super_usuario sigue igual).
+
+Frontend con la convención de Angular 22 (archivos sin sufijo `.component`/`.service`): `features/transacciones-empresa/transacciones-empresa.{ts,html,css,spec.ts}`,
+`core/services/transacciones-empresa-api.ts` y utilidades compartidas en `features/transacciones/etiquetas.ts`.
+Pruebas: `backend/tests/test_transacciones_empresa.py`.
+
+> Migraciones: `main` ya usa hasta `0010_merge_heads`; la próxima migración que se necesite debe ser `0011` o superior.

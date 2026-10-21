@@ -24,6 +24,8 @@ def test_todas_las_acciones_cubren_todos_los_roles():
 
 # Rutas de administración de la plataforma: exclusivas del super_usuario (ver test_multiempresa.py).
 RUTAS_SOLO_SUPER = {"empresas", "transacciones"}
+# Rutas exclusivas del gerente (su bitácora de empresa): tampoco las tiene el admin.
+RUTAS_SOLO_GERENTE = {"transacciones_empresa"}
 
 
 def test_super_usuario_solo_tiene_empresas_usuarios_y_transacciones():
@@ -32,7 +34,7 @@ def test_super_usuario_solo_tiene_empresas_usuarios_y_transacciones():
 
 def test_admin_tiene_acceso_total_a_rutas():
     for ruta in RUTAS:
-        esperado = ruta not in RUTAS_SOLO_SUPER
+        esperado = ruta not in RUTAS_SOLO_SUPER | RUTAS_SOLO_GERENTE
         assert puede_acceder_ruta("admin", ruta) is esperado
 
 
