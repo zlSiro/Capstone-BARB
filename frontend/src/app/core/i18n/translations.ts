@@ -97,7 +97,11 @@ export const translations = {
       childrenLoading: 'Cargando contenido…',
       childrenError: 'No se pudo cargar el contenido del nodo.',
       childrenEmpty: 'Este nodo no contiene equipos.',
-      detailBack: 'Volver'
+      detailBack: 'Volver',
+      // --- panel de OTs: filtro, orden y grupos colapsables ---
+      filterAll: 'Todos',
+      sortAz: 'A-Z',
+      sortRecent: 'Recientes'
     },
     financial: {
       dashboardTitle: 'Dashboard KPI',
@@ -354,7 +358,10 @@ export const translations = {
       childrenLoading: 'Loading contents…',
       childrenError: 'The node contents could not be loaded.',
       childrenEmpty: 'This node contains no equipment.',
-      detailBack: 'Back'
+      detailBack: 'Back',
+      filterAll: 'All',
+      sortAz: 'A-Z',
+      sortRecent: 'Recent'
     },
     financial: {
       dashboardTitle: 'KPI Dashboard',
@@ -503,6 +510,7 @@ export const translations = {
 };
 
 export type TranslationTree = typeof translations['es'];
+
 
 
 

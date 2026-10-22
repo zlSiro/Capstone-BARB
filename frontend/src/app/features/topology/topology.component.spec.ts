@@ -191,16 +191,30 @@ describe('TopologyComponent', () => {
     }
   });
 
-  it('dibuja una arista por conexión, entre los centros de sus nodos', () => {
+  it('dibuja una arista por conexión, recortada en el borde de cada nodo', () => {
     const { el } = setup(TOPOLOGIA);
     const lineas = Array.from(canvas(el)!.querySelectorAll('line'));
     expect(lineas).toHaveLength(2);
-    // p_1 centro = (500+65, 100+42.5) ; d_1 centro = (200+65, 300+42.5)
-    const jerarquia = lineas.find((l) => l.getAttribute('data-relacion') === 'jerarquia');
-    expect(jerarquia?.getAttribute('x1')).toBe('565');
-    expect(jerarquia?.getAttribute('y1')).toBe('142.5');
-    expect(jerarquia?.getAttribute('x2')).toBe('265');
-    expect(jerarquia?.getAttribute('y2')).toBe('342.5');
+    // p_1 centro = (565, 142.5) ; d_1 centro = (265, 342.5)
+    const jerarquia = lineas.find((l) => l.getAttribute('data-relacion') === 'jerarquia')!;
+    const [x1, y1, x2, y2] = ['x1', 'y1', 'x2', 'y2'].map((a) => Number(jerarquia.getAttribute(a)));
+
+    // La arista ya NO arranca ni termina en el centro: si lo hiciera, la punta de flecha
+    // quedaría tapada por la tarjeta, que se dibuja después.
+    expect([x1, y1]).not.toEqual([565, 142.5]);
+    expect([x2, y2]).not.toEqual([265, 342.5]);
+
+    // Cada extremo cae sobre el borde del rectángulo, con 4 de aire hacia afuera.
+    const sobreBorde = (x: number, y: number, cx: number, cy: number) => {
+      const dx = Math.abs(x - cx);
+      const dy = Math.abs(y - cy);
+      // Al menos uno de los dos ejes alcanza su semi-lado; ninguno se pasa del aire.
+      expect(dx).toBeLessThanOrEqual(65 + 4 + 0.001);
+      expect(dy).toBeLessThanOrEqual(42.5 + 4 + 0.001);
+      expect(Math.max(dx / 65, dy / 42.5)).toBeGreaterThanOrEqual(1);
+    };
+    sobreBorde(x1, y1, 565, 142.5);
+    sobreBorde(x2, y2, 265, 342.5);
   });
 
   it('descarta aristas que apunten a un nodo ausente, sin romper el render', () => {
@@ -330,13 +344,55 @@ describe('TopologyComponent', () => {
 
   it('acerca la vista reduciendo el ancho del viewBox', () => {
     const { fixture, el } = setup(TOPOLOGIA);
-    const antes = canvas(el)!.getAttribute('viewBox')!;
+    const antes = canvas(el)!.getAttribute('viewBox')!.split(' ').map(Number);
     (el.querySelector('[data-testid="zoom-in"]') as HTMLButtonElement).click();
     fixture.detectChanges();
-    const despues = canvas(el)!.getAttribute('viewBox')!;
-    expect(despues).not.toBe(antes);
-    // 1200 / 1.2 = 1000
-    expect(despues.split(' ')[2]).toBe('1000');
+    const despues = canvas(el)!.getAttribute('viewBox')!.split(' ').map(Number);
+
+    // El ancho se divide por el factor...
+    expect(despues[2]).toBeCloseTo(antes[2] / 1.2, 5);
+    expect(despues[3]).toBeCloseTo(antes[3] / 1.2, 5);
+    // ...y el centro se mantiene, que es lo que hace que el zoom "no se escape".
+    expect(despues[0] + despues[2] / 2).toBeCloseTo(antes[0] + antes[2] / 2, 5);
+    expect(despues[1] + despues[3] / 2).toBeCloseTo(antes[1] + antes[3] / 2, 5);
+  });
+
+  it('el encuadre inicial contiene todos los nodos del grafo', () => {
+    // Antes la cámara arrancaba en una vista fija de 1200x800 y el mapa llegaba a x=2160:
+    // diez de los veintiún nodos quedaban fuera de cuadro al cargar.
+    const { el } = setup(TOPOLOGIA);
+    const [vx, vy, vw, vh] = canvas(el)!.getAttribute('viewBox')!.split(' ').map(Number);
+    const nodos = [...el.querySelectorAll('g[data-nodo-id]')];
+    expect(nodos.length).toBeGreaterThan(1);
+
+    for (const g of nodos) {
+      const m = /translate\(([-\d.]+),([-\d.]+)\)/.exec(g.getAttribute('transform')!)!;
+      const nx = Number(m[1]);
+      const ny = Number(m[2]);
+      expect(nx).toBeGreaterThanOrEqual(vx);
+      expect(ny).toBeGreaterThanOrEqual(vy);
+      expect(nx + 130).toBeLessThanOrEqual(vx + vw);
+      expect(ny + 85).toBeLessThanOrEqual(vy + vh);
+    }
+  });
+
+  it('el encuadre deja aire alrededor del grafo', () => {
+    const { el } = setup(TOPOLOGIA);
+    const [vx, vy, vw, vh] = canvas(el)!.getAttribute('viewBox')!.split(' ').map(Number);
+    const nodos = [...el.querySelectorAll('g[data-nodo-id]')].map((g) => {
+      const m = /translate\(([-\d.]+),([-\d.]+)\)/.exec(g.getAttribute('transform')!)!;
+      return { x: Number(m[1]), y: Number(m[2]) };
+    });
+    const minX = Math.min(...nodos.map((n) => n.x));
+    const minY = Math.min(...nodos.map((n) => n.y));
+    const maxX = Math.max(...nodos.map((n) => n.x + 130));
+    const maxY = Math.max(...nodos.map((n) => n.y + 85));
+
+    // 80 unidades de padding a cada lado (PADDING_VISTA).
+    expect(vx).toBeCloseTo(minX - 80, 5);
+    expect(vy).toBeCloseTo(minY - 80, 5);
+    expect(vx + vw).toBeCloseTo(maxX + 80, 5);
+    expect(vy + vh).toBeCloseTo(maxY + 80, 5);
   });
 
   it('vuelve a la vista inicial con el botón de reset', () => {
@@ -363,11 +419,145 @@ describe('TopologyComponent', () => {
     fixture.detectChanges();
 
     const despues = svg.getAttribute('viewBox')!.split(' ').map(Number);
-    // dx_pantalla=60 sobre 600px de ancho con viewBox.w=1200 -> 120 unidades; x inicial -100
-    expect(despues[0]).toBeCloseTo(-220, 5);
-    expect(despues[1]).toBeCloseTo(-50, 5);
-    expect(despues[2]).toBeCloseTo(1200, 5);
-    expect(despues).not.toEqual(inicial.split(' ').map(Number));
+    const base = inicial.split(' ').map(Number);
+    // dx_pantalla=60 sobre un lienzo de 600px, escalado a las unidades del viewBox.
+    const dxUnidades = (60 * base[2]) / 600;
+    expect(despues[0]).toBeCloseTo(base[0] - dxUnidades, 5);
+    expect(despues[1]).toBeCloseTo(base[1], 5);
+    expect(despues[2]).toBeCloseTo(base[2], 5);
+    expect(despues).not.toEqual(base);
+  });
+
+  // --- Modo oscuro (HU-07) -----------------------------------------------------
+
+  describe('modo oscuro', () => {
+    it('el lienzo sigue el tema en vez de quedarse blanco', () => {
+      const { el } = setup(TOPOLOGIA);
+      const lienzo = canvas(el)!.parentElement!;
+      expect(lienzo.className).toContain('dark:bg-slate-900');
+      expect(lienzo.className).toContain('dark:border-gray-800');
+    });
+
+    it('los nodos no llevan relleno fijo: usan clases con variante dark', () => {
+      // Antes era fill="#ffffff" y fill="#1f2937": en oscuro el mapa quedaba blanco puro.
+      const { el } = setup(TOPOLOGIA);
+      const rect = el.querySelector('g[data-nodo-id] rect')!;
+      expect(rect.getAttribute('fill')).toBeNull();
+      expect(rect.getAttribute('class')).toContain('fill-white');
+      expect(rect.getAttribute('class')).toContain('dark:fill-slate-800');
+    });
+
+    // --- Aristas con dirección (HU-07) ------------------------------------------
+
+    describe('aristas con dirección', () => {
+      it('define dos puntas de flecha, la normal y la del hover', () => {
+        const { el } = setup(TOPOLOGIA);
+        const svg = canvas(el)!;
+        expect(svg.querySelector('marker#flecha-topo')).not.toBeNull();
+        expect(svg.querySelector('marker#flecha-topo-activa')).not.toBeNull();
+      });
+
+      it('las flechas siguen el tema con clases, no con fill fijo', () => {
+        const { el } = setup(TOPOLOGIA);
+        const flecha = canvas(el)!.querySelector('marker#flecha-topo path')!;
+        expect(flecha.getAttribute('fill')).toBeNull();
+        expect(flecha.getAttribute('class')).toContain('dark:fill-gray-600');
+      });
+
+      it('cada arista lleva la clase que le pone la punta y el hover', () => {
+        // El marker-end y el :hover viven en el CSS del componente (styles), no en un
+        // atributo: en jsdom no se resuelve CSS, así que se comprueba la clase.
+        const { el } = setup(TOPOLOGIA);
+        const aristas = [...canvas(el)!.querySelectorAll('line')];
+        expect(aristas.length).toBe(TOPOLOGIA.conexiones.length);
+        for (const a of aristas) expect(a.getAttribute('class')).toContain('arista');
+      });
+    });
+
+    // --- Nombres largos (HU-07) -------------------------------------------------
+
+    describe('nombres que no entran en la tarjeta', () => {
+      const LARGO = 'Planta Central San Bernardo';
+
+      const conNombres = (nombre: string) => ({
+        nodos: [{ ...TOPOLOGIA.nodos[0], nombre_visual: nombre }],
+        conexiones: [],
+      });
+
+      it('un nombre largo se comprime con textLength y lengthAdjust', () => {
+        const { el } = setup(conNombres(LARGO));
+        const texto = el.querySelector('.topo-node-name')!;
+        // 130 de ancho menos 8 de aire por lado.
+        expect(texto.getAttribute('textLength')).toBe('114');
+        expect(texto.getAttribute('lengthAdjust')).toBe('spacingAndGlyphs');
+      });
+
+      it('un nombre corto se dibuja sin comprimir', () => {
+        const { el } = setup(conNombres('HVAC'));
+        const texto = el.querySelector('.topo-node-name')!;
+        expect(texto.getAttribute('textLength')).toBeNull();
+      });
+    });
+
+    // --- Zoom con rueda (HU-07) -------------------------------------------------
+
+    describe('zoom con rueda', () => {
+      it('la rueda hacia arriba acerca y respeta el centro', () => {
+        const { fixture, el } = setup(TOPOLOGIA);
+        const svg = canvas(el)!;
+        const antes = svg.getAttribute('viewBox')!.split(' ').map(Number);
+
+        svg.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, bubbles: true, cancelable: true }));
+        fixture.detectChanges();
+
+        const despues = svg.getAttribute('viewBox')!.split(' ').map(Number);
+        expect(despues[2]).toBeCloseTo(antes[2] / 1.15, 5);
+        expect(despues[3]).toBeCloseTo(antes[3] / 1.15, 5);
+        // El centro no se mueve: es el mismo criterio que los botones de zoom.
+        expect(despues[0] + despues[2] / 2).toBeCloseTo(antes[0] + antes[2] / 2, 5);
+        expect(despues[1] + despues[3] / 2).toBeCloseTo(antes[1] + antes[3] / 2, 5);
+      });
+
+      it('la rueda hacia abajo aleja', () => {
+        const { fixture, el } = setup(TOPOLOGIA);
+        const svg = canvas(el)!;
+        const antes = svg.getAttribute('viewBox')!.split(' ').map(Number);
+
+        svg.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, bubbles: true, cancelable: true }));
+        fixture.detectChanges();
+
+        const despues = svg.getAttribute('viewBox')!.split(' ').map(Number);
+        expect(despues[2]).toBeCloseTo(antes[2] * 1.15, 5);
+      });
+
+      it('la rueda no deja scrollear la página', () => {
+        const { el } = setup(TOPOLOGIA);
+        const svg = canvas(el)!;
+        const evento = new WheelEvent('wheel', { deltaY: -100, bubbles: true, cancelable: true });
+        svg.dispatchEvent(evento);
+        expect(evento.defaultPrevented).toBe(true);
+      });
+    });
+
+    it('las aristas y los textos de cada nodo tienen variante dark', () => {
+      const { el } = setup(TOPOLOGIA);
+      const aristas = el.querySelector('[data-testid="topo-canvas"] g')!;
+      expect(aristas.getAttribute('stroke')).toBeNull();
+      expect(aristas.getAttribute('class')).toContain('dark:stroke-gray-600');
+
+      const nombre = el.querySelector('.topo-node-name')!;
+      expect(nombre.getAttribute('fill')).toBeNull();
+      expect(nombre.getAttribute('class')).toContain('dark:fill-gray-100');
+
+      const tipo = el.querySelector('.topo-node-type')!;
+      expect(tipo.getAttribute('class')).toContain('dark:fill-gray-400');
+    });
+
+    it('la cabecera y los botones de zoom tienen variante dark', () => {
+      const { el } = setup(TOPOLOGIA);
+      expect(el.querySelector('h1')!.className).toContain('dark:text-gray-100');
+      expect(el.querySelector('[data-testid="zoom-in"]')!.className).toContain('dark:bg-gray-800');
+    });
   });
 
   // --- CGBIDA-368: i18n --------------------------------------------------------
@@ -488,6 +678,25 @@ describe('TopologyComponent', () => {
       fixture.detectChanges();
     }
 
+    /**
+     * Despliega los grupos que arrancan plegados.
+     *
+     * «Cerradas» y «Canceladas» vienen cerradas por defecto, así que cualquier aserción
+     * sobre el total de tarjetas tiene que abrirlas primero.
+     */
+    function desplegarPlegados(
+      fixture: ReturnType<typeof TestBed.createComponent>,
+      el: HTMLElement,
+    ): void {
+      for (const nombre of ['groupCerradas', 'groupCanceladas']) {
+        const cabecera = el.querySelector<HTMLElement>(`[data-testid="grupo-${nombre}"]`);
+        if (cabecera?.getAttribute('aria-expanded') === 'false') {
+          cabecera.click();
+          fixture.detectChanges();
+        }
+      }
+    }
+
     it('agrupa los 6 estados en Pendientes, En curso, Cerradas y Canceladas', () => {
       const { fixture, el } = setupConOrdenes([
         ot({ numero_ot: 'OT-P', estado: 'pending' }),
@@ -575,6 +784,8 @@ describe('TopologyComponent', () => {
     it('renderiza 20 OTs repartidas en los 4 grupos sin perder ninguna', () => {
       const { fixture, el } = setupConOrdenes(ORDENES_VOLUMEN);
       abrirMaquina(fixture, el);
+      // Cerradas y Canceladas arrancan plegadas: se abren para contar todas.
+      desplegarPlegados(fixture, el);
 
       // Los 4 encabezados existen, con su conteo.
       expect(el.querySelector('[data-testid="grupo-groupPendientes"]')?.textContent).toContain('(8)');
@@ -582,7 +793,7 @@ describe('TopologyComponent', () => {
       expect(el.querySelector('[data-testid="grupo-groupCerradas"]')?.textContent).toContain('(6)');
       expect(el.querySelector('[data-testid="grupo-groupCanceladas"]')?.textContent).toContain('(1)');
 
-      // Hoy no hay límite: se renderizan TODAS.
+      // Sin límite: se renderizan TODAS.
       expect(el.querySelectorAll('[data-testid="orden-item"]').length).toBe(20);
 
       // Cada grupo tiene exactamente sus tarjetas, sin mezclarse.
@@ -609,6 +820,7 @@ describe('TopologyComponent', () => {
     it('con volumen, todas las OTs tienen su enlace de detalle', () => {
       const { fixture, el } = setupConOrdenes(ORDENES_VOLUMEN);
       abrirMaquina(fixture, el);
+      desplegarPlegados(fixture, el);
 
       // Un enlace por tarjeta: si alguno faltara, habría OTs inaccesibles.
       expect(el.querySelectorAll('[data-testid="orden-ver-detalle"]').length).toBe(20);
@@ -621,6 +833,154 @@ describe('TopologyComponent', () => {
       const panel = el.querySelector('[data-testid="panel-detalle"]') as HTMLElement;
       expect(panel.className).toContain('overflow-y-auto');
       expect(panel.className).toContain('max-h-');
+    });
+
+    // --- Grupos colapsables, filtro y orden -------------------------------------
+
+    describe('grupos colapsables', () => {
+      it('Pendientes y En curso arrancan abiertos; Cerradas y Canceladas, cerrados', () => {
+        const { fixture, el } = setupConOrdenes(ORDENES_VOLUMEN);
+        abrirMaquina(fixture, el);
+
+        const abierto = (nombre: string) =>
+          el.querySelector(`[data-testid="grupo-${nombre}"]`)?.getAttribute('aria-expanded');
+
+        expect(abierto('groupPendientes')).toBe('true');
+        expect(abierto('groupEnCurso')).toBe('true');
+        expect(abierto('groupCerradas')).toBe('false');
+        expect(abierto('groupCanceladas')).toBe('false');
+      });
+
+      it('por defecto solo se pintan las OTs de los grupos abiertos', () => {
+        // 8 pendientes + 5 en curso; las 6 cerradas y la cancelada quedan plegadas.
+        const { fixture, el } = setupConOrdenes(ORDENES_VOLUMEN);
+        abrirMaquina(fixture, el);
+        expect(el.querySelectorAll('[data-testid="orden-item"]').length).toBe(13);
+      });
+
+      it('al hacer clic en la cabecera se despliega y se vuelve a plegar', () => {
+        const { fixture, el } = setupConOrdenes(ORDENES_VOLUMEN);
+        abrirMaquina(fixture, el);
+
+        const cabecera = el.querySelector<HTMLElement>('[data-testid="grupo-groupCerradas"]')!;
+        cabecera.click();
+        fixture.detectChanges();
+        expect(cabecera.getAttribute('aria-expanded')).toBe('true');
+        expect(el.querySelectorAll('[data-testid="orden-item"]').length).toBe(19);
+
+        cabecera.click();
+        fixture.detectChanges();
+        expect(cabecera.getAttribute('aria-expanded')).toBe('false');
+        expect(el.querySelectorAll('[data-testid="orden-item"]').length).toBe(13);
+      });
+
+      it('la cabecera se anuncia como botón y lleva cursor pointer', () => {
+        const { fixture, el } = setupConOrdenes(ORDENES_VOLUMEN);
+        abrirMaquina(fixture, el);
+        const cabecera = el.querySelector<HTMLElement>('[data-testid="grupo-groupPendientes"]')!;
+        expect(cabecera.tagName).toBe('BUTTON');
+        expect(cabecera.className).toContain('cursor-pointer');
+        // El conteo sigue visible aunque el grupo esté plegado.
+        expect(cabecera.textContent).toContain('(8)');
+      });
+    });
+
+    describe('filtro por estado', () => {
+      it('el selector ofrece Todos más los grupos presentes, con sus conteos', () => {
+        const { fixture, el } = setupConOrdenes(ORDENES_VOLUMEN);
+        abrirMaquina(fixture, el);
+
+        const select = el.querySelector<HTMLSelectElement>('[data-testid="filtro-estado"]')!;
+        const opciones = Array.from(select.options).map((o) => o.textContent?.trim());
+        expect(opciones[0]).toContain('Todos (20)');
+        expect(opciones).toHaveLength(5);
+        expect(select.value).toBe('todos');
+      });
+
+      it('filtrar deja solo el grupo elegido', () => {
+        const { fixture, el } = setupConOrdenes(ORDENES_VOLUMEN);
+        abrirMaquina(fixture, el);
+
+        const select = el.querySelector<HTMLSelectElement>('[data-testid="filtro-estado"]')!;
+        select.value = 'groupCerradas';
+        select.dispatchEvent(new Event('change'));
+        fixture.detectChanges();
+
+        // Solo queda la cabecera de Cerradas (aunque esté plegada, no se pinta su lista).
+        expect(el.querySelector('[data-testid="grupo-groupPendientes"]')).toBeNull();
+        expect(el.querySelector('[data-testid="grupo-groupEnCurso"]')).toBeNull();
+        expect(el.querySelector('[data-testid="grupo-groupCerradas"]')).not.toBeNull();
+        expect(el.querySelectorAll('[data-testid="orden-item"]').length).toBe(0);
+
+        // Y al desplegarla aparecen sus 6.
+        el.querySelector<HTMLElement>('[data-testid="grupo-groupCerradas"]')!.click();
+        fixture.detectChanges();
+        expect(el.querySelectorAll('[data-testid="orden-item"]').length).toBe(6);
+      });
+
+      it('volver a Todos restaura los cuatro grupos', () => {
+        const { fixture, el } = setupConOrdenes(ORDENES_VOLUMEN);
+        abrirMaquina(fixture, el);
+        const select = el.querySelector<HTMLSelectElement>('[data-testid="filtro-estado"]')!;
+
+        select.value = 'groupEnCurso';
+        select.dispatchEvent(new Event('change'));
+        fixture.detectChanges();
+        expect(el.querySelectorAll('[data-testid^="grupo-group"]').length).toBe(1);
+
+        select.value = 'todos';
+        select.dispatchEvent(new Event('change'));
+        fixture.detectChanges();
+        expect(el.querySelectorAll('[data-testid^="grupo-group"]').length).toBe(4);
+      });
+    });
+
+    describe('orden dentro de cada grupo', () => {
+      const DESORDENADAS = [
+        ot({ numero_ot: 'OT-B', estado: 'pending', created_at: '2026-03-01T10:00:00Z' }),
+        ot({ numero_ot: 'OT-C', estado: 'pending', created_at: '2026-05-01T10:00:00Z' }),
+        ot({ numero_ot: 'OT-A', estado: 'pending', created_at: '2026-01-01T10:00:00Z' }),
+      ];
+
+      const numeros = (el: HTMLElement) =>
+        Array.from(el.querySelectorAll('[data-testid="orden-numero"]')).map((n) =>
+          n.textContent?.trim(),
+        );
+
+      it('por defecto ordena por fecha, la más reciente primero', () => {
+        const { fixture, el } = setupConOrdenes(DESORDENADAS);
+        abrirMaquina(fixture, el);
+        expect(numeros(el)).toEqual(['OT-C', 'OT-B', 'OT-A']);
+      });
+
+      it('el botón alterna a A-Z por número de OT', () => {
+        const { fixture, el } = setupConOrdenes(DESORDENADAS);
+        abrirMaquina(fixture, el);
+
+        const boton = el.querySelector<HTMLElement>('[data-testid="orden-ot"]')!;
+        boton.click();
+        fixture.detectChanges();
+
+        expect(numeros(el)).toEqual(['OT-A', 'OT-B', 'OT-C']);
+        expect(boton.textContent).toContain('A-Z');
+      });
+
+      it('el orden NO cambia el orden de los grupos', () => {
+        const { fixture, el } = setupConOrdenes(ORDENES_VOLUMEN);
+        abrirMaquina(fixture, el);
+        el.querySelector<HTMLElement>('[data-testid="orden-ot"]')!.click();
+        fixture.detectChanges();
+
+        const grupos = Array.from(el.querySelectorAll('[data-testid^="grupo-group"]')).map((g) =>
+          g.getAttribute('data-testid'),
+        );
+        expect(grupos).toEqual([
+          'grupo-groupPendientes',
+          'grupo-groupEnCurso',
+          'grupo-groupCerradas',
+          'grupo-groupCanceladas',
+        ]);
+      });
     });
 
     // --- Encabezados de grupo fijos (CGBIDA-386) --------------------------------
@@ -673,6 +1033,7 @@ describe('TopologyComponent', () => {
     it('cada tarjeta de OT lleva al menos una clase dark:text-*', () => {
       const { fixture, el } = setupConOrdenes(ORDENES_VOLUMEN);
       abrirMaquina(fixture, el);
+      desplegarPlegados(fixture, el);
 
       const tarjetas = Array.from(el.querySelectorAll<HTMLElement>('[data-testid="orden-item"]'));
       expect(tarjetas.length).toBe(20);
