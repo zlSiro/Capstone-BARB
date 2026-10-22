@@ -54,6 +54,14 @@ export interface MachineData {
   mttr: number;
   /** Porcentaje de sus OTs completadas dentro del SLA. */
   slaCompliance: number;
+  /**
+   * Costo real acumulado de la maquina en el periodo, sin las OTs canceladas.
+   *
+   * Es una dimension distinta de `ahorroGenerado`: el ahorro valoriza la inactividad
+   * evitada y el costo es lo que efectivamente se gasto en repuestos y servicios. Por eso
+   * el ranking por costo no coincide con el ranking por volumen ni con el de ahorro.
+   */
+  costo_total: number;
 }
 
 /**
@@ -147,6 +155,13 @@ export interface FinancialStats {
   impacto_anual: ImpactoAnual;
   trend14Days: TrendData[];
   machines: MachineData[];
+  /**
+   * El top 5 por costo real, que NO coincide con `machines` (ordenado por volumen).
+   *
+   * Va como lista aparte para que el ranking pueda ofrecer la métrica «Costo» sin volver a
+   * pedir datos. Opcional: si el backend no la manda, el ranking cae a `machines`.
+   */
+  machines_por_costo?: MachineData[];
   /** Distribucion por tipo de intervencion, para la dona. Ordenada por volumen. */
   por_tipo: PorTipoData[];
   /** Ordenes estancadas, para el banner de alerta. */

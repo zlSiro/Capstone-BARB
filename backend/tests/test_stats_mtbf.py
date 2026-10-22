@@ -253,8 +253,9 @@ async def test_las_demas_consultas_si_ligan_days(client, monkeypatch):
 async def test_con_rango_corto_ni_se_ejecuta_la_consulta_de_mtbf(client, monkeypatch):
     """`mtbf_visible=False` no es solo cosmético: ahorra la consulta.
 
-    ACTUALIZADO A PROPÓSITO en CGBIDA-395 y 396: el conteo pasó de 3 a 5 consultas porque se
-    agregó la distribución por tipo de intervención (`por_tipo`), que se ejecuta siempre.
+    ACTUALIZADO A PROPÓSITO en CGBIDA-395, 396 y 435: el conteo pasó de 3 a 6 consultas. Se
+    agregó la distribución por tipo de intervención (por_tipo) y la segunda lista de
+    máquinas ordenada por costo (machines_por_costo), que se ejecutan siempre.
     Lo que este test protege no es el número exacto, sino que el MTBF NO se consulte
     cuando el rango no lo justifica.
     """
@@ -262,7 +263,7 @@ async def test_con_rango_corto_ni_se_ejecuta_la_consulta_de_mtbf(client, monkeyp
     await _pedir(client, "?days=7")
     ejecutadas = p.conn.cursor_obj.ejecutadas
     assert not any(es_mtbf(s) for s in ejecutadas), "se ejecutó la consulta de MTBF"
-    assert len(ejecutadas) == 5, f"esperaba 5 consultas, hubo {len(ejecutadas)}"
+    assert len(ejecutadas) == 6, f"esperaba 6 consultas, hubo {len(ejecutadas)}"
 
 
 async def test_dias_365_muestra_el_mtbf(client, monkeypatch):
@@ -345,11 +346,18 @@ async def test_mtbf_usa_solo_correctivas_contra_la_bd(client):
 
     # LIMITACIÓN MEDIDA (CGBIDA-409): comparar solo el MTBF redondeado NO detecta que el
     # `SUM` no esté acotado a correctivas. La diferencia entre las dos interpretaciones es
-    # de una décima de hora y se pierde en el redondeo. Se fija aquí como documentación
-    # ejecutable; la detección real la hace `test_la_query_de_mtbf_acota_el_sum_a_correctivas`.
-    assert abs(correcto - incorrecto) <= 0.2, (
-        f"las dos interpretaciones difieren en {abs(correcto - incorrecto):.1f} h: si la "
-        "diferencia creciera, este test SÍ podría detectar el SUM sin acotar por valor"
+    # una fracción pequeña del MTBF y se pierde en el redondeo. Se fija aquí como
+    # documentación ejecutable; la detección real la hace
+    # `test_la_query_de_mtbf_acota_el_sum_a_correctivas`.
+    #
+    # El umbral es RELATIVO y no 0.2 h fijas: al densificar el seed (CGBIDA-439) la
+    # diferencia pasó de ~0.1 a exactamente 0.2 h, y un límite absoluto se rompe por
+    # cualquier cambio de datos sin que la limitación descrita deje de ser cierta.
+    diferencia = abs(correcto - incorrecto)
+    assert diferencia <= 0.05 * correcto, (
+        f"las dos interpretaciones difieren en {diferencia:.2f} h, o sea "
+        f"{diferencia / correcto:.1%} del MTBF: si creciera, este test SÍ podría detectar "
+        "el SUM sin acotar por valor"
     )
 
     # El proxy importa: si las cifras coincidieran, usar 'completadas' daría lo mismo.
@@ -389,3 +397,4 @@ def test_la_query_de_mtbf_acota_el_sum_a_correctivas():
     )
     # Y el WHERE debe excluir las canceladas: si el trabajo no se hizo, no es una falla.
     assert "AND ot.estado != 'cancelled'" in consulta, consulta
+

@@ -20,7 +20,37 @@ import { filterGroup } from '../work-orders/utils/work-order-labels';
 const NODE_W = 130;
 const NODE_H = 85;
 
-/** Vista inicial del lienzo (CGBIDA-362). El zoom de CGBIDA-363 la modifica. */
+/**
+ * Ancho útil para el nombre dentro de la tarjeta: el ancho del nodo menos 8 unidades de
+ * aire a cada lado. Es el límite que `textLength` impone a los nombres largos.
+ */
+const ANCHO_NOMBRE_NODO = NODE_W - 16;
+
+/** Factor de zoom por paso de rueda. 1,15 se siente continuo sin saltar de golpe. */
+const FACTOR_RUEDA = 1.15;
+
+/**
+ * Aire entre el borde de la tarjeta y la punta de flecha.
+ *
+ * Sin él la flecha se apoya en el borde y se confunde con el trazo del rectángulo.
+ */
+const AIRE_FLECHA = 4;
+
+/**
+ * Aire alrededor del grafo, en unidades del viewBox.
+ *
+ * Sin este margen el nodo de la izquierda queda pegado al borde del lienzo y el de la
+ * derecha también, así que el mapa se ve recortado aunque esté completo.
+ */
+const PADDING_VISTA = 80;
+
+/**
+ * Vista de respaldo cuando todavía no hay nodos (CGBIDA-362).
+ *
+ * Con datos, la cámara arranca en el rectángulo que contiene el grafo (`cajaContenido`).
+ * La vista fija anterior era 1200x800 en (-100,-50), y el mapa real llega a x=2160: diez
+ * de los veintiún nodos quedaban fuera de cuadro al cargar.
+ */
 const INITIAL_VIEW = { x: -100, y: -50, w: 1200, h: 800 };
 
 /**
@@ -64,6 +94,9 @@ const CLAVE_ESTADO: Record<TopologyNodeState, string> = {
 // rojo (decisión de CGBIDA-378) para que el supervisor lo distinga sin cambiar de grupo.
 
 type GrupoOt = 'groupPendientes' | 'groupEnCurso' | 'groupCerradas' | 'groupCanceladas';
+
+/** Orden dentro de cada grupo: por número de OT (A-Z) o por fecha de creación. */
+type OrdenOt = 'az' | 'recientes';
 
 /** Orden de presentación de los grupos; el usuario ve primero lo que exige acción. */
 const ORDEN_GRUPOS: GrupoOt[] = ['groupPendientes', 'groupEnCurso', 'groupCerradas', 'groupCanceladas'];
@@ -116,33 +149,47 @@ interface GrupoEnPanel {
   selector: 'app-topology',
   standalone: true,
   imports: [OtDetailSheetComponent],
+  // El hover de las aristas no se puede expresar con atributos: cambiar el grosor, el
+  // color y la punta de flecha a la vez pide CSS.
+  styles: `
+    .arista {
+      marker-end: url(#flecha-topo);
+      transition: stroke 120ms ease, stroke-width 120ms ease;
+    }
+
+    .arista:hover {
+      stroke-width: 3;
+      stroke: var(--color-blue-600);
+      marker-end: url(#flecha-topo-activa);
+    }
+  `,
   template: `
     <div class="flex flex-col gap-4">
       <div class="flex items-center justify-between">
         <div>
-          <h1 class="text-2xl font-bold text-gray-800">{{ t().title }}</h1>
-          <p class="text-sm text-gray-500">{{ t().subtitle }}</p>
+          <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100">{{ t().title }}</h1>
+          <p class="text-sm text-gray-500 dark:text-gray-400">{{ t().subtitle }}</p>
         </div>
         <div class="flex gap-2">
           <button
             type="button"
             data-testid="zoom-in"
             (click)="zoom(1.2)"
-            class="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
+            class="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
             [attr.aria-label]="t().zoomIn"
           >+</button>
           <button
             type="button"
             data-testid="zoom-out"
             (click)="zoom(0.8)"
-            class="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
+            class="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
             [attr.aria-label]="t().zoomOut"
           >−</button>
           <button
             type="button"
             data-testid="zoom-reset"
             (click)="resetView()"
-            class="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
+            class="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
           >{{ t().resetView }}</button>
         </div>
       </div>
@@ -160,20 +207,20 @@ interface GrupoEnPanel {
         }
       </div>
 
-      <div class="relative bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
+      <div class="relative bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden dark:border-gray-800 dark:bg-slate-900">
         @switch (estado()) {
           @case ('cargando') {
-            <div class="p-10 text-center text-gray-500" data-testid="estado-cargando">
+            <div class="p-10 text-center text-gray-500 dark:text-gray-400" data-testid="estado-cargando">
               {{ t().loading }}
             </div>
           }
           @case ('error') {
-            <div class="p-10 text-center text-red-600" data-testid="estado-error" role="alert">
+            <div class="p-10 text-center text-red-600 dark:text-red-400" data-testid="estado-error" role="alert">
               {{ t().loadError }}
             </div>
           }
           @case ('vacio') {
-            <div class="p-10 text-center text-gray-500" data-testid="estado-vacio">
+            <div class="p-10 text-center text-gray-500 dark:text-gray-400" data-testid="estado-vacio">
               {{ t().empty }}
             </div>
           }
@@ -190,11 +237,44 @@ interface GrupoEnPanel {
               (mousemove)="onMouseMove($event)"
               (mouseup)="onMouseUp()"
               (mouseleave)="onMouseUp()"
+              (wheel)="onWheel($event)"
             >
+              <!--
+                Dos puntas de flecha: la normal y la del hover. El color va en clases para
+                que siga al tema; si se cambiara sólo el trazo, la flecha quedaría gris.
+              -->
+              <defs>
+                <marker
+                  id="flecha-topo"
+                  viewBox="0 0 8 8"
+                  refX="7"
+                  refY="4"
+                  markerWidth="9"
+                  markerHeight="9"
+                  markerUnits="userSpaceOnUse"
+                  orient="auto"
+                >
+                  <path d="M0,0 L8,4 L0,8 z" class="fill-gray-300 dark:fill-gray-600" />
+                </marker>
+                <marker
+                  id="flecha-topo-activa"
+                  viewBox="0 0 8 8"
+                  refX="7"
+                  refY="4"
+                  markerWidth="11"
+                  markerHeight="11"
+                  markerUnits="userSpaceOnUse"
+                  orient="auto"
+                >
+                  <path d="M0,0 L8,4 L0,8 z" class="fill-blue-600 dark:fill-blue-400" />
+                </marker>
+              </defs>
+
               <!-- Conexiones -->
-              <g stroke="#cbd5e1" stroke-width="2" fill="none">
+              <g class="stroke-gray-300 dark:stroke-gray-600" stroke-width="2" fill="none">
                 @for (e of aristas(); track e.conexion_id) {
                   <line
+                    class="arista"
                     [attr.x1]="e.x1"
                     [attr.y1]="e.y1"
                     [attr.x2]="e.x2"
@@ -220,7 +300,7 @@ interface GrupoEnPanel {
                     [attr.width]="nodeW"
                     [attr.height]="nodeH"
                     rx="12"
-                    fill="#ffffff"
+                    class="fill-white dark:fill-slate-800"
                     [attr.stroke]="colorDe(n.estado_actual)"
                     stroke-width="2"
                   />
@@ -231,16 +311,16 @@ interface GrupoEnPanel {
                     text-anchor="middle"
                     font-size="11"
                     font-weight="600"
-                    fill="#1f2937"
-                    class="topo-node-name"
+                    class="topo-node-name fill-gray-800 dark:fill-gray-100"
+                    [attr.textLength]="anchoNombre(n.nombre_visual)"
+                    lengthAdjust="spacingAndGlyphs"
                   >{{ n.nombre_visual }}</text>
                   <text
                     x="65"
                     y="65"
                     text-anchor="middle"
                     font-size="10"
-                    fill="#6b7280"
-                    class="topo-node-type"
+                    class="topo-node-type fill-gray-500 dark:fill-gray-400"
                   >{{ n.tipo }}</text>
                   <circle
                     [attr.cx]="nodeW - 14"
@@ -256,7 +336,7 @@ interface GrupoEnPanel {
             @if (seleccionado(); as n) {
               <div
                 data-testid="panel-detalle"
-                class="absolute top-3 right-3 w-72 max-h-[85%] overflow-y-auto rounded-lg border border-gray-200 bg-white p-4 shadow-lg dark:border-gray-700 dark:bg-gray-900"
+                class="absolute top-3 right-3 w-72 max-h-[90%] overflow-y-auto rounded-lg border border-gray-200 bg-white p-4 shadow-lg dark:border-gray-700 dark:bg-gray-900"
               >
                 <div class="flex items-start justify-between gap-2">
                   <div class="min-w-0">
@@ -287,7 +367,7 @@ interface GrupoEnPanel {
 
                 <!-- CGBIDA-383: órdenes de trabajo, solo en nodos Máquina -->
                 @if (n.tipo === 'Máquina') {
-                  <div class="mt-4 border-t border-gray-100 pt-3 dark:border-gray-700">
+                  <div class="mt-3 border-t border-gray-100 pt-2 dark:border-gray-700">
                     <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                       {{ t().ordersTitle }}
                     </p>
@@ -305,44 +385,97 @@ interface GrupoEnPanel {
                       }
                       @default {
                         @if (gruposDeOrdenes().length) {
-                          @for (grupo of gruposDeOrdenes(); track grupo.nombre) {
-                            <p
-                              class="sticky top-0 z-10 -mx-1 mt-3 bg-white px-1 text-xs font-medium text-gray-700 dark:bg-gray-900 dark:text-gray-200"
-                              [attr.data-testid]="'grupo-' + grupo.nombre"
-                            >{{ t()[grupo.nombre] }} ({{ grupo.ordenes.length }})</p>
-                            <ul class="mt-1 flex flex-col gap-1">
-                              @for (item of grupo.ordenes; track item.orden.numero_ot) {
-                                <li
-                                  class="rounded border border-gray-200 px-2 py-1 dark:border-gray-700"
-                                  data-testid="orden-item"
-                                >
-                                  <div class="flex items-center gap-1">
-                                    <span
-                                      class="truncate text-xs font-medium text-gray-800 dark:text-gray-100"
-                                      data-testid="orden-numero"
-                                    >{{ item.orden.numero_ot }}</span>
-                                    <span
-                                      class="ml-auto shrink-0 rounded px-1 text-[10px]"
-                                      [class]="item.color"
-                                      data-testid="orden-estado"
-                                    >{{ item.etiqueta }}</span>
-                                  </div>
-                                  <!-- Badge rojo de vencida (CGBIDA-378) -->
-                                  @if (item.vencida) {
-                                    <span
-                                      class="mt-1 inline-block rounded bg-red-600 px-1 text-[10px] font-semibold text-white"
-                                      data-testid="orden-vencida"
-                                    >{{ t().overdueBadge }}</span>
-                                  }
-                                  <button
-                                    type="button"
-                                    data-testid="orden-ver-detalle"
-                                    (click)="abrirDetalleOt(item.orden)"
-                                    class="mt-1 block text-[11px] text-blue-700 underline hover:text-blue-900 dark:text-blue-200 dark:hover:text-white"
-                                  >{{ t().viewOrderDetail }}</button>
-                                </li>
+                          <!--
+                            Fila de controles. 40 px de alto y una sola línea: el panel mide
+                            288 px (256 internos) y el listado ya scrollea, así que el costo
+                            vertical es despreciable y el horizontal entra con holgura.
+                          -->
+                          <div class="mt-1.5 flex items-center gap-1.5" data-testid="ordenes-controles">
+                            <select
+                              class="min-w-0 flex-1 rounded border border-gray-300 bg-white px-1.5 py-1 text-xs
+                                     text-gray-800 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                              [value]="filtroEstado()"
+                              (change)="cambiarFiltro($any($event.target).value)"
+                              data-testid="filtro-estado"
+                            >
+                              <option value="todos">{{ t().filterAll }} ({{ totalOrdenes() }})</option>
+                              @for (opcion of gruposDeOrdenes(); track opcion.nombre) {
+                                <option [value]="opcion.nombre">
+                                  {{ t()[opcion.nombre] }} ({{ opcion.ordenes.length }})
+                                </option>
                               }
-                            </ul>
+                            </select>
+                            <button
+                              type="button"
+                              (click)="alternarOrden()"
+                              class="shrink-0 rounded border border-gray-300 bg-white px-1.5 py-1 text-xs
+                                     text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800
+                                     dark:text-gray-100 dark:hover:bg-gray-700"
+                              [attr.aria-label]="t().sortAz + ' / ' + t().sortRecent"
+                              [attr.title]="etiquetaOrden()"
+                              data-testid="orden-ot"
+                            >
+                              <span aria-hidden="true">⇅</span> {{ etiquetaOrden() }}
+                            </button>
+                          </div>
+
+                          @for (grupo of gruposVisibles(); track grupo.nombre) {
+                            <!--
+                              La cabecera es un botón: pliega el grupo. El chevron rota 90°
+                              cuando está abierto y aria-expanded lo anuncia.
+                            -->
+                            <button
+                              type="button"
+                              class="sticky top-0 z-10 -mx-1 mt-1 flex w-full cursor-pointer items-center gap-1
+                                     bg-white px-1 py-0.5 text-left text-xs font-medium text-gray-700
+                                     hover:text-gray-900 dark:bg-gray-900 dark:text-gray-200 dark:hover:text-white"
+                              [attr.data-testid]="'grupo-' + grupo.nombre"
+                              [attr.aria-expanded]="!estaPlegado(grupo.nombre)"
+                              (click)="alternarGrupo(grupo.nombre)"
+                            >
+                              <span
+                                class="inline-block w-3 shrink-0 transition-transform"
+                                [class.rotate-90]="!estaPlegado(grupo.nombre)"
+                                aria-hidden="true"
+                              >▸</span>
+                              {{ t()[grupo.nombre] }} ({{ grupo.ordenes.length }})
+                            </button>
+
+                            @if (!estaPlegado(grupo.nombre)) {
+                              <ul class="mt-0.5 flex flex-col gap-1" data-testid="grupo-lista">
+                                @for (item of grupo.ordenes; track item.orden.numero_ot) {
+                                  <li
+                                    class="rounded border border-gray-200 px-2 py-1 dark:border-gray-700"
+                                    data-testid="orden-item"
+                                  >
+                                    <div class="flex items-center gap-1">
+                                      <span
+                                        class="truncate text-xs font-medium text-gray-800 dark:text-gray-100"
+                                        data-testid="orden-numero"
+                                      >{{ item.orden.numero_ot }}</span>
+                                      <span
+                                        class="ml-auto shrink-0 rounded px-1 text-[10px]"
+                                        [class]="item.color"
+                                        data-testid="orden-estado"
+                                      >{{ item.etiqueta }}</span>
+                                    </div>
+                                    <!-- Badge rojo de vencida (CGBIDA-378) -->
+                                    @if (item.vencida) {
+                                      <span
+                                        class="mt-1 inline-block rounded bg-red-600 px-1 text-[10px] font-semibold text-white"
+                                        data-testid="orden-vencida"
+                                      >{{ t().overdueBadge }}</span>
+                                    }
+                                    <button
+                                      type="button"
+                                      data-testid="orden-ver-detalle"
+                                      (click)="abrirDetalleOt(item.orden)"
+                                      class="mt-1 block text-[11px] text-blue-700 underline hover:text-blue-900 dark:text-blue-200 dark:hover:text-white"
+                                    >{{ t().viewOrderDetail }}</button>
+                                  </li>
+                                }
+                              </ul>
+                            }
                           }
                         } @else {
                           <p class="mt-2 text-sm text-gray-500 dark:text-gray-400" data-testid="ordenes-vacio">
@@ -356,7 +489,7 @@ interface GrupoEnPanel {
 
                 <!-- CGBIDA-384: hijos del nodo, para Planta y Disciplina -->
                 @if (n.tipo !== 'Máquina') {
-                  <div class="mt-4 border-t border-gray-100 pt-3 dark:border-gray-700">
+                  <div class="mt-3 border-t border-gray-100 pt-2 dark:border-gray-700">
                     <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                       {{ t().childrenTitle }}
                     </p>
@@ -474,18 +607,76 @@ export class TopologyComponent {
   });
 
   /** Aristas resueltas: se descartan las que apunten a un nodo ausente. */
+  /**
+   * Punto donde la recta centro→centro corta el borde de la tarjeta.
+   *
+   * Sin este recorte la arista termina en el centro del nodo destino y la punta de flecha
+   * queda TAPADA por la tarjeta, que se dibuja después. El `AIRE_FLECHA` deja la punta
+   * separada del borde para que se lea completa.
+   */
+  private bordeNodo(
+    desde: { x: number; y: number },
+    hasta: { x: number; y: number },
+  ): { x: number; y: number } {
+    const dx = hasta.x - desde.x;
+    const dy = hasta.y - desde.y;
+    const largo = Math.hypot(dx, dy);
+    if (!largo) return { x: desde.x, y: desde.y };
+
+    const ux = dx / largo;
+    const uy = dy / largo;
+    // Distancia del centro al borde del rectángulo en la dirección de la recta.
+    const t = Math.min(
+      Math.abs((NODE_W / 2) / (ux || Number.EPSILON)),
+      Math.abs((NODE_H / 2) / (uy || Number.EPSILON)),
+    );
+
+    return { x: desde.x + ux * (t + AIRE_FLECHA), y: desde.y + uy * (t + AIRE_FLECHA) };
+  }
+
+  /**
+   * Aristas resueltas: se descartan las que apunten a un nodo ausente y se recortan al
+   * borde de la tarjeta para que la flecha quede a la vista.
+   */
   protected readonly aristas = computed(() => {
     const centros = this.centros();
     return this.conexiones()
       .map((c) => {
         const o = centros.get(c.origen_nodo_id);
         const d = centros.get(c.destino_nodo_id);
-        return o && d ? { ...c, x1: o.x, y1: o.y, x2: d.x, y2: d.y } : null;
+        if (!o || !d) return null;
+        const inicio = this.bordeNodo(o, d);
+        const fin = this.bordeNodo(d, o);
+        return { ...c, x1: inicio.x, y1: inicio.y, x2: fin.x, y2: fin.y };
       })
       .filter((e): e is NonNullable<typeof e> => e !== null);
   });
 
   // --- CGBIDA-363: cámara del lienzo -----------------------------------------
+
+  /**
+   * Rectángulo que contiene todos los nodos, con padding.
+   *
+   * Es la vista inicial y el destino del botón de reset. Se calcula a partir de las
+   * posiciones que manda el backend, no de una constante: el mapa crece y se mueve, y una
+   * vista fija deja nodos fuera de cuadro sin que nadie se entere.
+   */
+  protected readonly cajaContenido = computed(() => {
+    const nodos = this.nodos();
+    if (nodos.length === 0) return null;
+
+    const minX = Math.min(...nodos.map((n) => n.pos_x));
+    const minY = Math.min(...nodos.map((n) => n.pos_y));
+    const maxX = Math.max(...nodos.map((n) => n.pos_x + NODE_W));
+    const maxY = Math.max(...nodos.map((n) => n.pos_y + NODE_H));
+
+    return {
+      x: minX - PADDING_VISTA,
+      y: minY - PADDING_VISTA,
+      w: maxX - minX + 2 * PADDING_VISTA,
+      h: maxY - minY + 2 * PADDING_VISTA,
+    };
+  });
 
   protected readonly viewBox = signal({ ...INITIAL_VIEW });
   protected readonly arrastrando = signal(false);
@@ -505,8 +696,37 @@ export class TopologyComponent {
     });
   }
 
+  /**
+   * Zoom con la rueda (HU-07).
+   *
+   * Reutiliza `zoom()`, así que respeta el centro actual igual que los botones. El
+   * `preventDefault` es imprescindible: sin él la rueda scrollea la página entera mientras
+   * el usuario intenta acercarse al mapa.
+   */
+  protected onWheel(event: WheelEvent): void {
+    event.preventDefault();
+    // deltaY negativo = rueda hacia arriba = acercar.
+    this.zoom(event.deltaY < 0 ? FACTOR_RUEDA : 1 / FACTOR_RUEDA);
+  }
+
+  /**
+   * `textLength` para el nombre del nodo, o `null` si entra sin comprimir.
+   *
+   * Los nombres largos («Planta Central San Bernardo») se salían del rectángulo y se
+   * montaban sobre el nodo vecino. Se estima el ancho con el tamaño real del texto (11 px,
+   * peso 600) y, si excede el ancho útil, se devuelve ese ancho para que `lengthAdjust`
+   * lo comprima. Con `null` Angular omite el atributo y el nombre se dibuja natural.
+   */
+  protected anchoNombre(nombre: string): number | null {
+    const estimado = nombre.length * 11 * 0.56;
+    return estimado > ANCHO_NOMBRE_NODO ? ANCHO_NOMBRE_NODO : null;
+  }
+
   protected resetView(): void {
-    this.viewBox.set({ ...INITIAL_VIEW });
+    // Vuelve al encuadre que contiene el grafo, no a una constante: si el mapa cambió,
+    // el reset debe mostrar el mapa nuevo completo.
+    const caja = this.cajaContenido();
+    this.viewBox.set(caja ? { ...caja } : { ...INITIAL_VIEW });
   }
 
   protected onMouseDown(event: MouseEvent): void {
@@ -585,6 +805,14 @@ export class TopologyComponent {
   private readonly errorDetalle = signal(false);
 
   constructor() {
+    // Encuadre inicial: cuando llegan los nodos, la cámara se ajusta al grafo completo.
+    // Corre una sola vez porque `cajaContenido` depende únicamente de `nodos`, que se
+    // resuelve con la carga; después el usuario manda con el zoom y el paneo.
+    effect(() => {
+      const caja = this.cajaContenido();
+      if (caja) this.viewBox.set(caja);
+    });
+
     effect((onCleanup) => {
       const nodo = this.seleccionado();
       if (!nodo) {
@@ -654,6 +882,74 @@ export class TopologyComponent {
     }));
   });
 
+  /** Grupo elegido en el selector. `todos` deja el listado completo. */
+  protected readonly filtroEstado = signal<GrupoOt | 'todos'>('todos');
+
+  /** Orden aplicado DENTRO de cada grupo; el orden de los grupos no cambia. */
+  protected readonly ordenOt = signal<OrdenOt>('recientes');
+
+  /**
+   * Grupos plegados.
+   *
+   * «Cerradas» y «Canceladas» arrancan cerradas porque son las que sepultan lo accionable:
+   * con 26 cerradas, las 2 pendientes y la 1 en curso quedaban a cuatro pantallas de scroll
+   * en un panel de 476 px.
+   */
+  private readonly plegados = signal<Record<GrupoOt, boolean>>({
+    groupPendientes: false,
+    groupEnCurso: false,
+    groupCerradas: true,
+    groupCanceladas: true,
+  });
+
+  protected estaPlegado(grupo: GrupoOt): boolean {
+    return this.plegados()[grupo];
+  }
+
+  protected alternarGrupo(grupo: GrupoOt): void {
+    this.plegados.update((p) => ({ ...p, [grupo]: !p[grupo] }));
+  }
+
+  protected cambiarFiltro(valor: string): void {
+    this.filtroEstado.set(valor === 'todos' ? 'todos' : (valor as GrupoOt));
+  }
+
+  protected alternarOrden(): void {
+    this.ordenOt.update((o) => (o === 'az' ? 'recientes' : 'az'));
+  }
+
+  /** Etiqueta del botón de orden: muestra el criterio activo, no el que aplicaría. */
+  protected readonly etiquetaOrden = computed(() =>
+    this.ordenOt() === 'az' ? this.t().sortAz : this.t().sortRecent,
+  );
+
+  /** Total de OTs del equipo, para el contador de la opción «Todos». */
+  protected readonly totalOrdenes = computed(() =>
+    this.gruposDeOrdenes().reduce((n, g) => n + g.ordenes.length, 0),
+  );
+
+  /**
+   * Grupos tal como se pintan: filtrados por estado y con las OTs ordenadas por dentro.
+   *
+   * El filtro NO reordena los grupos ni los fusiona: sólo descarta los que no coinciden.
+   */
+  protected readonly gruposVisibles = computed<GrupoEnPanel[]>(() => {
+    const filtro = this.filtroEstado();
+    const orden = this.ordenOt();
+    const grupos = this.gruposDeOrdenes();
+    const visibles = filtro === 'todos' ? grupos : grupos.filter((g) => g.nombre === filtro);
+
+    const comparar = (a: OtEnPanel, b: OtEnPanel): number => {
+      if (orden === 'az') return a.orden.numero_ot.localeCompare(b.orden.numero_ot);
+      // Más recientes primero. Una fecha ilegible cae al final en vez de romper el orden.
+      const fa = Date.parse(a.orden.created_at) || 0;
+      const fb = Date.parse(b.orden.created_at) || 0;
+      return fb - fa;
+    };
+
+    return visibles.map((g) => ({ ...g, ordenes: [...g.ordenes].sort(comparar) }));
+  });
+
   // --- CGBIDA-385: detalle de una OT -----------------------------------------
 
   /** OT abierta en el sheet de detalle. El sheet se reutiliza, no se reimplementa. */
@@ -679,3 +975,6 @@ export class TopologyComponent {
     return textos[clave] ?? estado;
   }
 }
+
+
+

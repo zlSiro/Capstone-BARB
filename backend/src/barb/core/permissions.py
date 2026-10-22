@@ -55,8 +55,17 @@ RUTAS: dict[str, dict[str, bool | str]] = {
     "empresas":   {"operador": False, "tecnico": False, "supervisor": False, "engineer": False, "gerente": False, "admin": False, "visitante": False, "super_usuario": True},
     "usuarios":   {"operador": False, "tecnico": False, "supervisor": False, "engineer": False, "gerente": True, "admin": True, "visitante": False, "super_usuario": True},
     "documentos": {"operador": "ver", "tecnico": "ver", "supervisor": "ver", "engineer": True, "gerente": True, "admin": True, "visitante": False, "super_usuario": False},
+    # plantas: mantenedor masivo de plantas, disciplinas y máquinas (HU-24). Sólo gerente y
+    # admin de la empresa pueden dar de alta: crear una planta arrastra máquinas, y desde ahí
+    # ya se pueden abrir OTs. El resto de los roles sigue viendo el catálogo por /api/plants,
+    # /api/machines y /api/disciplines, que sólo piden sesión.
+    "plantas":    {"operador": False, "tecnico": False, "supervisor": False, "engineer": False, "gerente": True, "admin": True, "visitante": False, "super_usuario": False},
     # notificaciones: configuración del correo de OTs atrasadas (supervisor hacia arriba).
     "notificaciones": {"operador": False, "tecnico": False, "supervisor": True, "engineer": False, "gerente": True, "admin": True, "visitante": False, "super_usuario": False},
+    # transacciones: bitácora de lo que hacen los usuarios de las empresas (solo lectura), exclusiva del super_usuario.
+    "transacciones": {"operador": False, "tecnico": False, "supervisor": False, "engineer": False, "gerente": False, "admin": False, "visitante": False, "super_usuario": True},
+    # transacciones_empresa: lo mismo, acotado a la empresa del usuario (solo lectura), exclusiva del gerente.
+    "transacciones_empresa": {"operador": False, "tecnico": False, "supervisor": False, "engineer": False, "gerente": True, "admin": False, "visitante": False, "super_usuario": False},
     # history: vista global de la empresa. Primer consumidor backend: los tickets
     # conversacionales (HU-06) — quien la tiene ve TODOS los tickets de su empresa
     # en GET /api/tickets; el resto solo ve los creados desde sus conversaciones.

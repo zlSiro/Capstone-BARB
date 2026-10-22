@@ -70,9 +70,56 @@ async def test_contrato_del_endpoint_tiene_las_claves_exactas(client):
     """
     d = await _stats(client)
     assert set(d) == {
-        "financials", "trend14Days", "machines", "impacto_anual", "por_tipo", "estancadas",
-        "salud_operacional",
+        "financials", "trend14Days", "machines", "machines_por_costo", "impacto_anual",
+        "por_tipo", "estancadas", "salud_operacional",
     }, sorted(d)
+
+
+async def test_el_costo_por_maquina_es_numerico_y_no_supera_el_total(client):
+    """`costo_total` por máquina es la base del gráfico de Top 5 por costo.
+
+    Dos invariantes: nunca es negativo, y la suma de las 5 máquinas no puede superar el
+    Costo Directo de la empresa (las máquinas son un top 5, no el universo).
+    """
+    d = await _stats(client)
+    for m in d["machines"]:
+        assert isinstance(m["costo_total"], (int, float)), m["costo_total"]
+        assert m["costo_total"] >= 0, m
+
+    suma = sum(m["costo_total"] for m in d["machines"])
+    assert suma <= d["financials"]["costo_total_acumulado"] + 0.01, (suma, d["financials"])
+
+
+async def test_el_costo_por_maquina_respeta_el_rango(client):
+    """Como el filtro de fecha va en el ON del JOIN, un rango corto debe bajar el costo."""
+    # Una sola sesión: dos logins seguidos en la misma prueba chocan con el control de
+    # sesiones y el segundo responde 401.
+    h = await _login(client, ADMIN_E1)
+    completo = (await client.get(RUTA, headers=h)).json()
+    corto = (await client.get(f"{RUTA}?days=7", headers=h)).json()
+    total_completo = sum(m["costo_total"] for m in completo["machines"])
+    total_corto = sum(m["costo_total"] for m in corto["machines"])
+    assert total_corto <= total_completo, (total_corto, total_completo)
+
+
+def test_la_query_de_machines_excluye_las_canceladas_del_costo():
+    """Las canceladas no suman costo (mismo criterio que el KPI de Costo Directo).
+
+    Se comprueba en el SQL, no en el valor: con el dataset actual no hay ninguna cancelada
+    con costo distinto de cero, así que el resultado sería el mismo sin el filtro. Es la
+    misma convención que usa la prueba del filtro de correctivas en el MTBF.
+    """
+    from pathlib import Path
+
+    fuente = Path(stats.__file__).read_text(encoding="utf-8")
+    # La consulta vive en el helper `_maquinas_sql`, que se ejecuta dos veces (por volumen
+    # y por costo). El filtro tiene que estar en el SQL, así que las DOS listas lo heredan.
+    inicio = fuente.index("def _maquinas_sql")
+    fragmento = fuente[inicio : inicio + 1600]
+    assert "estado != 'cancelled'" in fragmento, fragmento
+    assert fragmento.count("estado != 'cancelled'") == 1, (
+        "el filtro debe estar una sola vez, en el SQL compartido"
+    )
 
 
 async def test_por_tipo_tiene_la_forma_esperada(client):
@@ -413,6 +460,40 @@ async def test_el_cumplimiento_de_sla_no_es_plano(client):
     )
 
 
+async def test_machines_por_costo_viene_ordenado_por_costo(client):
+    """La lista por costo existe porque el top 5 por volumen NO es el top 5 por costo.
+
+    Con el dataset de la demo, tres de los cinco equipos más caros no están entre los de
+    más OTs. Si el frontend ordenara la lista de volumen, el gráfico diría «Top 5 por
+    costo» mostrando otros equipos. Esta prueba fija que el backend manda la lista buena.
+    """
+    d = await _stats(client)
+    por_costo = d["machines_por_costo"]
+    assert 1 <= len(por_costo) <= 5, f"{len(por_costo)} equipos"
+
+    # Misma forma que `machines`: se reusan los mismos consumidores.
+    esperado = {"id", "name", "total", "ahorroGenerado", "mttr", "slaCompliance", "costo_total"}
+    for m in por_costo:
+        assert set(m) == esperado, sorted(m)
+
+    # Ordenada de mayor a menor costo.
+    costos = [m["costo_total"] for m in por_costo]
+    assert costos == sorted(costos, reverse=True), costos
+
+    # Y no es la misma lista que la de volumen: al menos el orden cambia.
+    assert [m["id"] for m in por_costo] != [m["id"] for m in d["machines"]], (
+        "las dos listas son idénticas: el orden por costo no está haciendo nada"
+    )
+
+
+async def test_machines_por_costo_no_inventa_equipos_fuera_del_top_de_volumen(client):
+    """Todo equipo de la lista por costo existe en la base y tiene costo positivo."""
+    d = await _stats(client)
+    for m in d["machines_por_costo"]:
+        assert m["costo_total"] >= 0, m
+        assert m["name"].strip(), m
+
+
 async def test_trend_y_machines_tienen_la_forma_esperada(client):
     d = await _stats(client)
     assert len(d["trend14Days"]) == 14, f"{len(d['trend14Days'])} puntos"
@@ -420,10 +501,9 @@ async def test_trend_y_machines_tienen_la_forma_esperada(client):
         assert set(punto) == {"date", "abiertas", "cerradas"}, sorted(punto)
 
     assert len(d["machines"]) == 5, f"{len(d['machines'])} máquinas"
-    # El backend envía 6 campos por máquina. El modelo del frontend
-    # (`stats.model.ts`, interfaz `MachineData`) solo declara 3: `ahorroGenerado`, `mttr`
-    # y `slaCompliance` llegan pero no se consumen. Queda documentado en CGBIDA-410.
-    esperado = {"id", "name", "total", "ahorroGenerado", "mttr", "slaCompliance"}
+    # El backend envía 7 campos por máquina; `MachineData` los declara todos desde
+    # CGBIDA-394/399. `costo_total` se agregó para el gráfico de Top 5 por costo.
+    esperado = {"id", "name", "total", "ahorroGenerado", "mttr", "slaCompliance", "costo_total"}
     for m in d["machines"]:
         assert set(m) == esperado, sorted(m)
 

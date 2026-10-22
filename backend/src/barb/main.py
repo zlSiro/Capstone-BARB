@@ -22,6 +22,8 @@ from barb.routers import (
     stats,
     tickets,
     topology,
+    transacciones,
+    transacciones_empresa,
     users,
     work_orders,
 )
@@ -102,3 +104,5 @@ app.include_router(notifications.router)
 # Tickets conversacionales (HU-06): nacen de las sesiones del chat; sin
 # conflicto de rutas (prefijo /api/tickets).
 app.include_router(tickets.router)
+app.include_router(transacciones.router)
+app.include_router(transacciones_empresa.router)

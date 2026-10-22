@@ -33,6 +33,8 @@ export type RutaKey =
   | 'dashboard'
   | 'history'
   | 'empresas'
+  | 'transacciones'
+  | 'transacciones_empresa'
   | 'usuarios'
   | 'documentos';
 
@@ -63,6 +65,8 @@ export const RUTAS: Record<RutaKey, Record<string, PermisoValor>> = {
   empresas:   { operador: false, tecnico: false, supervisor: false, engineer: false, gerente: false, admin: false, visitante: false, super_usuario: true },
   usuarios:   { operador: false, tecnico: false, supervisor: false, engineer: false, gerente: true, admin: true,  visitante: false, super_usuario: true },
   documentos: { operador: 'ver',  tecnico: 'ver',  supervisor: 'ver',  engineer: true,  gerente: true,  admin: true,  visitante: false, super_usuario: false },
+  transacciones: { operador: false, tecnico: false, supervisor: false, engineer: false, gerente: false, admin: false, visitante: false, super_usuario: true },
+  transacciones_empresa: { operador: false, tecnico: false, supervisor: false, engineer: false, gerente: true, admin: false, visitante: false, super_usuario: false },
   history:   { operador: false, tecnico: false, supervisor: true,  engineer: false, gerente: true,  admin: true, visitante: false , super_usuario: false },
 };
 

@@ -1,6 +1,6 @@
 import { Component, computed, inject, input } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ComponenteSalud, EstadoSalud, SaludOperacionalData, TrendData } from '../../../../core/models';
+import { ComponenteSalud, EstadoSalud, SaludOperacionalData } from '../../../../core/models';
 import { I18nService } from '../../../../core/i18n/i18n.service';
 import { MtbfUnitService } from '../../../../core/services/mtbf-unit.service';
 
@@ -13,9 +13,10 @@ import { MtbfUnitService } from '../../../../core/services/mtbf-unit.service';
  *   grande es lo primero que se lee.
  * - **Los tres componentes** (SLA, MTBF, backlog) van debajo del anillo: son la respuesta
  *   a "¿por qué este color?". Un semáforo sin desglose es otra caja negra.
- * - **La tendencia de backlog** queda como minigráfico al pie. Reemplaza al gráfico de
- *   backlog suelto: el dato sigue visible sin ocupar una tarjeta entera, y el espacio
- *   ganado es lo que paga el indicador nuevo sin que el dashboard empiece a hacer scroll.
+ *
+ * La tendencia de backlog que vivía al pie se quitó: con 14 puntos y valores de 1 a 4 se
+ * veía como un electrocardiograma y no aportaba. El espacio que dejó se usa para agrandar
+ * el anillo y centrar la tarjeta.
  *
  * Si el estado es `insuficiente` el anillo se dibuja en gris y con guion, nunca en verde:
  * el backend se niega a pintar verde lo que no puede medir, y la interfaz no lo contradice.
@@ -26,7 +27,8 @@ import { MtbfUnitService } from '../../../../core/services/mtbf-unit.service';
   imports: [CommonModule],
   template: `
     <figure
-      class="relative rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-900"
+      class="relative flex h-full flex-col justify-center rounded-2xl border border-gray-200
+             bg-white p-5 dark:border-gray-700 dark:bg-gray-900"
       data-testid="salud-operacional"
     >
       <figcaption class="mb-1">
@@ -37,13 +39,13 @@ import { MtbfUnitService } from '../../../../core/services/mtbf-unit.service';
       </figcaption>
 
       <!--
-        Anillo grande y centrado. El tamano es lo que lo vuelve el heroe de la tarjeta:
-        a 200 px el porcentaje se lee desde lejos, que es lo que pide un semaforo.
+        Anillo de 180 px con trazo de 16: el tamano lo vuelve el heroe de la tarjeta, y
+        el trazo fino deja 64 px de radio libre para el texto del centro.
       -->
       <div class="flex justify-center">
         <svg
           [attr.viewBox]="'0 0 ' + LADO + ' ' + LADO"
-          class="h-[200px] w-[200px]"
+          class="h-[180px] w-[180px]"
           role="img"
           [attr.aria-label]="t().healthCardTitle + ': ' + etiquetaEstado()"
           data-testid="anillo-salud"
@@ -61,15 +63,20 @@ import { MtbfUnitService } from '../../../../core/services/mtbf-unit.service';
             [attr.transform]="'rotate(-90 ' + CENTRO + ' ' + CENTRO + ')'"
             data-testid="arco-salud"
           />
+          <!--
+            El texto va mas chico y mas separado del trazo. Antes era 38 px dentro de un
+            radio libre de 53: "92.9%" lo tocaba y se veia apretado. Con 30 px y 64 px de
+            radio libre quedan ~10 px de aire a cada lado, suficiente incluso para "100.0%".
+          -->
           <text
             [attr.x]="CENTRO" [attr.y]="CENTRO - 2" text-anchor="middle"
-            font-size="38" font-weight="800"
+            font-size="30" font-weight="800"
             [attr.fill]="color()"
             data-testid="indice-salud"
           >{{ textoIndice() }}</text>
           <text
-            [attr.x]="CENTRO" [attr.y]="CENTRO + 26" text-anchor="middle"
-            font-size="14" font-weight="600"
+            [attr.x]="CENTRO" [attr.y]="CENTRO + 24" text-anchor="middle"
+            font-size="12" font-weight="600"
             class="fill-gray-500 dark:fill-gray-400"
             data-testid="estado-salud"
           >{{ etiquetaEstado() }}</text>
@@ -107,49 +114,6 @@ import { MtbfUnitService } from '../../../../core/services/mtbf-unit.service';
         >{{ t().healthInsufficient }}</p>
       }
 
-      <!--
-        Tendencia de backlog: OCULTA por defecto (CGBIDA-435). Hoy trend14Days trae un
-        solo dia con actividad, asi que la linea ocupa lugar sin informar. La logica queda
-        intacta y se activa con [mostrarTendencia]="true" cuando CGBIDA-439 deje el seed
-        denso.
-      -->
-      @if (mostrarTendencia() && puntos().length > 0) {
-        <div class="mt-3">
-          <div class="mb-1 flex items-center justify-between">
-            <p class="text-[11px] uppercase text-gray-500 dark:text-gray-400">
-              {{ t().healthTrendTitle }}
-            </p>
-            <div class="flex gap-3 text-[11px] text-gray-500 dark:text-gray-400">
-              <span class="flex items-center gap-1">
-                <span class="inline-block h-2 w-2 rounded-sm" [style.background]="COLOR_ABIERTAS"></span>
-                {{ t().abiertas }}
-              </span>
-              <span class="flex items-center gap-1">
-                <span class="inline-block h-2 w-2 rounded-sm" [style.background]="COLOR_CERRADAS"></span>
-                {{ t().cerradas }}
-              </span>
-            </div>
-          </div>
-          <svg
-            [attr.viewBox]="'0 0 ' + ANCHO_MINI + ' ' + ALTO_MINI"
-            class="h-14 w-full"
-            role="img"
-            [attr.aria-label]="t().healthTrendTitle"
-            data-testid="tendencia-salud"
-          >
-            <polyline
-              [attr.points]="lineaAbiertas()"
-              fill="none" [attr.stroke]="COLOR_ABIERTAS" stroke-width="2"
-              stroke-linejoin="round" stroke-linecap="round"
-            />
-            <polyline
-              [attr.points]="lineaCerradas()"
-              fill="none" [attr.stroke]="COLOR_CERRADAS" stroke-width="2"
-              stroke-linejoin="round" stroke-linecap="round"
-            />
-          </svg>
-        </div>
-      }
     </figure>
   `
 })
@@ -162,34 +126,15 @@ export class SaludOperacionalComponent {
   /** Semáforo compuesto que calcula el backend (CGBIDA-438). */
   readonly salud = input.required<SaludOperacionalData | null>();
 
-  /** Tendencia de 14 días. Solo se dibuja si `mostrarTendencia` está activo. */
-  readonly tendencia = input<TrendData[]>([]);
-
-  /**
-   * Interruptor de la tendencia.
-   *
-   * Apagado por defecto: con un solo día con actividad la línea no informa y competía
-   * visualmente con el anillo. La lógica se conserva para cuando el seed esté denso
-   * (CGBIDA-439).
-   */
-  readonly mostrarTendencia = input<boolean>(false);
-
   protected readonly t = computed(() => this.i18n.tree().financial);
 
-  // Anillo de 200 px: r=80 con trazo de 18 deja un diámetro útil de 200 y un centro
-  // despejado para el porcentaje, que es lo que se mira primero.
-  protected readonly LADO = 200;
-  protected readonly CENTRO = 100;
-  protected readonly RADIO = 80;
-  protected readonly TRAZO = 18;
+  // Anillo de 180 px: r=72 con trazo de 16 deja 64 px de radio libre para el porcentaje,
+  // que es lo que se mira primero. Antes era de 150 con el texto a 38 px y se tocaban.
+  protected readonly LADO = 180;
+  protected readonly CENTRO = 90;
+  protected readonly RADIO = 72;
+  protected readonly TRAZO = 16;
   private readonly CIRCUNFERENCIA = 2 * Math.PI * this.RADIO;
-
-  protected readonly ANCHO_MINI = 600;
-  protected readonly ALTO_MINI = 56;
-  protected readonly COLOR_ABIERTAS = '#d97706';
-  protected readonly COLOR_CERRADAS = '#059669';
-
-  protected readonly puntos = computed(() => this.tendencia());
 
   private readonly estado = computed<EstadoSalud>(() => this.salud()?.estado ?? 'insuficiente');
 
@@ -282,28 +227,6 @@ export class SaludOperacionalComponent {
     }
   }
 
-  protected readonly lineaAbiertas = computed(() =>
-    this.linea((p) => p.abiertas)
-  );
-
-  protected readonly lineaCerradas = computed(() =>
-    this.linea((p) => p.cerradas)
-  );
-
-  /** Convierte una serie en puntos de la polilínea, normalizando al máximo de ambas. */
-  private linea(selector: (p: TrendData) => number): string {
-    const pts = this.puntos();
-    if (pts.length === 0) return '';
-    const maximo = Math.max(1, ...pts.map((p) => Math.max(p.abiertas, p.cerradas)));
-    const paso = pts.length > 1 ? this.ANCHO_MINI / (pts.length - 1) : 0;
-    return pts
-      .map((p, i) => {
-        const x = i * paso;
-        const y = this.ALTO_MINI - (selector(p) / maximo) * (this.ALTO_MINI - 6) - 3;
-        return `${x.toFixed(1)},${y.toFixed(1)}`;
-      })
-      .join(' ');
-  }
 }
 
 function colorDe(componente: ComponenteSalud | undefined): string {
@@ -325,5 +248,8 @@ const COLOR_POR_ESTADO: Record<EstadoSalud, string> = {
   rojo: '#c0281e',
   insuficiente: '#9ca3af',
 };
+
+
+
 
 

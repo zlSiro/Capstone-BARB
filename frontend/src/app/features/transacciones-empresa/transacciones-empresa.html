@@ -1,0 +1,128 @@
+<section class="flex flex-col gap-4" aria-labelledby="trx-title">
+  <div>
+    <h1 id="trx-title" class="text-2xl font-bold text-gray-800 dark:text-gray-100">Transacciones</h1>
+    <p class="text-sm text-gray-600 dark:text-gray-300">
+      Cambios realizados por los usuarios de tu empresa en la plataforma. Solo se muestran los que tienen un usuario identificado.
+    </p>
+  </div>
+
+  <form
+    class="grid gap-3 rounded-lg border border-gray-100 bg-white p-4 shadow-sm sm:grid-cols-2 lg:grid-cols-3"
+    (submit)="$event.preventDefault()"
+    aria-label="Filtros de transacciones">
+    <div class="flex flex-col gap-1">
+      <label for="trx-rol" class="text-xs font-medium text-gray-700">Rol</label>
+      <select id="trx-rol" class="field" [value]="rol()" (change)="onRol($any($event.target).value)">
+        <option value="">Todos los roles</option>
+        @for (r of opciones().roles; track r) {
+          <option [value]="r">{{ rolLabel(r) }}</option>
+        }
+      </select>
+    </div>
+
+    <div class="flex flex-col gap-1">
+      <label for="trx-usuario" class="text-xs font-medium text-gray-700">Usuario</label>
+      <select id="trx-usuario" class="field" [value]="usuarioId() ?? ''" (change)="onUsuario($any($event.target).value)">
+        <option value="">Todos los usuarios</option>
+        @for (u of usuariosDisponibles(); track u.usuario_id) {
+          <option [value]="u.usuario_id">{{ u.nombre }} ({{ rolLabel(u.rol) }})</option>
+        }
+      </select>
+    </div>
+
+    <div class="flex flex-col gap-1">
+      <label for="trx-rango" class="text-xs font-medium text-gray-700">Período</label>
+      <select id="trx-rango" class="field" [value]="rango()" (change)="onRango($any($event.target).value)">
+        @for (r of rangos; track r.value) {
+          <option [value]="r.value">{{ r.label }}</option>
+        }
+      </select>
+    </div>
+
+    @if (rango() === 'custom') {
+      <div class="flex flex-col gap-1">
+        <label for="trx-desde" class="text-xs font-medium text-gray-700">Desde</label>
+        <input id="trx-desde" type="date" class="field" [value]="desde()" [max]="hasta() || null" (change)="onDesde($any($event.target).value)" />
+      </div>
+      <div class="flex flex-col gap-1">
+        <label for="trx-hasta" class="text-xs font-medium text-gray-700">Hasta</label>
+        <input id="trx-hasta" type="date" class="field" [value]="hasta()" [min]="desde() || null" (change)="onHasta($any($event.target).value)" />
+      </div>
+      @if (!customListo()) {
+        <p class="self-end text-xs text-gray-600" role="status">Ingresa ambas fechas para aplicar el filtro.</p>
+      }
+    }
+  </form>
+
+  @if (error()) {
+    <div class="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
+      {{ error() }}
+      <button type="button" class="ml-2 underline" (click)="load()">Reintentar</button>
+    </div>
+  } @else {
+    <div class="flex flex-wrap items-center justify-between gap-2 text-sm text-gray-700 dark:text-gray-200" aria-live="polite">
+      <span>{{ loading() ? 'Cargando transacciones…' : total() + ' transacciones' }}</span>
+      @if (total() > 0) {
+        <span>Mostrando {{ desdeN() }}–{{ hastaN() }}</span>
+      }
+    </div>
+
+    <div class="overflow-x-auto rounded-lg border border-gray-100 bg-white shadow-sm" [class.opacity-60]="loading()">
+      <table class="w-full text-sm text-gray-800">
+        <caption class="sr-only">Transacciones realizadas por los usuarios de tu empresa</caption>
+        <thead class="bg-gray-50 text-xs uppercase text-gray-600">
+          <tr>
+            <th scope="col" class="px-4 py-2 text-left">Fecha</th>
+            <th scope="col" class="px-4 py-2 text-left">Usuario</th>
+            <th scope="col" class="px-4 py-2 text-left">Rol</th>
+            <th scope="col" class="px-4 py-2 text-left">Acción</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (t of items(); track t.transaccion_id) {
+            <tr class="border-t border-gray-100 align-top hover:bg-gray-50">
+              <td class="whitespace-nowrap px-4 py-2">{{ t.fecha | date: 'dd-MM-yyyy HH:mm:ss' }}</td>
+              <td class="px-4 py-2">
+                <div class="font-medium">{{ t.usuario_nombre }}</div>
+                <div class="text-xs text-gray-600">{{ t.usuario_email }}</div>
+              </td>
+              <td class="px-4 py-2">{{ rolLabel(t.perfil) }}</td>
+              <td class="px-4 py-2">
+                @if (t.operacion) {
+                  <span class="mr-1 rounded px-2 py-1 text-xs font-medium" [class]="operacionStyle(t.operacion)">{{ operacionLabel(t.operacion) }}</span>
+                }
+                {{ tablaLabel(t.tabla) }}
+                @if (t.registro_id) {
+                  <span class="text-xs text-gray-600">#{{ t.registro_id }}</span>
+                }
+                @if (columnas(t).length) {
+                  <details class="mt-1 text-xs text-gray-700">
+                    <summary class="cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-400">Ver detalle</summary>
+                    <ul class="mt-1 list-disc pl-5">
+                      @for (c of columnas(t); track c.nombre) {
+                        <li><span class="font-medium">{{ c.nombre }}</span>: {{ c.valor }}</li>
+                      }
+                    </ul>
+                  </details>
+                }
+              </td>
+            </tr>
+          } @empty {
+            @if (!loading()) {
+              <tr>
+                <td colspan="4" class="py-6 text-center text-gray-600">No hay transacciones para los filtros elegidos.</td>
+              </tr>
+            }
+          }
+        </tbody>
+      </table>
+    </div>
+
+    @if (total() > pageSize) {
+      <nav class="flex items-center justify-end gap-2" aria-label="Paginación">
+        <button type="button" class="btn-secondary" [disabled]="offset() === 0 || loading()" (click)="paginar(-1)">Anterior</button>
+        <button type="button" class="btn-secondary" [disabled]="hastaN() >= total() || loading()" (click)="paginar(1)">Siguiente</button>
+      </nav>
+    }
+  }
+</section>

@@ -1,5 +1,6 @@
 export * from './user.model';
 export * from './empresa.model';
+export * from './transaccion.model';
 export * from './documento.model';
 export * from './work-order.model';
 export * from './machine.model';
@@ -8,3 +9,5 @@ export * from './report.model';
 export * from './stats.model';
 export * from './app-state.model';
 export * from './topology.model';
+export * from './planta.model';
+

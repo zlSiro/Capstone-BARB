@@ -219,7 +219,7 @@ export class ImpactoEscenariosComponent {
     const notaUsd =
       this.currency.moneda() === 'USD' && !this.currency.sinTasa() ? ` ${t.kpiUsdNote}` : '';
     return (
-      `${t.kpiImpactoTooltip} Supuestos: ${this.currency.formatearClp(costoMin)} CLP por minuto ` +
+      `${t.kpiImpactoTooltip} Supuestos: ${this.currency.formatearDetalle(costoMin)} por minuto ` +
       `y ${minutosRef} min sin BARB por incidente.${notaUsd}`
     );
   });

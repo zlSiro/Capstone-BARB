@@ -213,13 +213,17 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
           porque su contenido (dona de 200 px + leyenda de 214 px) es angosto y se centra.
         -->
         <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <!-- Salud Operacional (CGBIDA-435). Sustituye al grafico de backlog suelto:
-               el indicador va como hero y la tendencia queda de minigrafico en la misma
-               tarjeta, asi el dashboard sigue entrando sin scroll. -->
-          <app-salud-operacional class="min-w-0" [salud]="salud()" [tendencia]="tendencia()" />
+          <!-- Salud Operacional (CGBIDA-435): el indicador como heroe de la tarjeta, con
+               el anillo y el desglose de SLA, MTBF y backlog. Sin la tendencia al pie, que
+               se quito por ruidosa. -->
+          <app-salud-operacional class="min-w-0" [salud]="salud()" />
 
           <!-- El ranking muestra su propio estado vacío si no hay equipos. -->
-          <app-machine-ranking class="min-w-0" [maquinas]="equipos()" />
+          <app-machine-ranking
+            class="min-w-0"
+            [maquinas]="equipos()"
+            [maquinasPorCosto]="equiposPorCosto()"
+          />
 
           <!-- Dona por tipo de intervencion (CGBIDA-395). Se auto-oculta sin datos. -->
           <app-tipo-donut class="min-w-0" [datos]="porTipo()" />
@@ -291,16 +295,11 @@ export class DashboardComponent implements OnInit {
   /** Textos del bloque `financial`. Reactivo al cambio de idioma. */
   protected readonly t = computed(() => this.i18n.tree().financial);
 
-  /**
-   * Tendencia de 14 dias para el grafico de backlog.
-   *
-   * Sale tal cual del backend: son siempre 14 puntos y NO dependen del selector de rango
-   * temporal, porque el backend no parametriza esa serie (CGBIDA-391, decision (c)).
-   */
-  protected readonly tendencia = computed(() => this.stats()?.trend14Days ?? []);
-
   /** Equipos del ranking. El backend ya los limita a 5. */
   protected readonly equipos = computed(() => this.stats()?.machines ?? []);
+
+  /** Top 5 por costo real, que no coincide con el top 5 por volumen (CGBIDA-435). */
+  protected readonly equiposPorCosto = computed(() => this.stats()?.machines_por_costo ?? []);
 
   /** Distribucion por tipo de intervencion, para la dona. */
   protected readonly porTipo = computed(() => this.stats()?.por_tipo ?? []);
@@ -339,9 +338,11 @@ export class DashboardComponent implements OnInit {
 
     // Supuestos del modelo, tal como los entrega el backend. No se hardcodean: si manana
     // cambian en config.py, el tooltip sigue diciendo la verdad.
+    // La cifra va en la MONEDA ACTIVA (CGBIDA-435): antes decia "CLP" fijo aunque el
+    // toggle estuviera en dolares.
     const costoMin = imp.supuestos?.costo_por_minuto ?? 2000;
-    const supuestoClp = `${this.currency.formatearClp(costoMin)} CLP`;
-    const notaUsd =
+    const supuesto = this.currency.formatearDetalle(costoMin);
+    const notaMoneda =
       this.currency.moneda() === 'USD' && !this.currency.sinTasa() ? ` ${tx.kpiUsdNote}` : '';
 
     return [
@@ -367,7 +368,7 @@ export class DashboardComponent implements OnInit {
         valor: cifra(f.costo_total_acumulado),
         descripcion: tx.directCostSub,
         color: 'text-gray-800 dark:text-gray-100',
-        tooltip: `${tx.kpiCostoTooltip}${notaUsd}`
+        tooltip: `${tx.kpiCostoTooltip}${notaMoneda}`
       },
       {
         clave: 'mtbf',
@@ -389,7 +390,7 @@ export class DashboardComponent implements OnInit {
         valor: cifra(f.ahorro_generado),
         descripcion: tx.savingsSub,
         color: 'text-orange-600 dark:text-orange-400',
-        tooltip: `${tx.kpiAhorroTooltip} Supuesto: ${supuestoClp} por minuto.${notaUsd}`
+        tooltip: `${tx.kpiAhorroTooltip} Supuesto: ${supuesto} por minuto.${notaMoneda}`
       }
     ];
   });
@@ -489,4 +490,7 @@ export class DashboardComponent implements OnInit {
     });
   }
 }
+
+
+
 

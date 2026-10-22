@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 
-import { SaludOperacionalData, TrendData } from '../../../../core/models';
+import { SaludOperacionalData } from '../../../../core/models';
 import { SaludOperacionalComponent } from './salud-operacional.component';
 
 /**
@@ -43,26 +43,13 @@ const INSUFICIENTE: SaludOperacionalData = {
   },
 };
 
-const TENDENCIA: TrendData[] = Array.from({ length: 14 }, (_, i) => ({
-  date: `2026-10-${String(i + 1).padStart(2, '0')}`,
-  abiertas: i,
-  cerradas: 14 - i,
-}));
-
-function setup(
-  salud: SaludOperacionalData | null = ROJO,
-  tendencia: TrendData[] = TENDENCIA,
-  lang: 'es' | 'en' = 'es',
-  mostrarTendencia = false
-) {
+function setup(salud: SaludOperacionalData | null = ROJO, lang: 'es' | 'en' = 'es') {
   TestBed.resetTestingModule();
   window.localStorage.clear();
   window.localStorage.setItem('barb.lang', lang);
   TestBed.configureTestingModule({ imports: [SaludOperacionalComponent] });
   const fixture = TestBed.createComponent(SaludOperacionalComponent);
   fixture.componentRef.setInput('salud', salud);
-  fixture.componentRef.setInput('tendencia', tendencia);
-  fixture.componentRef.setInput('mostrarTendencia', mostrarTendencia);
   fixture.detectChanges();
   return { fixture, el: fixture.nativeElement as HTMLElement };
 }
@@ -88,9 +75,33 @@ describe('SaludOperacionalComponent', () => {
       const { el } = setup(ROJO);
       const dash = el.querySelector('[data-testid="arco-salud"]')!.getAttribute('stroke-dasharray')!;
       const avance = Number(dash.split(' ')[0]);
-      // CGBIDA-435: el anillo crecio a 200 px, o sea r=80.
-      const circunferencia = 2 * Math.PI * 80;
+      // Anillo de 180 px con trazo de 16: r=72.
+      const circunferencia = 2 * Math.PI * 72;
       expect(avance / circunferencia).toBeCloseTo(0.428, 2);
+    });
+
+    it('el número del centro no se toca con el trazo', () => {
+      // El anillo deja 64 px de radio libre (72 de radio menos 8 de medio trazo). El texto
+      // más ancho posible es "100.0%" a 30 px: ~108 px de ancho, o sea 54 de semiancho.
+      const { el } = setup(ROJO);
+      const texto = el.querySelector('[data-testid="indice-salud"]')!;
+      const fontSize = Number(texto.getAttribute('font-size'));
+      const radioLibre = 72 - 16 / 2;
+      const semianchoPeorCaso = (0.6 * fontSize * '100.0%'.length) / 2;
+      expect(semianchoPeorCaso).toBeLessThan(radioLibre);
+    });
+
+    it('el porcentaje es más chico que antes (30 px, no 38)', () => {
+      const { el } = setup(ROJO);
+      const texto = el.querySelector('[data-testid="indice-salud"]')!;
+      expect(Number(texto.getAttribute('font-size'))).toBeLessThanOrEqual(32);
+    });
+
+    it('ya no dibuja la tendencia de backlog', () => {
+      // Se quitó por ruidosa: 14 puntos con valores de 1 a 4 se veían como un electro.
+      const { el } = setup(ROJO);
+      expect(el.querySelector('[data-testid="tendencia-salud"]')).toBeNull();
+      expect(el.querySelector('[data-testid="tendencia-panel"]')).toBeNull();
     });
   });
 
@@ -176,26 +187,6 @@ describe('SaludOperacionalComponent', () => {
     });
   });
 
-  describe('tendencia de backlog', () => {
-    it('por defecto NO se dibuja: el flag arranca apagado (CGBIDA-435)', () => {
-      // Con un solo dia con actividad la linea no informa y competia con el anillo.
-      const { el } = setup(ROJO, TENDENCIA);
-      expect(el.querySelector('[data-testid="tendencia-salud"]')).toBeNull();
-    });
-
-    it('con mostrarTendencia activo dibuja la serie de 14 dias', () => {
-      const { el } = setup(ROJO, TENDENCIA, 'es', true);
-      const svg = el.querySelector('[data-testid="tendencia-salud"]');
-      expect(svg).not.toBeNull();
-      expect(svg!.querySelectorAll('polyline').length).toBe(2);
-    });
-
-    it('con un solo punto no divide por cero', () => {
-      const { el } = setup(ROJO, [{ date: '2026-10-01', abiertas: 1, cerradas: 0 }], 'es', true);
-      const linea = el.querySelector('[data-testid="tendencia-salud"] polyline')!;
-      expect(linea.getAttribute('points')).not.toContain('NaN');
-    });
-  });
 
   describe('accesibilidad e i18n', () => {
     it('el anillo declara su estado en el aria-label', () => {
@@ -206,7 +197,7 @@ describe('SaludOperacionalComponent', () => {
     });
 
     it('traduce al inglés', () => {
-      const { el } = setup(ROJO, TENDENCIA, 'en');
+      const { el } = setup(ROJO, 'en');
       expect(el.textContent).toContain('Operational Health');
       expect(texto(el, 'estado-salud')).toBe('Critical');
     });
@@ -217,3 +208,6 @@ describe('SaludOperacionalComponent', () => {
     });
   });
 });
+
+
+

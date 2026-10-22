@@ -48,7 +48,7 @@ async def _empresa_id(client, headers, nombre) -> int:
 # Permisos (unitarias)
 # =============================================================================
 
-RUTAS_SUPER = {"empresas", "usuarios"}
+RUTAS_SUPER = {"empresas", "usuarios", "transacciones"}
 ACCIONES_SUPER = {"gestionar_empresas", "gestionar_usuarios", "ver_usuarios"}
 
 

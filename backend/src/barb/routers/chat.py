@@ -99,9 +99,15 @@ async def stream_chat(
 
     # --- RAG: fragmentos relevantes de la documentación ACTIVA de la empresa ---
     # Se incluye el último mensaje del usuario para resolver preguntas de seguimiento
-    # ("¿y el torque?").
+    # ("¿y el torque?") y también el último del ASISTENTE (v1.1, review de la
+    # HU-05): los turnos con imagen dejan ahí el contexto del equipo identificado
+    # ("es un chancador de mandíbulas") y los seguimientos ("¿cómo funciona?")
+    # necesitan esa pista para encontrar el manual correspondiente.
     previous_user_msgs = [m.get("content", "") for m in history if m.get("role") == "user"][-1:]
-    chunks = await search_chunks(empresa_id, request.message, *previous_user_msgs)
+    previous_assistant_msgs = [m.get("content", "") for m in history if m.get("role") == "assistant"][-1:]
+    chunks = await search_chunks(
+        empresa_id, request.message, *previous_user_msgs, *previous_assistant_msgs
+    )
     context = format_context(chunks)
 
     # Sin documentación relevante no se consulta al LLM: se garantiza que la IA
@@ -195,9 +201,6 @@ class MultimediaRequest(BaseModel):
         ...,
         description="Imagen como data URL: data:image/{jpeg|png|webp};base64,... (≤ 5 MB decodificada).",
     )
-    # Solo la usa el super_usuario (no tiene empresa propia): empresa a la que
-    # pertenece la conversación. Para el resto se ignora. Igual que ChatRequest.
-    empresa_id: int | None = None
 
     @field_validator("image_base64")
     @classmethod
@@ -260,17 +263,12 @@ async def stream_multimedia_chat(
         )
 
     user_id = int(user["id"])
-    # La conversación pertenece a una empresa (chat_session.empresa_id NOT NULL):
-    # un usuario de empresa SIEMPRE conversa en la suya; el super_usuario elige.
-    empresa_id = user["empresa_id"]
-    if user["role"] == "super_usuario":
-        empresa_id = request.empresa_id
-    if empresa_id is None:
-        raise HTTPException(
-            status_code=422,
-            detail="Selecciona una empresa para consultar.",
-        )
-    empresa_id = int(empresa_id)
+    # Aislamiento + RBAC idéntico al stream textual (alineado tras la HU-12,
+    # PR #23): get_current_user ya excluye al super_usuario; esta guarda cubre
+    # cualquier usuario sin empresa. El DocChat completo comparte esta política.
+    if user["role"] == "super_usuario" or user["empresa_id"] is None:
+        raise HTTPException(status_code=403, detail="Tu perfil no tiene acceso a DocChat.")
+    empresa_id = int(user["empresa_id"])
 
     # Validaciones del payload ANTES del rate limit: un request inválido no debe
     # consumir cuota (el frontend igual valida antes de enviar; el backend
@@ -308,10 +306,21 @@ async def stream_multimedia_chat(
         )
         history = []
 
-    # Sin RAG en v1 (D5): el turno multimodal consulta solo imagen+texto.
+    # RAG ligero (D5 v1.1, review de la HU-05): fragmentos de la documentación
+    # ACTIVA de la empresa que coincidan con la pregunta. El turno multimodal
+    # responde con la imagen Y con los manuales cuando aplican; el prompt exige
+    # etiquetar el origen (identificación visual vs documentación citada).
+    # Se incluye el mensaje previo del asistente para que los turnos con imagen
+    # aporten su contexto ("es un chancador de mandíbulas") a la búsqueda.
+    previous_user_msgs = [m.get("content", "") for m in history if m.get("role") == "user"][-1:]
+    previous_assistant_msgs = [m.get("content", "") for m in history if m.get("role") == "assistant"][-1:]
+    chunks = await search_chunks(empresa_id, request.message, *previous_user_msgs, *previous_assistant_msgs)
+    context = format_context(chunks) if chunks else ""
+
     chain = create_multimodal_chain()
     # Contabilidad de tokens (D6): el presupuesto visual de la imagen (~4096)
-    # cuenta contra el límite diario del usuario.
+    # cuenta contra el límite diario del usuario. El contexto inyectado no se
+    # cuenta, igual que en el stream textual.
     input_tokens = estimate_tokens(request.message) + MULTIMODAL_IMAGE_TOKENS
 
     async def event_generator():
@@ -325,7 +334,12 @@ async def stream_multimedia_chat(
             }
 
             stream = chain.astream(
-                {"input": request.message, "history": history, "image": request.image_base64}
+                {
+                    "input": request.message,
+                    "history": history,
+                    "image": request.image_base64,
+                    "context": context,
+                }
             )
 
             async for chunk in stream:

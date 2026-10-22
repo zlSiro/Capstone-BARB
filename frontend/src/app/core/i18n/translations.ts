@@ -97,7 +97,11 @@ export const translations = {
       childrenLoading: 'Cargando contenido…',
       childrenError: 'No se pudo cargar el contenido del nodo.',
       childrenEmpty: 'Este nodo no contiene equipos.',
-      detailBack: 'Volver'
+      detailBack: 'Volver',
+      // --- panel de OTs: filtro, orden y grupos colapsables ---
+      filterAll: 'Todos',
+      sortAz: 'A-Z',
+      sortRecent: 'Recientes'
     },
     financial: {
       dashboardTitle: 'Dashboard KPI',
@@ -123,6 +127,8 @@ export const translations = {
       rankingMetricOts: 'Volumen de OTs',
       rankingMetricMttr: 'MTTR',
       rankingMetricAhorro: 'Ahorro generado',
+  rankingMetricCosto: 'Costo real',
+  rankingCostoReal: 'Costo real del periodo',
       rankingEmpty: 'Sin datos de equipos en el período.',
       withoutBarb: 'Escenario Sin BARB', withBarb: 'Escenario Con BARB',
       savingsGenerated: 'Ahorro Generado a la fecha',
@@ -158,7 +164,7 @@ export const translations = {
       measured: 'Medido', estimated: 'Estimado',
       // CGBIDA-437: los títulos decían algo distinto de lo que el gráfico muestra.
       topMachinesTitle: 'Top 5 Equipos', topMachinesSubtitle: 'Rendimiento por KPI',
-      viewOts: 'Volumen OTs', viewMttr: 'MTTR (Minutos)', viewAhorro: 'Ahorro Generado',
+      viewOts: 'Volumen OTs', viewMttr: 'MTTR (Minutos)', viewAhorro: 'Ahorro Generado', viewCosto: 'Costo Real',
       // CGBIDA-432: toggle de moneda. Los datos base están en CLP y el backend no cambia.
       currencyLabel: 'Moneda',
       currencyClp: 'CLP',
@@ -190,7 +196,7 @@ export const translations = {
       chartMachines: 'Máquinas con más OTs', chartResolution: 'Tiempo de resolución',
       chartResolutionSub: 'Tiempo medio de reparación por máquina, en minutos',
       noData: 'Sin datos', strategyTitle: 'Distribución por Tipo de Mantenimiento',
-      strategySubtitle: 'Correctivo, preventivo, predictivo e inspección',
+      strategySubtitle: 'Correctivo, preventivo e inspección',
       totalOts: 'OTs',
       stalledAlertLabel: 'Alerta:',
       stalledLabel: 'ordenes de trabajo estancadas o criticas',
@@ -352,7 +358,10 @@ export const translations = {
       childrenLoading: 'Loading contents…',
       childrenError: 'The node contents could not be loaded.',
       childrenEmpty: 'This node contains no equipment.',
-      detailBack: 'Back'
+      detailBack: 'Back',
+      filterAll: 'All',
+      sortAz: 'A-Z',
+      sortRecent: 'Recent'
     },
     financial: {
       dashboardTitle: 'KPI Dashboard',
@@ -371,6 +380,8 @@ export const translations = {
       rankingMetricOts: 'WO volume',
       rankingMetricMttr: 'MTTR',
       rankingMetricAhorro: 'Savings generated',
+  rankingMetricCosto: 'Actual cost',
+  rankingCostoReal: 'Actual cost for the period',
       rankingEmpty: 'No machine data for this period.',
       withoutBarb: 'Without BARB Scenario', withBarb: 'With BARB Scenario',
       savingsGenerated: 'Savings Generated to Date',
@@ -400,7 +411,7 @@ export const translations = {
       performanceTitle: 'Machine Performance',
       measured: 'Measured', estimated: 'Estimated',
       topMachinesTitle: 'Top 5 Machines', topMachinesSubtitle: 'Performance by KPI',
-      viewOts: 'WO Volume', viewMttr: 'MTTR (Minutes)', viewAhorro: 'Savings Generated',
+      viewOts: 'WO Volume', viewMttr: 'MTTR (Minutes)', viewAhorro: 'Savings Generated', viewCosto: 'Actual Cost',
       currencyLabel: 'Currency',
       currencyClp: 'CLP',
       currencyUsd: 'USD',
@@ -428,7 +439,7 @@ export const translations = {
       chartMachines: 'Top machines', chartResolution: 'Resolution time',
       chartResolutionSub: 'Average repair time per machine, in minutes',
       noData: 'No data', strategyTitle: 'Distribution by Maintenance Type',
-      strategySubtitle: 'Corrective, preventive, predictive and inspection',
+      strategySubtitle: 'Corrective, preventive and inspection',
       totalOts: 'WOs',
       stalledAlertLabel: 'Alert:',
       stalledLabel: 'stalled or critical work orders',
@@ -499,5 +510,8 @@ export const translations = {
 };
 
 export type TranslationTree = typeof translations['es'];
+
+
+
 
 
