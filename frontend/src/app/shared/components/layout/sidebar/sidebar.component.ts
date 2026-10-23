@@ -19,7 +19,6 @@ const NAV_ITEMS: NavItem[] = [
   { path: '/dashboard', icon: '📊', label: 'Dashboard', ruta: 'dashboard' },
   { path: '/work-orders', icon: '🔧', label: 'Órdenes de Trabajo', ruta: 'menu' },
   { path: '/topology', icon: '🌐', label: 'Topología', ruta: 'topology' },
-  { path: '/plantas', icon: '🏭', label: 'Plantas', ruta: 'plantas' },
   { path: '/chat', icon: '💬', label: 'DocChat', ruta: 'docchat' },
   { path: '/documentos', icon: '📚', label: 'Documentos', ruta: 'documentos' },
   { path: '/usuarios', icon: '👥', label: 'Usuarios', ruta: 'usuarios' },

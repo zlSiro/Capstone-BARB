@@ -74,7 +74,7 @@ describe('PlantasComponent', () => {
   describe('carga y listado', () => {
     it('muestra las plantas con su ubicación y el total en el título', () => {
       const { el } = setup();
-      expect(el.querySelector('h1')?.textContent).toContain('Plantas (3)');
+      expect(el.querySelector('h2')?.textContent).toContain('Plantas (3)');
       expect(filas(el)).toHaveLength(3);
       expect(texto(el, 'planta-celda-nombre', 0)).toContain('Planta Central San Bernardo');
       expect(texto(el, 'planta-celda-ubicacion', 0)).toBe('San Bernardo');
@@ -159,7 +159,7 @@ describe('PlantasComponent', () => {
       expect(filas(el)).toHaveLength(0);
       expect(el.querySelector('[data-testid="vacio"]')).not.toBeNull();
       // El total del título sigue siendo el real, no el filtrado.
-      expect(el.querySelector('h1')?.textContent).toContain('Plantas (3)');
+      expect(el.querySelector('h2')?.textContent).toContain('Plantas (3)');
     });
   });
 
@@ -288,4 +288,5 @@ describe('PlantasComponent', () => {
     });
   });
 });
+
 

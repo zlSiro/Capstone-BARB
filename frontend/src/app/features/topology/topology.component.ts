@@ -14,6 +14,8 @@ import {
 import { I18nService } from '../../core/i18n/i18n.service';
 import { TopologyService } from '../../core/services/topology.service';
 import { OtDetailSheetComponent } from '../work-orders/components/ot-detail-sheet/ot-detail-sheet.component';
+import { PlantasComponent } from '../plantas/plantas.component';
+import { PermissionsService } from '../../core/permissions/permissions.service';
 import { filterGroup } from '../work-orders/utils/work-order-labels';
 
 /** Dimensiones de la tarjeta de cada nodo, en unidades del viewBox. */
@@ -148,7 +150,7 @@ interface GrupoEnPanel {
 @Component({
   selector: 'app-topology',
   standalone: true,
-  imports: [OtDetailSheetComponent],
+  imports: [OtDetailSheetComponent, PlantasComponent],
   // El hover de las aristas no se puede expresar con atributos: cambiar el grosor, el
   // color y la punta de flecha a la vez pide CSS.
   styles: `
@@ -171,29 +173,46 @@ interface GrupoEnPanel {
           <p class="text-sm text-gray-500 dark:text-gray-400">{{ t().subtitle }}</p>
         </div>
         <div class="flex gap-2">
-          <button
-            type="button"
-            data-testid="zoom-in"
-            (click)="zoom(1.2)"
-            class="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
-            [attr.aria-label]="t().zoomIn"
-          >+</button>
-          <button
-            type="button"
-            data-testid="zoom-out"
-            (click)="zoom(0.8)"
-            class="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
-            [attr.aria-label]="t().zoomOut"
-          >−</button>
-          <button
-            type="button"
-            data-testid="zoom-reset"
-            (click)="resetView()"
-            class="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
-          >{{ t().resetView }}</button>
+          <!--
+            El mantenedor de plantas vive acá y no en el menú lateral: se entra desde el
+            mapa, que es donde tiene sentido (los activos que se están mirando). Solo lo ve
+            gerente/admin, el mismo permiso que exige el backend para la ruta plantas.
+          -->
+          @if (puedeGestionar()) {
+            <button
+              type="button"
+              data-testid="gestionar-activos"
+              (click)="alternarVista()"
+              class="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
+            >{{ vistaActivos() ? 'Volver al mapa' : 'Gestionar activos' }}</button>
+          }
+          <!-- Los controles de cámara solo tienen sentido sobre el mapa. -->
+          @if (!vistaActivos()) {
+            <button
+              type="button"
+              data-testid="zoom-in"
+              (click)="zoom(1.2)"
+              class="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
+              [attr.aria-label]="t().zoomIn"
+            >+</button>
+            <button
+              type="button"
+              data-testid="zoom-out"
+              (click)="zoom(0.8)"
+              class="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
+              [attr.aria-label]="t().zoomOut"
+            >−</button>
+            <button
+              type="button"
+              data-testid="zoom-reset"
+              (click)="resetView()"
+              class="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
+            >{{ t().resetView }}</button>
+          }
         </div>
       </div>
 
+      @if (!vistaActivos()) {
       <!-- Leyenda de estados -->
       <div class="flex flex-wrap gap-4 text-sm text-gray-600 dark:text-gray-300">
         @for (e of estados; track e) {
@@ -558,15 +577,43 @@ interface GrupoEnPanel {
           }
         }
       </div>
+      } @else {
+        <!-- Mantenedor de plantas dentro de Topología (HU-25, CGBIDA-466).
+             El mapa se desmonta, pero su cámara (viewBox) vive en signals del
+             componente, así que al volver se conserva el zoom y el paneo. -->
+        <app-plantas />
+      }
     </div>
   `,
 })
 export class TopologyComponent {
   private readonly topologyService = inject(TopologyService);
   private readonly i18n = inject(I18nService);
+  private readonly permisos = inject(PermissionsService);
 
   /** Textos de la pantalla. Es un computed, así que cambia al alternar el idioma. */
   protected readonly t = computed(() => this.i18n.tree().topology);
+
+  /**
+   * El mantenedor de plantas se abre desde acá (HU-25, CGBIDA-466), no desde el menú.
+   *
+   * Mismo permiso que exige el backend para la ruta `plantas`: sólo gerente y admin. El
+   * `role()` de dentro del computed hace que se recalcule al iniciar o cerrar sesión.
+   */
+  protected readonly puedeGestionar = computed(() => {
+    this.permisos.role();
+    return this.permisos.canAccess('plantas');
+  });
+
+  /** Mapa o tabla de activos. El mapa se desmonta, pero su cámara no se pierde. */
+  protected readonly vistaActivos = signal(false);
+
+  protected alternarVista(): void {
+    // Al cerrar el mantenedor se sale del panel de detalle: si no, al volver al mapa
+    // aparecería el panel de un nodo que el usuario ya no recuerda haber abierto.
+    if (this.vistaActivos()) this.seleccionado.set(null);
+    this.vistaActivos.update((v) => !v);
+  }
 
   protected readonly nodeW = NODE_W;
   protected readonly nodeH = NODE_H;
@@ -975,6 +1022,8 @@ export class TopologyComponent {
     return textos[clave] ?? estado;
   }
 }
+
+
 
 
 

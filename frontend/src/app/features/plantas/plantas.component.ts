@@ -33,9 +33,9 @@ interface PlantaFila {
     <section class="flex flex-col gap-4" aria-labelledby="plantas-title">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 id="plantas-title" class="text-2xl font-bold text-gray-800 dark:text-gray-100">
+          <h2 id="plantas-title" class="text-xl font-bold text-gray-800 dark:text-gray-100">
             Plantas ({{ plantas().length }})
-          </h1>
+          </h2>
           <p class="text-sm text-gray-600 dark:text-gray-300">
             Plantas de tu empresa con sus máquinas. El alta crea la planta, sus disciplinas y sus máquinas de una vez.
           </p>
@@ -252,5 +252,6 @@ export class PlantasComponent {
     this.load();
   }
 }
+
 
 

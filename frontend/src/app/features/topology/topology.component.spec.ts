@@ -3,6 +3,9 @@ import { Observable, Subject, of, throwError } from 'rxjs';
 
 import { Topology, TopologyNode, TopologyNodoDetalle, WorkOrder } from '../../core/models';
 import { TopologyService } from '../../core/services/topology.service';
+import { AuthService } from '../../core/services/auth.service';
+import { CatalogService } from '../../core/services/catalog.service';
+import { ToastService } from '../../core/services/toast.service';
 import { TopologyComponent } from './topology.component';
 
 function nodo(overrides: Partial<TopologyNode> = {}): TopologyNode {
@@ -1230,5 +1233,112 @@ describe('TopologyComponent', () => {
       expect(dialogo).not.toBeNull();
       expect(dialogo?.textContent).toContain('OT-2026-999');
     });
+  });
+});
+
+
+/**
+ * Acceso al mantenedor de plantas desde Topología (HU-25, CGBIDA-466).
+ *
+ * El mantenedor dejó de tener ítem en el menú y ruta propia: se abre con un botón que
+ * sólo ven gerente y admin. El mapa se desmonta al entrar, pero la cámara vive en un
+ * signal del componente, así que se conserva.
+ */
+describe('TopologyComponent — acceso al mantenedor de plantas', () => {
+  function setupConRol(role: string | null) {
+    const get = vi.fn(() => of(TOPOLOGIA));
+    TestBed.configureTestingModule({
+      imports: [TopologyComponent],
+      providers: [
+        { provide: TopologyService, useValue: { get, getNodo: getNodoDe(TOPOLOGIA) } },
+        { provide: AuthService, useValue: { user: () => (role ? { role, name: 'T' } : null) } },
+        {
+          provide: CatalogService,
+          useValue: {
+            getPlants: () => of([]),
+            getMachines: () => of([]),
+            getDisciplines: () => of([]),
+            crearPlantaCompleta: vi.fn(),
+            actualizarPlanta: vi.fn(),
+            agregarMaquina: vi.fn(),
+          },
+        },
+        {
+          provide: ToastService,
+          useValue: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() },
+        },
+      ],
+    });
+    const fixture = TestBed.createComponent(TopologyComponent);
+    fixture.detectChanges();
+    return { fixture, el: fixture.nativeElement as HTMLElement };
+  }
+
+  const boton = (el: HTMLElement) => el.querySelector<HTMLElement>('[data-testid="gestionar-activos"]');
+
+  it.each(['admin', 'gerente'])('muestra el botón para el rol %s', (role) => {
+    const { el } = setupConRol(role);
+    expect(boton(el)).not.toBeNull();
+    expect(boton(el)!.textContent).toContain('Gestionar activos');
+  });
+
+  it.each(['tecnico', 'operador', 'supervisor', 'engineer', 'visitante', null])(
+    'oculta el botón para el rol %s',
+    (role) => {
+      const { el } = setupConRol(role as string | null);
+      expect(boton(el)).toBeNull();
+    },
+  );
+
+  it('al pulsarlo muestra el mantenedor y esconde el mapa', () => {
+    const { fixture, el } = setupConRol('admin');
+    expect(el.querySelector('app-plantas')).toBeNull();
+    expect(canvas(el)).not.toBeNull();
+
+    boton(el)!.click();
+    fixture.detectChanges();
+
+    expect(el.querySelector('app-plantas')).not.toBeNull();
+    expect(canvas(el)).toBeNull();
+    // Los controles de cámara no tienen sentido sobre la tabla.
+    expect(el.querySelector('[data-testid="zoom-in"]')).toBeNull();
+    expect(boton(el)!.textContent).toContain('Volver al mapa');
+  });
+
+  it('al volver, el mapa reaparece y el botón recupera su texto', () => {
+    const { fixture, el } = setupConRol('admin');
+    boton(el)!.click();
+    fixture.detectChanges();
+    boton(el)!.click();
+    fixture.detectChanges();
+
+    expect(el.querySelector('app-plantas')).toBeNull();
+    expect(canvas(el)).not.toBeNull();
+    expect(boton(el)!.textContent).toContain('Gestionar activos');
+  });
+
+  it('conserva el zoom del mapa al entrar y salir del mantenedor', () => {
+    const { fixture, el } = setupConRol('admin');
+    const inicial = canvas(el)!.getAttribute('viewBox');
+
+    el.querySelector<HTMLElement>('[data-testid="zoom-in"]')!.click();
+    fixture.detectChanges();
+    const ampliado = canvas(el)!.getAttribute('viewBox');
+    expect(ampliado).not.toBe(inicial);
+
+    boton(el)!.click();
+    fixture.detectChanges();
+    boton(el)!.click();
+    fixture.detectChanges();
+
+    // La cámara vive en un signal del componente: sobrevive al desmontaje del SVG.
+    expect(canvas(el)!.getAttribute('viewBox')).toBe(ampliado);
+  });
+
+  it('no ofrece el acceso a quien no lo ve aunque llegue por URL', () => {
+    // La ruta /plantas ya no existe; el permiso sigue en la matriz y el botón lo respeta.
+    const { el } = setupConRol('tecnico');
+    expect(boton(el)).toBeNull();
+    expect(el.querySelector('app-plantas')).toBeNull();
   });
 });
