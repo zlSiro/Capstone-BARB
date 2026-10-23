@@ -114,6 +114,23 @@ function canvas(el: HTMLElement): SVGSVGElement | null {
   return el.querySelector('[data-testid="topo-canvas"]');
 }
 
+/** Aristas dibujadas. Se excluyen los `<path>` de las puntas de flecha, que viven en defs. */
+function aristasDom(el: HTMLElement): SVGPathElement[] {
+  return Array.from(canvas(el)!.querySelectorAll<SVGPathElement>('path.arista'));
+}
+
+/** Extremos de una arista a partir de su `d`: "M x y C c1x c1y c2x c2y x2 y2". */
+function extremos(arista: SVGPathElement): [number, number, number, number] {
+  // Se descartan las letras de comando ("M", "C"): quedan solo los números.
+  const n = (arista.getAttribute('d') ?? '')
+    .trim()
+    .split(/\s+/)
+    .slice(1)
+    .map(Number)
+    .filter((v) => !Number.isNaN(v));
+  return [n[0], n[1], n[6], n[7]];
+}
+
 /** Servicio falso que no responde hasta que el test lo decide (para el estado de carga). */
 function setupConFuentePendiente() {
   const fuente = new Subject<Topology>();
@@ -198,11 +215,11 @@ describe('TopologyComponent', () => {
 
   it('dibuja una arista por conexión, recortada en el borde de cada nodo', () => {
     const { el } = setup(TOPOLOGIA);
-    const lineas = Array.from(canvas(el)!.querySelectorAll('line'));
+    const lineas = aristasDom(el);
     expect(lineas).toHaveLength(2);
     // p_1 centro = (565, 142.5) ; d_1 centro = (265, 342.5)
     const jerarquia = lineas.find((l) => l.getAttribute('data-relacion') === 'jerarquia')!;
-    const [x1, y1, x2, y2] = ['x1', 'y1', 'x2', 'y2'].map((a) => Number(jerarquia.getAttribute(a)));
+    const [x1, y1, x2, y2] = extremos(jerarquia);
 
     // La arista ya NO arranca ni termina en el centro: si lo hiciera, la punta de flecha
     // quedaría tapada por la tarjeta, que se dibuja después.
@@ -231,7 +248,7 @@ describe('TopologyComponent', () => {
       ],
     };
     const { el } = setup(rota);
-    expect(Array.from(canvas(el)!.querySelectorAll('line'))).toHaveLength(2);
+    expect(aristasDom(el)).toHaveLength(2);
   });
 
   it('muestra el error cuando el servicio falla, sin dejar el lienzo vacío mudo', () => {
@@ -473,7 +490,7 @@ describe('TopologyComponent', () => {
         // El marker-end y el :hover viven en el CSS del componente (styles), no en un
         // atributo: en jsdom no se resuelve CSS, así que se comprueba la clase.
         const { el } = setup(TOPOLOGIA);
-        const aristas = [...canvas(el)!.querySelectorAll('line')];
+        const aristas = aristasDom(el);
         expect(aristas.length).toBe(TOPOLOGIA.conexiones.length);
         for (const a of aristas) expect(a.getAttribute('class')).toContain('arista');
       });
@@ -640,7 +657,7 @@ describe('TopologyComponent', () => {
 
       // La misma instancia recibe otra topología no vuelve a pedirla, pero el
       // render debe seguir siendo consistente con lo recibido.
-      expect(canvas(fixture.nativeElement)!.querySelectorAll('line').length).toBe(2);
+      expect(aristasDom(fixture.nativeElement).length).toBe(2);
     });
 
     it('el panel se cierra y se reabre sin dejar estado colgado', () => {
@@ -1423,5 +1440,93 @@ describe('TopologyComponent — acceso al mantenedor de plantas', () => {
 
     expect(el.querySelector('[data-testid="estado-error"]')).toBeNull();
     expect(el.querySelector('[data-testid="topo-canvas"]')).not.toBeNull();
+  });
+
+  // --- Legibilidad de las aristas: curvas y enfoque (HU-25) ----------------------
+
+  describe('legibilidad de las aristas', () => {
+    type Fixture = ReturnType<typeof TestBed.createComponent>;
+
+    /** Entra al nodo y refresca: el foco vive en un signal, sin detectChanges no se pinta. */
+    const entrar = (fixture: Fixture, el: HTMLElement, id: string) => {
+      el.querySelector(`g[data-nodo-id="${id}"]`)!.dispatchEvent(new MouseEvent('mouseenter'));
+      fixture.detectChanges();
+    };
+    const salir = (fixture: Fixture, el: HTMLElement, id: string) => {
+      el.querySelector(`g[data-nodo-id="${id}"]`)!.dispatchEvent(new MouseEvent('mouseleave'));
+      fixture.detectChanges();
+    };
+
+    const clasesArista = (el: HTMLElement) => aristasDom(el).map((a) => a.getAttribute('class') ?? '');
+
+    it('las aristas son curvas Bézier, no rectas', () => {
+      const { el } = setup(TOPOLOGIA);
+      for (const arista of aristasDom(el)) {
+        const d = arista.getAttribute('d') ?? '';
+        expect(d).toMatch(/^M [\d.]+ [\d.]+ C /);
+        // Sin curvas, el grafo se veía como una telaraña de rectas cruzadas.
+        expect(d).not.toContain('L');
+      }
+    });
+
+    it('sin foco, todas las aristas están activas y ningún nodo atenuado', () => {
+      const { el } = setup(TOPOLOGIA);
+      for (const clase of clasesArista(el)) {
+        expect(clase).not.toContain('arista-ajena');
+        expect(clase).not.toContain('arista-foco');
+      }
+      expect(el.querySelectorAll('.nodo-ajeno')).toHaveLength(0);
+    });
+
+    it('al pasar el mouse por una planta se enciende toda su rama y se atenúa el resto', () => {
+      const { fixture, el } = setup(TOPOLOGIA);
+      entrar(fixture, el, 'p_1');
+
+      // p_1 -> d_1 -> m_1: las dos aristas pertenecen a la rama de la planta.
+      const clases = clasesArista(el);
+      expect(clases.every((c) => c.includes('arista-foco'))).toBe(true);
+      expect(clases.some((c) => c.includes('arista-ajena'))).toBe(false);
+      expect(el.querySelectorAll('.nodo-ajeno')).toHaveLength(0);
+    });
+
+    it('al pasar el mouse por una máquina se encienden sus ancestros y se atenúan los hermanos', () => {
+      const topologia: Topology = {
+        nodos: [
+          ...TOPOLOGIA.nodos,
+          // Segunda máquina colgando de la misma disciplina: es "hermana" de m_1.
+          nodo({ nodo_id: 'm_2', nombre_visual: 'Motor D1', tipo: 'Máquina', pos_x: 300, pos_y: 500 }),
+        ],
+        conexiones: [
+          ...TOPOLOGIA.conexiones,
+          { conexion_id: 'conn_d1_m_2', origen_nodo_id: 'd_1', destino_nodo_id: 'm_2', tipo_relacion: 'pertenece' },
+        ],
+      };
+      const { fixture, el } = setup(topologia);
+      entrar(fixture, el, 'm_1');
+
+      const rama = aristasDom(el).filter((a) => (a.getAttribute('class') ?? '').includes('arista-foco'));
+      const ajenas = aristasDom(el).filter((a) => (a.getAttribute('class') ?? '').includes('arista-ajena'));
+
+      // Su arista (d_1 -> m_1) y la de su padre (p_1 -> d_1) quedan encendidas.
+      expect(rama).toHaveLength(2);
+      // La de su hermana (d_1 -> m_2) se apaga, y es la única que queda apagada.
+      expect(ajenas).toHaveLength(1);
+      expect(rama.length + ajenas.length).toBe(3);
+      // El nodo hermano también se atenúa; los de la rama no.
+      expect(el.querySelector('g[data-nodo-id="m_2"]')!.getAttribute('class')).toContain('nodo-ajeno');
+      expect(el.querySelector('g[data-nodo-id="p_1"]')!.getAttribute('class')).not.toContain('nodo-ajeno');
+    });
+
+    it('al salir del nodo vuelve todo a la normalidad', () => {
+      const { fixture, el } = setup(TOPOLOGIA);
+      entrar(fixture, el, 'p_1');
+      salir(fixture, el, 'p_1');
+
+      for (const clase of clasesArista(el)) {
+        expect(clase).not.toContain('arista-ajena');
+        expect(clase).not.toContain('arista-foco');
+      }
+      expect(el.querySelectorAll('.nodo-ajeno')).toHaveLength(0);
+    });
   });
 });
