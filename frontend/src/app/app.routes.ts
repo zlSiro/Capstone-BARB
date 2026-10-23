@@ -45,6 +45,12 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./features/chat/chat-history/chat-history.component').then(m => m.ChatHistoryComponent)
       },
+      // --- Tickets conversacionales (HU-06): nacen de las conversaciones del DocChat ---
+      {
+        path: 'tickets',
+        canActivate: [roleGuard('docchat')],
+        loadComponent: () => import('./features/tickets/tickets').then(m => m.Tickets)
+      },
       // --- Multi-empresa ---
       {
         path: 'empresas',

@@ -20,6 +20,7 @@ const NAV_ITEMS: NavItem[] = [
   { path: '/work-orders', icon: '🔧', label: 'Órdenes de Trabajo', ruta: 'menu' },
   { path: '/topology', icon: '🌐', label: 'Topología', ruta: 'topology' },
   { path: '/chat', icon: '💬', label: 'DocChat', ruta: 'docchat' },
+  { path: '/tickets', icon: '🎫', label: 'Tickets', ruta: 'docchat' },
   { path: '/documentos', icon: '📚', label: 'Documentos', ruta: 'documentos' },
   { path: '/usuarios', icon: '👥', label: 'Usuarios', ruta: 'usuarios' },
 ];

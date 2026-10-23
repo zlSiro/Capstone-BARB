@@ -9,6 +9,7 @@ import uuid
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from psycopg.errors import ForeignKeyViolation
 from pydantic import BaseModel, Field, field_validator
 from sse_starlette.sse import EventSourceResponse
 
@@ -475,6 +476,9 @@ async def delete_session(
 
     Valida formato UUID, existencia y ownership. Si la sesión no existe o
     no pertenece al usuario, devuelve 404 (no revela si existe para otro).
+
+    HU-06: si la conversación originó un ticket, devuelve 409 — el ticket es
+    trazabilidad y la FK ON DELETE RESTRICT (migración 0007) impide el borrado.
     """
     user_id = int(user["id"])
 
@@ -487,7 +491,17 @@ async def delete_session(
             detail="session_id debe ser un UUID válido.",
         )
 
-    deleted = await chat_repository.delete_session(session_id, user_id)
+    # La FK RESTRICT de la tabla ticket (migración 0007) bloquea el DELETE de
+    # una sesión con ticket: se traduce a 409 accionable en vez de un 500 opaco.
+    # Nótese que cerrar o cancelar el ticket NO libera la sesión — el ticket
+    # persiste como registro; v1 no expone DELETE de tickets.
+    try:
+        deleted = await chat_repository.delete_session(session_id, user_id)
+    except ForeignKeyViolation:
+        raise HTTPException(
+            status_code=409,
+            detail="Esta conversación tiene un ticket asociado y no se puede eliminar mientras el ticket exista.",
+        ) from None
     if not deleted:
         raise HTTPException(
             status_code=404,

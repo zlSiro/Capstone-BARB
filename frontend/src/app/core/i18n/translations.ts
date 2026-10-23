@@ -30,6 +30,7 @@ export const translations = {
     statuses: {
       pending: 'Pendiente', assigned: 'Asignada', in_progress: 'En Progreso', completed: 'Completada',
       cancelled: 'Cancelada', overdue: 'Atrasada', open: 'Abierta', done: 'Terminada', closed: 'Cerrada',
+      resolved: 'Resuelta',
       operativo: 'Operativo', alerta: 'Alerta', mantenimiento: 'Mantenimiento', falla: 'Falla'
     },
     maintenanceTypes: {
@@ -243,6 +244,21 @@ export const translations = {
       sidebarSubtitle: 'Consultas previas realizadas a la IA', sidebarEmpty: 'Sin conversaciones guardadas.',
       sidebarEmptyHint: 'Inicia una nueva para verla aquí.', loadSessionsError: 'No se pudo cargar el historial.'
     },
+    tickets: {
+      title: 'Tickets', subtitle: 'Conversaciones con la IA promovidas a tickets para darles seguimiento.',
+      saveAsTicket: 'Guardar como ticket', saving: 'Guardando…',
+      savedFromChat: 'Ticket creado:', alreadyExists: 'Esta conversación ya tiene un ticket.',
+      saveError: 'No se pudo crear el ticket.',
+      filterEstado: 'Estado', allStates: 'Todos',
+      emptyState: 'Todavía no hay tickets. Guarda una conversación desde el DocChat con "Guardar como ticket".',
+      emptyDetail: 'Selecciona un ticket para ver su detalle.',
+      loadError: 'No se pudieron cargar los tickets.', loadDetailError: 'No se pudo cargar el ticket.',
+      creadoPor: 'Creado por', created: 'Creado', updated: 'Actualizado', resolvedAt: 'Resuelto',
+      conversation: 'Conversación original', roleUser: 'Tú', roleAssistant: 'IA', noMessages: 'Sin mensajes.',
+      openInChat: 'Abrir conversación en el chat',
+      moveTo: 'Pasar a', estadoChanged: 'Estado actualizado.', estadoError: 'No se pudo cambiar el estado.',
+      of: 'de'
+    },
     docChat: {
       title: 'DocChat IA', subtitle: 'Consulta al asistente técnico en tiempo real',
       activeConversation: 'Conversación activa', newConversation: '+ Nueva conversación',
@@ -290,6 +306,7 @@ export const translations = {
     statuses: {
       pending: 'Pending', assigned: 'Assigned', in_progress: 'In Progress', completed: 'Completed',
       cancelled: 'Cancelled', overdue: 'Overdue', open: 'Open', done: 'Done', closed: 'Closed',
+      resolved: 'Resolved',
       operativo: 'Operational', alerta: 'Warning', mantenimiento: 'Maintenance', falla: 'Error'
     },
     maintenanceTypes: {
@@ -485,6 +502,21 @@ export const translations = {
       deleteSuccess: 'Conversation deleted', deleteError: 'Could not delete the conversation',
       sidebarSubtitle: 'Previous queries made to the AI', sidebarEmpty: 'No saved conversations.',
       sidebarEmptyHint: 'Start a new one to see it here.', loadSessionsError: 'Could not load the history.'
+    },
+    tickets: {
+      title: 'Tickets', subtitle: 'AI conversations promoted to tickets for follow-up.',
+      saveAsTicket: 'Save as ticket', saving: 'Saving…',
+      savedFromChat: 'Ticket created:', alreadyExists: 'This conversation already has a ticket.',
+      saveError: 'The ticket could not be created.',
+      filterEstado: 'Status', allStates: 'All',
+      emptyState: 'No tickets yet. Save a conversation from DocChat with "Save as ticket".',
+      emptyDetail: 'Select a ticket to see its details.',
+      loadError: 'The tickets could not be loaded.', loadDetailError: 'The ticket could not be loaded.',
+      creadoPor: 'Created by', created: 'Created', updated: 'Updated', resolvedAt: 'Resolved',
+      conversation: 'Original conversation', roleUser: 'You', roleAssistant: 'AI', noMessages: 'No messages.',
+      openInChat: 'Open conversation in chat',
+      moveTo: 'Move to', estadoChanged: 'Status updated.', estadoError: 'The status could not be changed.',
+      of: 'of'
     },
     docChat: {
       title: 'DocChat AI', subtitle: 'Ask the technical assistant in real time',

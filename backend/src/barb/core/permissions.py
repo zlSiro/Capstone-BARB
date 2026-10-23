@@ -66,6 +66,9 @@ RUTAS: dict[str, dict[str, bool | str]] = {
     "transacciones": {"operador": False, "tecnico": False, "supervisor": False, "engineer": False, "gerente": False, "admin": False, "visitante": False, "super_usuario": True},
     # transacciones_empresa: lo mismo, acotado a la empresa del usuario (solo lectura), exclusiva del gerente.
     "transacciones_empresa": {"operador": False, "tecnico": False, "supervisor": False, "engineer": False, "gerente": True, "admin": False, "visitante": False, "super_usuario": False},
+    # history: vista global de la empresa. Primer consumidor backend: los tickets
+    # conversacionales (HU-06) — quien la tiene ve TODOS los tickets de su empresa
+    # en GET /api/tickets; el resto solo ve los creados desde sus conversaciones.
     "history":    {"operador": False, "tecnico": False, "supervisor": True, "engineer": False, "gerente": True, "admin": True, "visitante": False, "super_usuario": False},
 }
 
@@ -94,6 +97,16 @@ ACCIONES: dict[str, dict[str, bool]] = {
     "gestionar_empresas":  {"operador": False, "tecnico": False, "supervisor": False, "engineer": False, "gerente": False, "admin": False, "visitante": False, "super_usuario": True},
     "configurar_notificaciones": {"operador": False, "tecnico": False, "supervisor": True, "engineer": False, "gerente": True, "admin": True, "visitante": False, "super_usuario": False},
     "ver_usuarios":        {"operador": False, "tecnico": False, "supervisor": False, "engineer": False, "gerente": True, "admin": True, "visitante": False, "super_usuario": True},
+    # --- Tickets conversacionales (HU-06, migración 0007) ---
+    # Quien conversa con la IA guarda su conversación como ticket: todos los roles
+    # de empresa (ni visitante ni super_usuario, que no accede a datos operativos).
+    "crear_ticket":            {"operador": True, "tecnico": True, "supervisor": True, "engineer": True, "gerente": True, "admin": True, "visitante": False, "super_usuario": False},
+    # Avanzar/resolver tickets de la empresa. El dueño siempre puede avanzar el
+    # suyo sin esta acción (regla de dueñez en core/ticket_states.py).
+    "cambiar_estado_ticket":   {"operador": False, "tecnico": False, "supervisor": True, "engineer": False, "gerente": True, "admin": True, "visitante": False, "super_usuario": False},
+    # Cancelar un ticket (estado final) es más restrictivo que avanzarlo, mismo
+    # criterio que cancelar_ot: el dueño NO puede cancelar el suyo.
+    "cancelar_ticket":         {"operador": False, "tecnico": False, "supervisor": True, "engineer": False, "gerente": True, "admin": True, "visitante": False, "super_usuario": False},
 }
 
 

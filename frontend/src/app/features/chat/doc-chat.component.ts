@@ -2,14 +2,17 @@
 
 import { Component, ElementRef, ViewChild, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
+import { HttpErrorResponse } from '@angular/common/http';
 import { ChatService } from '../../core/services/chat.service';
+import { TicketsApi } from '../../core/services/tickets-api';
 import { ChatMessage, SessionListItem } from '../../core/models/chat.model';
 import { MessageBubbleComponent } from './message-bubble.component';
 import { ImageAttachmentComponent } from './image-attachment.component';
 import { ToastService } from '../../core/services/toast.service';
 import { I18nService } from '../../core/i18n/i18n.service';
 import { TranslatePipe } from '../../core/i18n/translate.pipe';
+import { apiErrorMessage } from '../../core/utils/http-error';
 
 @Component({
   selector: 'app-doc-chat',
@@ -18,7 +21,9 @@ import { TranslatePipe } from '../../core/i18n/translate.pipe';
 })
 export class DocChatComponent {
   private readonly chatService = inject(ChatService);
+  private readonly ticketsApi = inject(TicketsApi);
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   private readonly i18n = inject(I18nService);
   private readonly toast = inject(ToastService);
 
@@ -39,6 +44,9 @@ export class DocChatComponent {
   readonly sessions = signal<SessionListItem[]>([]);
   readonly loadingSessions = signal(false);
   readonly sessionError = signal<string | null>(null);
+
+  // ── Ticket (HU-06, CGBIDA-289): guardar la conversación activa como ticket ──
+  readonly savingTicket = signal(false);
 
   constructor() {
     this.loadSessions();
@@ -132,6 +140,42 @@ export class DocChatComponent {
     this.errorMessage.set(null);
     this.inputText.set('');
     this.attachedImage.set(null);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Ticket conversacional (HU-06, CGBIDA-289): guardar como ticket
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Promueve la conversación activa a ticket (POST /api/tickets). Si la sesión
+   * ya tiene uno (409 con `detail.ticket_id`), lleva al usuario al ticket
+   * existente en vez de mostrar un error genérico.
+   */
+  saveAsTicket(): void {
+    const sid = this.sessionId();
+    if (!sid || this.savingTicket()) return;
+    this.savingTicket.set(true);
+
+    this.ticketsApi.create(sid).subscribe({
+      next: (t) => {
+        this.savingTicket.set(false);
+        this.toast.success(`${this.i18n.t('tickets').savedFromChat} #${t.ticket_id}`);
+        void this.router.navigate(['/tickets'], { queryParams: { ticket_id: t.ticket_id } });
+      },
+      error: (err) => {
+        this.savingTicket.set(false);
+        if (err instanceof HttpErrorResponse && err.status === 409) {
+          // 1:1 (D1): la conversación ya tiene ticket — se navega al existente.
+          const detail = (err.error as { detail?: { ticket_id?: number | null } } | null)?.detail;
+          this.toast.info(this.i18n.t('tickets').alreadyExists);
+          if (detail?.ticket_id) {
+            void this.router.navigate(['/tickets'], { queryParams: { ticket_id: detail.ticket_id } });
+          }
+        } else {
+          this.toast.error(apiErrorMessage(err, this.i18n.t('tickets').saveError));
+        }
+      },
+    });
   }
 
   // ---------------------------------------------------------------------------
