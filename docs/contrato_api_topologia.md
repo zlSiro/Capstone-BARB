@@ -452,3 +452,6 @@ Queda pendiente, en **CGBIDA-370**, decidir el destino de las cuatro tablas del 
 `topologia_zona` / `topologia_nodo` / `topologia_conexion` / `zona_nodo`: existen, están
 pobladas y **ningún código las lee**. La decisión y sus opciones viven en
 `docs/TOPOLOGIA.md`; aquí solo se referencia para no duplicar.
+
+> **Interfaz.** El comportamiento de la interfaz (encuadre, zoom, modo oscuro, panel) se
+> documenta en `TOPOLOGIA.md` §1.d–1.g.
