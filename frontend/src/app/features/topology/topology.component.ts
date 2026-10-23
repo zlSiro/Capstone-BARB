@@ -170,7 +170,7 @@ interface GrupoEnPanel {
       <div class="flex items-center justify-between">
         <div>
           <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100">{{ t().title }}</h1>
-          <p class="text-sm text-gray-500 dark:text-gray-400">{{ t().subtitle }}</p>
+          <p class="text-sm text-gray-500 dark:text-gray-400" data-testid="topo-subtitulo">{{ vistaActivos() ? t().subtitleAssets : t().subtitle }}</p>
         </div>
         <div class="flex gap-2">
           <!--

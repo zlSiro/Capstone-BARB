@@ -1246,6 +1246,8 @@ describe('TopologyComponent', () => {
  */
 describe('TopologyComponent — acceso al mantenedor de plantas', () => {
   function setupConRol(role: string | null) {
+    // El subtítulo se afirma en español: se fija el idioma antes de crear el servicio.
+    window.localStorage.setItem('barb.lang', 'es');
     const get = vi.fn(() => of(TOPOLOGIA));
     TestBed.configureTestingModule({
       imports: [TopologyComponent],
@@ -1340,5 +1342,20 @@ describe('TopologyComponent — acceso al mantenedor de plantas', () => {
     const { el } = setupConRol('tecnico');
     expect(boton(el)).toBeNull();
     expect(el.querySelector('app-plantas')).toBeNull();
+  });
+
+  it('el subtítulo cambia según la vista: mapa vs mantenedor', () => {
+    const { fixture, el } = setupConRol('admin');
+    const subtitulo = () => el.querySelector('[data-testid="topo-subtitulo"]')?.textContent?.trim();
+
+    expect(subtitulo()).toBe('Mapa de equipos por estado');
+
+    boton(el)!.click();
+    fixture.detectChanges();
+    expect(subtitulo()).toBe('Gestión de plantas y máquinas');
+
+    boton(el)!.click();
+    fixture.detectChanges();
+    expect(subtitulo()).toBe('Mapa de equipos por estado');
   });
 });
