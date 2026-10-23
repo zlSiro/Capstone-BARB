@@ -16,8 +16,11 @@ from barb.core.permissions import (
 from barb.schemas.plantas import (
     DisciplinaResuelta,
     MaquinaCreada,
+    MaquinaNuevaRequest,
+    PlantaActualizada,
     PlantaCompletaCreate,
     PlantaCompletaResponse,
+    PlantaUpdateRequest,
 )
 
 logger = logging.getLogger("barb.catalog")
@@ -275,5 +278,189 @@ async def create_planta_completa(
         ],
         maquinas=maquinas,
     )
+
+
+# =============================================================================
+# Edición de la planta y alta de una máquina suelta (HU-25, CGBIDA-466)
+# =============================================================================
+
+
+async def _planta_de_la_empresa(cur, planta_id: int, empresa_id: int) -> dict:
+    """
+    Devuelve la planta si pertenece a la empresa de la sesión; si no, 404.
+
+    Se usa `FOR UPDATE` en las escrituras: dos ediciones simultáneas del mismo nombre no
+    pueden pasar las dos la comprobación de unicidad.
+    """
+    await cur.execute(
+        """
+        SELECT planta_id, empresa_id, nombre, ubicacion
+        FROM planta
+        WHERE planta_id = %(id)s AND empresa_id = %(empresa)s
+        FOR UPDATE
+        """,
+        {"id": planta_id, "empresa": empresa_id},
+    )
+    fila = await cur.fetchone()
+    if not fila:
+        # 404 y no 403: no se confirma si la planta existe en otra empresa.
+        raise HTTPException(status_code=404, detail="Planta no encontrada.")
+    return fila
+
+
+@router.patch(
+    "/api/plantas/{planta_id}",
+    response_model=PlantaActualizada,
+    dependencies=[Depends(require_route("plantas"))],
+)
+async def update_planta(
+    planta_id: int,
+    payload: PlantaUpdateRequest,
+    sesion: dict = Depends(get_sesion_actual),
+) -> PlantaActualizada:
+    """
+    Edita el nombre y/o la ubicación de una planta.
+
+    La unicidad del nombre se comprueba **en Python**: el esquema del repositorio no tiene
+    `UNIQUE(empresa_id, nombre)` en `planta` (la migración que la creaba se eliminó por
+    decisión del equipo) y `AGENTS.md` prohíbe agregarla. Confiar en una restricción que
+    solo existe en algunas bases haría que el 409 dependiera del entorno.
+    """
+    empresa_id = empresa_obligatoria(sesion)
+
+    cambios: dict[str, object] = {}
+    if payload.nombre is not None:
+        nombre = payload.nombre.strip()
+        if len(nombre) < 2:
+            raise HTTPException(status_code=422, detail="El nombre debe tener al menos 2 caracteres.")
+        cambios["nombre"] = nombre
+    if payload.ubicacion is not None:
+        ubicacion = payload.ubicacion.strip()
+        cambios["ubicacion"] = ubicacion or None
+
+    try:
+        async with transaction() as cur:
+            actual = await _planta_de_la_empresa(cur, planta_id, empresa_id)
+
+            if "nombre" in cambios and cambios["nombre"] != actual["nombre"]:
+                await cur.execute(
+                    """
+                    SELECT 1 FROM planta
+                    WHERE empresa_id = %(empresa)s
+                      AND lower(nombre) = lower(%(nombre)s)
+                      AND planta_id <> %(id)s
+                    LIMIT 1
+                    """,
+                    {"empresa": empresa_id, "nombre": cambios["nombre"], "id": planta_id},
+                )
+                if await cur.fetchone():
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"Ya existe una planta llamada «{cambios['nombre']}» en tu empresa.",
+                    )
+
+            if not cambios:
+                # Nada que actualizar: se devuelve el estado actual, sin escribir.
+                return PlantaActualizada(
+                    planta_id=int(actual["planta_id"]),
+                    nombre=str(actual["nombre"]),
+                    ubicacion=actual["ubicacion"],
+                )
+
+            sets = ", ".join(f"{col} = %({col})s" for col in cambios)
+            await cur.execute(
+                f"UPDATE planta SET {sets} WHERE planta_id = %(_id)s "
+                "RETURNING planta_id, nombre, ubicacion",
+                {**cambios, "_id": planta_id},
+            )
+            fila = await cur.fetchone()
+    except pg_errors.ForeignKeyViolation as e:
+        raise HTTPException(status_code=409, detail="La empresa de la planta ya no existe.") from e
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise
+        logger.exception("Error al actualizar la planta")
+        raise HTTPException(status_code=500, detail="Error interno al actualizar la planta.") from e
+
+    return PlantaActualizada(
+        planta_id=int(fila["planta_id"]),
+        nombre=str(fila["nombre"]),
+        ubicacion=fila["ubicacion"],
+    )
+
+
+@router.post(
+    "/api/plantas/{planta_id}/maquinas",
+    status_code=201,
+    response_model=MaquinaCreada,
+    dependencies=[Depends(require_route("plantas"))],
+)
+async def add_maquina(
+    planta_id: int,
+    payload: MaquinaNuevaRequest,
+    sesion: dict = Depends(get_sesion_actual),
+) -> MaquinaCreada:
+    """
+    Agrega una máquina a una planta existente.
+
+    Resuelve la disciplina igual que el alta masiva (por nombre, contra la empresa: se
+    reutiliza o se crea). El código de máquina sí tiene `UNIQUE(planta_id, codigo)` en el
+    esquema base, así que ante un duplicado se devuelve 409 con el mensaje del dominio.
+    """
+    empresa_id = empresa_obligatoria(sesion)
+    nombre = payload.nombre.strip()
+    codigo = payload.codigo.strip()
+    disciplina = (payload.disciplina or "").strip()
+
+    try:
+        async with transaction() as cur:
+            await _planta_de_la_empresa(cur, planta_id, empresa_id)
+
+            await cur.execute(
+                "SELECT 1 FROM maquina WHERE planta_id = %(p)s AND lower(codigo) = lower(%(c)s) LIMIT 1",
+                {"p": planta_id, "c": codigo},
+            )
+            if await cur.fetchone():
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Ya existe una máquina con el código «{codigo}» en esta planta.",
+                )
+
+            disciplina_id: int | None = None
+            if disciplina:
+                disciplina_id = await _resolver_disciplina(cur, empresa_id, disciplina, {})
+
+            await cur.execute(
+                """
+                INSERT INTO maquina (planta_id, disciplina_id, nombre, codigo)
+                VALUES (%(planta)s, %(disc)s, %(nombre)s, %(codigo)s)
+                RETURNING maquina_id
+                """,
+                {
+                    "planta": planta_id,
+                    "disc": disciplina_id,
+                    "nombre": nombre,
+                    "codigo": codigo,
+                },
+            )
+            maquina_id = int((await cur.fetchone())["maquina_id"])
+    except pg_errors.UniqueViolation as e:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Ya existe una máquina con el código «{codigo}» en esta planta.",
+        ) from e
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise
+        logger.exception("Error al agregar la máquina")
+        raise HTTPException(status_code=500, detail="Error interno al agregar la máquina.") from e
+
+    return MaquinaCreada(
+        maquina_id=maquina_id,
+        nombre=nombre,
+        codigo=codigo,
+        disciplina_id=disciplina_id,
+    )
+
 
 

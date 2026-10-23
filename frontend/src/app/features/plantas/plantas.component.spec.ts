@@ -41,6 +41,8 @@ function crearServicio(over: Partial<Record<'getPlants' | 'getMachines' | 'getDi
     getMachines: vi.fn(() => over.getMachines ?? of(MAQUINAS)),
     getDisciplines: vi.fn(() => over.getDisciplines ?? of(DISCIPLINAS)),
     crearPlantaCompleta: vi.fn(),
+    actualizarPlanta: vi.fn(),
+    agregarMaquina: vi.fn(),
   };
 }
 
@@ -74,21 +76,21 @@ describe('PlantasComponent', () => {
       const { el } = setup();
       expect(el.querySelector('h1')?.textContent).toContain('Plantas (3)');
       expect(filas(el)).toHaveLength(3);
-      expect(texto(el, 'planta-nombre', 0)).toContain('Planta Central San Bernardo');
-      expect(texto(el, 'planta-ubicacion', 0)).toBe('San Bernardo');
+      expect(texto(el, 'planta-celda-nombre', 0)).toContain('Planta Central San Bernardo');
+      expect(texto(el, 'planta-celda-ubicacion', 0)).toBe('San Bernardo');
     });
 
     it('cuenta las máquinas de cada planta cruzando por plant_id', () => {
       const { el } = setup();
       // Planta 1 tiene 2 máquinas; planta 2 tiene 1; planta 3 no tiene.
-      expect(texto(el, 'planta-maquinas', 0)).toBe('2');
-      expect(texto(el, 'planta-maquinas', 1)).toBe('1');
-      expect(texto(el, 'planta-maquinas', 2)).toBe('0');
+      expect(texto(el, 'planta-celda-maquinas', 0)).toBe('2');
+      expect(texto(el, 'planta-celda-maquinas', 1)).toBe('1');
+      expect(texto(el, 'planta-celda-maquinas', 2)).toBe('0');
     });
 
     it('una planta sin ubicación se muestra con guion y avisa que no tiene máquinas', () => {
       const { el } = setup();
-      expect(texto(el, 'planta-ubicacion', 2)).toBe('—');
+      expect(texto(el, 'planta-celda-ubicacion', 2)).toBe('—');
       const tercera = filas(el)[2];
       expect(tercera.textContent).toContain('Sin máquinas');
     });
@@ -116,7 +118,7 @@ describe('PlantasComponent', () => {
       const servicio = crearServicio({ getMachines: throwError(() => new Error('boom')) });
       const { el } = setup(servicio);
       expect(filas(el)).toHaveLength(3);
-      expect(texto(el, 'planta-maquinas', 0)).toBe('0');
+      expect(texto(el, 'planta-celda-maquinas', 0)).toBe('0');
     });
 
     it('si fallan las plantas, muestra el error con reintento', () => {
@@ -138,13 +140,13 @@ describe('PlantasComponent', () => {
       input.dispatchEvent(new Event('input', { bubbles: true }));
       fixture.detectChanges();
       expect(filas(el)).toHaveLength(1);
-      expect(texto(el, 'planta-nombre')).toContain('Norte');
+      expect(texto(el, 'planta-celda-nombre')).toContain('Norte');
 
       input.value = 'san bernardo';
       input.dispatchEvent(new Event('input', { bubbles: true }));
       fixture.detectChanges();
       expect(filas(el)).toHaveLength(1);
-      expect(texto(el, 'planta-nombre')).toContain('Central');
+      expect(texto(el, 'planta-celda-nombre')).toContain('Central');
     });
 
     it('sin coincidencias muestra el vacío sin romper el título', () => {
@@ -207,4 +209,83 @@ describe('PlantasComponent', () => {
       expect(el.querySelector('app-planta-form-modal')).toBeNull();
     });
   });
+
+  // --- Acciones por fila: editar y agregar máquina (CGBIDA-466) -----------------
+
+  describe('acciones por fila', () => {
+    it('cada planta tiene botones Editar y + Máquina', () => {
+      const { el } = setup();
+      expect(el.querySelectorAll('[data-testid="editar-planta"]')).toHaveLength(3);
+      expect(el.querySelectorAll('[data-testid="agregar-maquina"]')).toHaveLength(3);
+      // La cabecera declara la columna.
+      expect(el.querySelector('thead')?.textContent).toContain('Acciones');
+    });
+
+    it('«Editar» abre el modal con esa planta precargada', () => {
+      const { fixture, el } = setup();
+      expect(el.querySelector('app-planta-form-modal')).toBeNull();
+
+      el.querySelectorAll<HTMLElement>('[data-testid="editar-planta"]')[1].click();
+      fixture.detectChanges();
+
+      const modal = el.querySelector('app-planta-form-modal');
+      expect(modal).not.toBeNull();
+      // El nombre precargado es el de la segunda planta.
+      const input = modal!.querySelector<HTMLInputElement>('[data-testid="planta-nombre"]');
+      expect(input?.value).toBe('Planta Norte Antofagasta');
+    });
+
+    it('«+ Máquina» abre el modal de máquina apuntando a esa planta', () => {
+      const { fixture, el } = setup();
+      expect(el.querySelector('app-maquina-form-modal')).toBeNull();
+
+      el.querySelectorAll<HTMLElement>('[data-testid="agregar-maquina"]')[0].click();
+      fixture.detectChanges();
+
+      const modal = el.querySelector('app-maquina-form-modal');
+      expect(modal).not.toBeNull();
+      expect(modal!.textContent).toContain('Planta Central San Bernardo');
+    });
+
+    it('al guardar una planta editada, se recarga el listado', () => {
+      const { fixture, el, servicio } = setup();
+      el.querySelectorAll<HTMLElement>('[data-testid="editar-planta"]')[0].click();
+      fixture.detectChanges();
+      const llamadas = servicio.getPlants.mock.calls.length;
+
+      // El modal emite (saved) tras el PATCH.
+      fixture.componentInstance['onSaved']();
+      fixture.detectChanges();
+
+      expect(servicio.getPlants.mock.calls.length).toBe(llamadas + 1);
+      expect(el.querySelector('app-planta-form-modal')).toBeNull();
+    });
+
+    it('al agregar una máquina, se recarga el listado y se cierra su modal', () => {
+      const { fixture, el, servicio } = setup();
+      el.querySelectorAll<HTMLElement>('[data-testid="agregar-maquina"]')[0].click();
+      fixture.detectChanges();
+      const llamadas = servicio.getPlants.mock.calls.length;
+
+      fixture.componentInstance['onMaquinaSaved']();
+      fixture.detectChanges();
+
+      expect(servicio.getPlants.mock.calls.length).toBe(llamadas + 1);
+      expect(el.querySelector('app-maquina-form-modal')).toBeNull();
+    });
+
+    it('cerrar el modal de máquina no recarga', () => {
+      const { fixture, el, servicio } = setup();
+      el.querySelectorAll<HTMLElement>('[data-testid="agregar-maquina"]')[0].click();
+      fixture.detectChanges();
+      const llamadas = servicio.getPlants.mock.calls.length;
+
+      fixture.componentInstance['closeMaquina']();
+      fixture.detectChanges();
+
+      expect(servicio.getPlants.mock.calls.length).toBe(llamadas);
+      expect(el.querySelector('app-maquina-form-modal')).toBeNull();
+    });
+  });
 });
+

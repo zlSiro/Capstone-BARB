@@ -1,8 +1,12 @@
-"""Contrato del alta masiva de plantas (HU-24).
+"""Contrato del mantenedor de plantas (HU-25 / CGBIDA-461).
 
-Una sola llamada crea la planta, reutiliza (o crea) sus disciplinas y da de alta sus
-máquinas. Las disciplinas se reciben por nombre, no por id: el usuario escribe «Mecánica»
-y el endpoint resuelve si existe en su empresa o hay que crearla.
+Alta masiva: una sola llamada crea la planta, reutiliza (o crea) sus disciplinas y da de
+alta sus máquinas. Las disciplinas se reciben por nombre, no por id: el usuario escribe
+«Mecánica» y el endpoint resuelve si existe en su empresa o hay que crearla.
+
+Edición: nombre y ubicación de una planta existente. La unicidad del nombre se valida en
+Python (ver `catalog.py`), no con una restricción de la base: el esquema del repo no la
+tiene y `AGENTS.md` prohíbe agregarla.
 """
 
 from __future__ import annotations
@@ -49,3 +53,29 @@ class PlantaCompletaResponse(BaseModel):
     ubicacion: str | None
     disciplinas: list[DisciplinaResuelta]
     maquinas: list[MaquinaCreada]
+
+
+# =============================================================================
+# Edición (PATCH /api/plantas/{id}) y alta de una máquina suelta
+# =============================================================================
+
+
+class PlantaUpdateRequest(BaseModel):
+    """Campos editables de una planta. `None` = no tocar."""
+
+    nombre: str | None = Field(default=None, min_length=2, max_length=120)
+    ubicacion: str | None = Field(default=None, max_length=255)
+
+
+class PlantaActualizada(BaseModel):
+    planta_id: int
+    nombre: str
+    ubicacion: str | None
+
+
+class MaquinaNuevaRequest(BaseModel):
+    """Máquina que se agrega a una planta ya existente."""
+
+    nombre: str = Field(min_length=1, max_length=100)
+    codigo: str = Field(min_length=1, max_length=50)
+    disciplina: str | None = Field(default=None, max_length=50)

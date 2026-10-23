@@ -2,10 +2,11 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { forkJoin, of } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 
-import { Machine, Plant } from '../../core/models';
+import { Discipline, Machine, Plant } from '../../core/models';
 import { CatalogService } from '../../core/services/catalog.service';
 import { ToastService } from '../../core/services/toast.service';
 import { apiErrorMessage } from '../../core/utils/http-error';
+import { MaquinaFormModalComponent } from './maquina-form-modal.component';
 import { PlantaFormModalComponent } from './planta-form-modal.component';
 
 /** Una planta con lo que el listado necesita mostrar. */
@@ -27,7 +28,7 @@ interface PlantaFila {
  */
 @Component({
   selector: 'app-plantas',
-  imports: [PlantaFormModalComponent],
+  imports: [PlantaFormModalComponent, MaquinaFormModalComponent],
   template: `
     <section class="flex flex-col gap-4" aria-labelledby="plantas-title">
       <div class="flex flex-wrap items-center justify-between gap-3">
@@ -74,19 +75,20 @@ interface PlantaFila {
                 <th scope="col" class="px-4 py-2 text-left">Ubicación</th>
                 <th scope="col" class="px-4 py-2 text-right">Máquinas</th>
                 <th scope="col" class="px-4 py-2 text-left">Disciplinas</th>
+                <th scope="col" class="px-4 py-2 text-right">Acciones</th>
               </tr>
             </thead>
             <tbody>
               @for (fila of filtradas(); track fila.planta.id) {
                 <tr class="border-t border-gray-100 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800" data-testid="fila-planta">
                   <td class="px-4 py-2">
-                    <div class="font-medium" data-testid="planta-nombre">{{ fila.planta.name }}</div>
+                    <div class="font-medium" data-testid="planta-celda-nombre">{{ fila.planta.name }}</div>
                     @if (fila.maquinas.length === 0) {
                       <div class="text-xs text-gray-500 dark:text-gray-400">Sin máquinas</div>
                     }
                   </td>
-                  <td class="px-4 py-2" data-testid="planta-ubicacion">{{ fila.planta.ubicacion || '—' }}</td>
-                  <td class="px-4 py-2 text-right font-medium" data-testid="planta-maquinas">
+                  <td class="px-4 py-2" data-testid="planta-celda-ubicacion">{{ fila.planta.ubicacion || '—' }}</td>
+                  <td class="px-4 py-2 text-right font-medium" data-testid="planta-celda-maquinas">
                     {{ fila.maquinas.length }}
                   </td>
                   <td class="px-4 py-2">
@@ -100,10 +102,28 @@ interface PlantaFila {
                       <span class="text-gray-400">—</span>
                     }
                   </td>
+                  <td class="px-4 py-2">
+                    <div class="flex justify-end gap-1">
+                      <button
+                        type="button"
+                        class="btn-secondary"
+                        data-testid="editar-planta"
+                        (click)="openEdit(fila.planta)"
+                        [attr.aria-label]="'Editar ' + fila.planta.name"
+                      >Editar</button>
+                      <button
+                        type="button"
+                        class="btn-secondary"
+                        data-testid="agregar-maquina"
+                        (click)="openMaquina(fila.planta)"
+                        [attr.aria-label]="'Agregar máquina a ' + fila.planta.name"
+                      >+ Máquina</button>
+                    </div>
+                  </td>
                 </tr>
               } @empty {
                 <tr>
-                  <td colspan="4" class="py-6 text-center text-gray-600 dark:text-gray-300" data-testid="vacio">
+                  <td colspan="5" class="py-6 text-center text-gray-600 dark:text-gray-300" data-testid="vacio">
                     No hay plantas todavía. Crea la primera con «Nueva planta».
                   </td>
                 </tr>
@@ -115,7 +135,16 @@ interface PlantaFila {
     </section>
 
     @if (modalOpen()) {
-      <app-planta-form-modal (closed)="closeModal()" (saved)="onSaved()" />
+      <app-planta-form-modal [planta]="editing()" (closed)="closeModal()" (saved)="onSaved()" />
+    }
+
+    @if (maquinaPara(); as planta) {
+      <app-maquina-form-modal
+        [planta]="planta"
+        [disciplinas]="listaDisciplinas()"
+        (closed)="closeMaquina()"
+        (saved)="onMaquinaSaved()"
+      />
     }
   `,
 })
@@ -125,10 +154,16 @@ export class PlantasComponent {
 
   protected readonly plantas = signal<PlantaFila[]>([]);
   protected readonly disciplinas = signal<Map<number, string>>(new Map());
+  /** Lista completa, para el datalist del modal de máquina. */
+  protected readonly listaDisciplinas = signal<Discipline[]>([]);
   protected readonly loading = signal(true);
   protected readonly error = signal<string | null>(null);
   protected readonly filtro = signal('');
   protected readonly modalOpen = signal(false);
+  /** Planta en edición; null = alta. */
+  protected readonly editing = signal<Plant | null>(null);
+  /** Planta a la que se le agrega una máquina; null = modal cerrado. */
+  protected readonly maquinaPara = signal<Plant | null>(null);
 
   protected readonly filtradas = computed(() => {
     const q = this.filtro().trim().toLowerCase();
@@ -158,6 +193,7 @@ export class PlantasComponent {
     }).subscribe({
       next: ({ plantas, maquinas, disciplinas }) => {
         this.disciplinas.set(new Map(disciplinas.map((d) => [d.id, d.name])));
+        this.listaDisciplinas.set(disciplinas);
         this.plantas.set(
           plantas.map((planta) => ({
             planta,
@@ -184,7 +220,26 @@ export class PlantasComponent {
   }
 
   protected openCreate(): void {
+    this.editing.set(null);
     this.modalOpen.set(true);
+  }
+
+  protected openEdit(planta: Plant): void {
+    this.editing.set(planta);
+    this.modalOpen.set(true);
+  }
+
+  protected openMaquina(planta: Plant): void {
+    this.maquinaPara.set(planta);
+  }
+
+  protected closeMaquina(): void {
+    this.maquinaPara.set(null);
+  }
+
+  protected onMaquinaSaved(): void {
+    this.maquinaPara.set(null);
+    this.load();
   }
 
   protected closeModal(): void {
@@ -193,7 +248,9 @@ export class PlantasComponent {
 
   protected onSaved(): void {
     this.modalOpen.set(false);
-    this.toast.info('Listado actualizado con la planta nueva.');
+    this.toast.info('Listado actualizado.');
     this.load();
   }
 }
+
+
