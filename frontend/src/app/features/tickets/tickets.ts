@@ -48,6 +48,7 @@ export class Tickets {
   // ── Detalle ──
   protected readonly detalle = signal<TicketDetail | null>(null);
   protected readonly loadingDetalle = signal(false);
+  protected readonly guardandoEstado = signal(false);
 
   protected readonly desdeN = computed(() => (this.total() ? this.offset() + 1 : 0));
   protected readonly hastaN = computed(() => Math.min(this.offset() + PAGE_SIZE, this.total()));
@@ -89,6 +90,31 @@ export class Tickets {
       error: (err) => {
         this.loadingDetalle.set(false);
         this.toast.error(apiErrorMessage(err, this.i18n.t('tickets').loadDetailError));
+      },
+    });
+  }
+
+  /**
+   * PATCH de transición de estado (CGBIDA-291). Los botones nacen de
+   * `allowed_transitions` (máquina de estados del backend filtrada por rol y
+   * dueñez): el frontend no duplica esas reglas (patrón OT).
+   */
+  protected cambiarEstado(destino: TicketEstado): void {
+    const d = this.detalle();
+    if (!d || this.guardandoEstado()) return;
+    this.guardandoEstado.set(true);
+
+    this.api.updateEstado(d.ticket_id, destino).subscribe({
+      next: (t) => {
+        this.guardandoEstado.set(false);
+        // Refresca el detalle (allowed_transitions y resolved_at nuevos) y la fila del listado.
+        this.verDetalle(t.ticket_id);
+        this.items.update((list) => list.map((x) => (x.ticket_id === t.ticket_id ? t : x)));
+        this.toast.success(this.i18n.t('tickets').estadoChanged);
+      },
+      error: (err) => {
+        this.guardandoEstado.set(false);
+        this.toast.error(apiErrorMessage(err, this.i18n.t('tickets').estadoError));
       },
     });
   }

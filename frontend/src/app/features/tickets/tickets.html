@@ -156,6 +156,23 @@
               }
             </dl>
 
+            <!-- Transiciones de estado (CGBIDA-291): botones desde allowed_transitions -->
+            @if (d.allowed_transitions.length > 0) {
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="text-xs text-gray-500 dark:text-gray-400">{{ 'tickets.moveTo' | translate }}:</span>
+                @for (destino of d.allowed_transitions; track destino) {
+                  <button
+                    type="button"
+                    (click)="cambiarEstado(destino)"
+                    [disabled]="guardandoEstado()"
+                    class="px-2.5 py-1 text-xs rounded-full border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {{ 'statuses.' + destino | translate }}
+                  </button>
+                }
+              </div>
+            }
+
             <!-- Conversación original (vista en vivo, D4) -->
             <div>
               <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
