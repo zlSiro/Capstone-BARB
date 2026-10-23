@@ -6,6 +6,8 @@ import { TopologyService } from '../../core/services/topology.service';
 import { AuthService } from '../../core/services/auth.service';
 import { CatalogService } from '../../core/services/catalog.service';
 import { ToastService } from '../../core/services/toast.service';
+import { By } from '@angular/platform-browser';
+import { PlantasComponent } from '../plantas/plantas.component';
 import { TopologyComponent } from './topology.component';
 
 function nodo(overrides: Partial<TopologyNode> = {}): TopologyNode {
@@ -1245,10 +1247,9 @@ describe('TopologyComponent', () => {
  * signal del componente, así que se conserva.
  */
 describe('TopologyComponent — acceso al mantenedor de plantas', () => {
-  function setupConRol(role: string | null) {
+  function setupConRol(role: string | null, get = vi.fn(() => of(TOPOLOGIA))) {
     // El subtítulo se afirma en español: se fija el idioma antes de crear el servicio.
     window.localStorage.setItem('barb.lang', 'es');
-    const get = vi.fn(() => of(TOPOLOGIA));
     TestBed.configureTestingModule({
       imports: [TopologyComponent],
       providers: [
@@ -1273,7 +1274,7 @@ describe('TopologyComponent — acceso al mantenedor de plantas', () => {
     });
     const fixture = TestBed.createComponent(TopologyComponent);
     fixture.detectChanges();
-    return { fixture, el: fixture.nativeElement as HTMLElement };
+    return { fixture, el: fixture.nativeElement as HTMLElement, get };
   }
 
   const boton = (el: HTMLElement) => el.querySelector<HTMLElement>('[data-testid="gestionar-activos"]');
@@ -1357,5 +1358,70 @@ describe('TopologyComponent — acceso al mantenedor de plantas', () => {
     boton(el)!.click();
     fixture.detectChanges();
     expect(subtitulo()).toBe('Mapa de equipos por estado');
+  });
+
+  // --- Sincronización con el mantenedor (CGBIDA-466) ----------------------------
+
+  /** El hijo real, para emitir su `(actualizado)` sin pasar por la UI de alta. */
+  function hijoMantenedor(fixture: ReturnType<typeof TestBed.createComponent>) {
+    const depurar = fixture.debugElement.query(By.directive(PlantasComponent));
+    return depurar?.componentInstance as PlantasComponent | undefined;
+  }
+
+  it('recarga el mapa cuando el mantenedor avisa que hubo un cambio', () => {
+    const { fixture, el, get } = setupConRol('admin');
+    const llamadasIniciales = get.mock.calls.length;
+
+    boton(el)!.click();
+    fixture.detectChanges();
+
+    hijoMantenedor(fixture)!.actualizado.emit();
+    fixture.detectChanges();
+
+    expect(get.mock.calls.length).toBe(llamadasIniciales + 1);
+  });
+
+  it('también recarga al volver al mapa, por si el aviso no llegó', () => {
+    const { fixture, el, get } = setupConRol('admin');
+    const llamadasIniciales = get.mock.calls.length;
+
+    boton(el)!.click(); // entrar
+    fixture.detectChanges();
+    boton(el)!.click(); // volver
+    fixture.detectChanges();
+
+    expect(get.mock.calls.length).toBe(llamadasIniciales + 1);
+    expect(el.querySelector('app-plantas')).toBeNull();
+  });
+
+  it('no recarga al entrar al mantenedor: el mapa sigue siendo válido', () => {
+    const { fixture, el, get } = setupConRol('admin');
+    const llamadasIniciales = get.mock.calls.length;
+
+    boton(el)!.click();
+    fixture.detectChanges();
+
+    expect(get.mock.calls.length).toBe(llamadasIniciales);
+  });
+
+  it('se recupera de un error: una recarga posterior puede volver a pintar el mapa', () => {
+    let intentos = 0;
+    // El primer pedido falla; el segundo (la recarga) responde bien.
+    const get = vi.fn(() => (intentos++ === 0 ? throwError(() => new Error('500')) : of(TOPOLOGIA)));
+    const { fixture, el } = setupConRol('admin', get);
+
+    expect(el.querySelector('[data-testid="estado-error"]')).not.toBeNull();
+
+    boton(el)!.click();
+    fixture.detectChanges();
+    hijoMantenedor(fixture)!.actualizado.emit();
+    fixture.detectChanges();
+
+    // El lienzo solo existe en la vista de mapa, así que hay que volver para comprobarlo.
+    boton(el)!.click();
+    fixture.detectChanges();
+
+    expect(el.querySelector('[data-testid="estado-error"]')).toBeNull();
+    expect(el.querySelector('[data-testid="topo-canvas"]')).not.toBeNull();
   });
 });

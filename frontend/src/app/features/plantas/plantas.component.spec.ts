@@ -287,6 +287,39 @@ describe('PlantasComponent', () => {
       expect(el.querySelector('app-maquina-form-modal')).toBeNull();
     });
   });
+
+  // --- Aviso al padre (CGBIDA-466) ----------------------------------------------
+
+  describe('aviso de cambios al contenedor', () => {
+    it('emite (actualizado) al guardar una planta', () => {
+      const { fixture } = setup();
+      let avisos = 0;
+      fixture.componentInstance.actualizado.subscribe(() => avisos++);
+
+      fixture.componentInstance['onSaved']();
+
+      expect(avisos).toBe(1);
+    });
+
+    it('emite (actualizado) al agregar una máquina', () => {
+      const { fixture } = setup();
+      let avisos = 0;
+      fixture.componentInstance.actualizado.subscribe(() => avisos++);
+
+      fixture.componentInstance['onMaquinaSaved']();
+
+      expect(avisos).toBe(1);
+    });
+
+    it('no emite nada al cerrar un modal sin guardar', () => {
+      const { fixture } = setup();
+      let avisos = 0;
+      fixture.componentInstance.actualizado.subscribe(() => avisos++);
+
+      fixture.componentInstance['closeModal']();
+      fixture.componentInstance['closeMaquina']();
+
+      expect(avisos).toBe(0);
+    });
+  });
 });
-
-

@@ -1,6 +1,6 @@
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { catchError, map, of } from 'rxjs';
+import { Subject, catchError, map, merge, of, switchMap } from 'rxjs';
 
 import {
   Topology,
@@ -581,7 +581,7 @@ interface GrupoEnPanel {
         <!-- Mantenedor de plantas dentro de Topología (HU-25, CGBIDA-466).
              El mapa se desmonta, pero su cámara (viewBox) vive en signals del
              componente, así que al volver se conserva el zoom y el paneo. -->
-        <app-plantas />
+        <app-plantas (actualizado)="recargarTopologia()" />
       }
     </div>
   `,
@@ -609,9 +609,13 @@ export class TopologyComponent {
   protected readonly vistaActivos = signal(false);
 
   protected alternarVista(): void {
-    // Al cerrar el mantenedor se sale del panel de detalle: si no, al volver al mapa
-    // aparecería el panel de un nodo que el usuario ya no recuerda haber abierto.
-    if (this.vistaActivos()) this.seleccionado.set(null);
+    if (this.vistaActivos()) {
+      // Al cerrar el mantenedor se sale del panel de detalle: si no, al volver al mapa
+      // aparecería el panel de un nodo que el usuario ya no recuerda haber abierto.
+      this.seleccionado.set(null);
+      // Y se refresca el mapa: el usuario pudo haber creado o editado activos.
+      this.recargarTopologia();
+    }
     this.vistaActivos.update((v) => !v);
   }
 
@@ -622,14 +626,35 @@ export class TopologyComponent {
   /** Equipo cuyo panel de detalle está abierto (CGBIDA-364). */
   protected readonly seleccionado = signal<TopologyNode | null>(null);
 
+  /**
+   * Recarga de la topología.
+   *
+   * El mapa se pide una vez al entrar, pero la tabla del mantenedor vive en la misma
+   * pantalla: al crear o editar una planta o una máquina, lo que se ve en el mapa queda
+   * viejo. Este subject vuelve a disparar la petición sin recargar la página.
+   */
+  private readonly recarga$ = new Subject<void>();
+
   /** `initialValue` obliga a que el tipo no incluya `undefined`; de ahí la unión. */
   private readonly carga = toSignal(
-    this.topologyService.get().pipe(
-      map((t): EstadoCarga => (t.nodos.length ? { tipo: 'listo', topologia: t } : { tipo: 'vacio' })),
-      catchError(() => of<EstadoCarga>({ tipo: 'error' })),
+    // `merge` con un primer valor da la carga inicial; cada `recarga$` pide de nuevo.
+    merge(of(undefined), this.recarga$).pipe(
+      switchMap(() =>
+        this.topologyService.get().pipe(
+          map((t): EstadoCarga => (t.nodos.length ? { tipo: 'listo', topologia: t } : { tipo: 'vacio' })),
+          // El `catchError` va DENTRO del switchMap: si estuviera afuera, un fallo cerraría
+          // el stream y las recargas posteriores no volverían a pedir nada.
+          catchError(() => of<EstadoCarga>({ tipo: 'error' })),
+        ),
+      ),
     ),
     { initialValue: { tipo: 'cargando' } as EstadoCarga },
   );
+
+  /** Vuelve a pedir el mapa. No toca la cámara: el zoom y el paneo se conservan. */
+  protected recargarTopologia(): void {
+    this.recarga$.next();
+  }
 
   /** Tipo de estado actual: `cargando` · `error` · `vacio` · `listo`. */
   protected readonly estado = computed(() => this.carga().tipo);
@@ -1022,6 +1047,7 @@ export class TopologyComponent {
     return textos[clave] ?? estado;
   }
 }
+
 
 
 

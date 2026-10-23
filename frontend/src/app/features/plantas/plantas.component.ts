@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, inject, output, signal } from '@angular/core';
 import { forkJoin, of } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 
@@ -165,6 +165,14 @@ export class PlantasComponent {
   /** Planta a la que se le agrega una máquina; null = modal cerrado. */
   protected readonly maquinaPara = signal<Plant | null>(null);
 
+  /**
+   * Avisa que el catálogo cambió (alta o edición de planta, alta de máquina).
+   *
+   * Topología lo escucha para volver a pedir el mapa: la tabla y el mapa son la misma
+   * pantalla, y sin esto el mapa seguiría mostrando los activos de antes del cambio.
+   */
+  readonly actualizado = output<void>();
+
   protected readonly filtradas = computed(() => {
     const q = this.filtro().trim().toLowerCase();
     if (!q) return this.plantas();
@@ -240,6 +248,7 @@ export class PlantasComponent {
   protected onMaquinaSaved(): void {
     this.maquinaPara.set(null);
     this.load();
+    this.actualizado.emit();
   }
 
   protected closeModal(): void {
@@ -250,8 +259,10 @@ export class PlantasComponent {
     this.modalOpen.set(false);
     this.toast.info('Listado actualizado.');
     this.load();
+    this.actualizado.emit();
   }
 }
+
 
 
 
