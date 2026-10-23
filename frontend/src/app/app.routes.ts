@@ -34,6 +34,11 @@ export const routes: Routes = [
         loadComponent: () => import('./features/topology/topology.component').then(m => m.TopologyComponent)
       },
       {
+        path: 'plantas',
+        canActivate: [roleGuard('plantas')],
+        loadComponent: () => import('./features/plantas/plantas.component').then(m => m.PlantasComponent)
+      },
+      {
         path: 'chat',
         canActivate: [roleGuard('docchat')],
         loadComponent: () =>
