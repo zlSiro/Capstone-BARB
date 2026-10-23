@@ -45,3 +45,16 @@ export interface PlantaCompletaResponse {
   disciplinas: DisciplinaResuelta[];
   maquinas: MaquinaCreada[];
 }
+
+/** Cuerpo de `PATCH /api/plantas/{id}`. El campo ausente no se toca. */
+export interface PlantaUpdatePayload {
+  nombre?: string;
+  ubicacion?: string | null;
+}
+
+/** Respuesta de `PATCH /api/plantas/{id}`. */
+export interface PlantaActualizada {
+  planta_id: number;
+  nombre: string;
+  ubicacion: string | null;
+}

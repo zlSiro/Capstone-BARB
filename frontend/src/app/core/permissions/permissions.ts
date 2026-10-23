@@ -36,6 +36,7 @@ export type RutaKey =
   | 'transacciones'
   | 'transacciones_empresa'
   | 'usuarios'
+  | 'plantas'
   | 'documentos';
 
 export type AccionKey =
@@ -67,6 +68,9 @@ export const RUTAS: Record<RutaKey, Record<string, PermisoValor>> = {
   documentos: { operador: 'ver',  tecnico: 'ver',  supervisor: 'ver',  engineer: true,  gerente: true,  admin: true,  visitante: false, super_usuario: false },
   transacciones: { operador: false, tecnico: false, supervisor: false, engineer: false, gerente: false, admin: false, visitante: false, super_usuario: true },
   transacciones_empresa: { operador: false, tecnico: false, supervisor: false, engineer: false, gerente: true, admin: false, visitante: false, super_usuario: false },
+  // plantas: mantenedor masivo de plantas, disciplinas y máquinas (HU-25 / CGBIDA-461).
+  // Espejo de `RUTAS["plantas"]` en el backend: sólo gerente y admin.
+  plantas:    { operador: false, tecnico: false, supervisor: false, engineer: false, gerente: true, admin: true,  visitante: false, super_usuario: false },
   history:   { operador: false, tecnico: false, supervisor: true,  engineer: false, gerente: true,  admin: true, visitante: false , super_usuario: false },
 };
 

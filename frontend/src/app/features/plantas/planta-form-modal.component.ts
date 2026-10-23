@@ -1,7 +1,7 @@
-import { Component, computed, inject, output, signal } from '@angular/core';
+import { Component, computed, inject, input, linkedSignal, output, signal } from '@angular/core';
 import { FormField, form, required, validate } from '@angular/forms/signals';
 
-import { MaquinaNuevaPayload, PlantaCompletaPayload, PlantaCompletaResponse } from '../../core/models';
+import { MaquinaNuevaPayload, Plant, PlantaActualizada, PlantaCompletaPayload, PlantaCompletaResponse } from '../../core/models';
 import { CatalogService } from '../../core/services/catalog.service';
 import { ToastService } from '../../core/services/toast.service';
 import { apiErrorMessage } from '../../core/utils/http-error';
@@ -37,17 +37,25 @@ interface MaquinaForm {
   imports: [FormField, ModalComponent],
   template: `
     <app-modal
-      [title]="paso() === 'form' ? 'Nueva planta' : 'Confirmar creación'"
+      [title]="
+        esEdicion()
+          ? 'Editar planta'
+          : paso() === 'form'
+            ? 'Nueva planta'
+            : 'Confirmar creación'
+      "
       [subtitle]="
-        paso() === 'form'
-          ? 'Crea la planta con sus disciplinas y máquinas en una sola operación.'
-          : 'Revisa el resumen antes de guardar.'
+        esEdicion()
+          ? 'Cambia el nombre o la ubicación. Las máquinas se gestionan aparte.'
+          : paso() === 'form'
+            ? 'Crea la planta con sus disciplinas y máquinas en una sola operación.'
+            : 'Revisa el resumen antes de guardar.'
       "
       size="lg"
       (closed)="closed.emit()"
     >
       @if (paso() === 'form') {
-        <form class="grid gap-4 md:grid-cols-2" (submit)="$event.preventDefault(); irAConfirmar()" novalidate>
+        <form class="grid gap-4 md:grid-cols-2" (submit)="$event.preventDefault(); esEdicion() ? guardar() : irAConfirmar()" novalidate>
           <div class="md:col-span-2">
             <label for="pla-nombre" class="fld-label">Nombre de la planta *</label>
             <input
@@ -78,6 +86,7 @@ interface MaquinaForm {
             />
           </div>
 
+          @if (!esEdicion()) {
           <!-- Disciplinas -->
           <fieldset class="md:col-span-2 rounded-lg border border-slate-700 p-4">
             <legend class="px-2 text-xs font-semibold uppercase tracking-wide text-slate-300">
@@ -204,6 +213,11 @@ interface MaquinaForm {
               <p role="alert" class="fld-error mt-2" data-testid="error-maquinas">{{ err }}</p>
             }
           </fieldset>
+          }
+
+          @if (errorGeneral(); as err) {
+            <p role="alert" class="fld-error md:col-span-2" data-testid="error-formulario">{{ err }}</p>
+          }
 
           <div class="md:col-span-2 flex justify-end gap-2 pt-2">
             <button
@@ -213,8 +227,8 @@ interface MaquinaForm {
             >
               Cancelar
             </button>
-            <button type="submit" class="btn-primary" data-testid="continuar">
-              Continuar
+              <button type="submit" class="btn-primary" data-testid="continuar" [disabled]="submitting()">
+                {{ esEdicion() ? (submitting() ? 'Guardando…' : 'Guardar cambios') : 'Continuar' }}
             </button>
           </div>
         </form>
@@ -297,15 +311,29 @@ export class PlantaFormModalComponent {
   private readonly catalogo = inject(CatalogService);
   private readonly toast = inject(ToastService);
 
+  /**
+   * Planta a editar. `null` (por defecto) = alta masiva.
+   *
+   * En edición sólo se tocan nombre y ubicación: las listas de disciplinas y máquinas se
+   * ocultan porque agregar máquinas a una planta existente tiene su propio modal
+   * (`maquina-form-modal`), y el backend no permite recrear dependencias desde el PATCH.
+   */
+  readonly planta = input<Plant | null>(null);
+
   readonly closed = output<void>();
-  readonly saved = output<PlantaCompletaResponse>();
+  readonly saved = output<PlantaActualizada | PlantaCompletaResponse>();
+
+  protected readonly esEdicion = computed(() => this.planta() !== null);
 
   /** Paso actual: captura de datos o confirmación. */
   protected readonly paso = signal<'form' | 'confirmar'>('form');
   protected readonly submitting = signal(false);
   protected readonly errorGeneral = signal<string | null>(null);
 
-  protected readonly model = signal<PlantaFormModel>({ nombre: '', ubicacion: '' });
+  protected readonly model = linkedSignal<PlantaFormModel>(() => ({
+    nombre: this.planta()?.name ?? '',
+    ubicacion: this.planta()?.ubicacion ?? '',
+  }));
   protected readonly f = form(this.model, (p) => {
     required(p.nombre, { message: 'Ingresa el nombre de la planta.' });
     validate(p.nombre, ({ value }) =>
@@ -407,6 +435,33 @@ export class PlantaFormModalComponent {
 
   protected guardar(): void {
     if (this.submitting()) return;
+    this.submitting.set(true);
+    this.errorGeneral.set(null);
+
+    const planta = this.planta();
+
+    // Edición: PATCH con nombre y ubicación. No se tocan disciplinas ni máquinas.
+    if (planta) {
+      this.catalogo
+        .actualizarPlanta(planta.id, {
+          nombre: this.model().nombre.trim(),
+          ubicacion: this.model().ubicacion.trim() || null,
+        })
+        .subscribe({
+          next: (respuesta) => {
+            this.submitting.set(false);
+            this.toast.success(`Planta «${respuesta.nombre}» actualizada.`);
+            this.saved.emit(respuesta);
+          },
+          error: (err) => {
+            this.submitting.set(false);
+            const mensaje = apiErrorMessage(err, 'No se pudo actualizar la planta.');
+            this.errorGeneral.set(mensaje);
+            this.toast.error(mensaje);
+          },
+        });
+      return;
+    }
 
     const payload: PlantaCompletaPayload = {
       nombre: this.model().nombre.trim(),
@@ -415,8 +470,6 @@ export class PlantaFormModalComponent {
       maquinas: this.maquinasLimpias(),
     };
 
-    this.submitting.set(true);
-    this.errorGeneral.set(null);
     this.catalogo.crearPlantaCompleta(payload).subscribe({
       next: (respuesta) => {
         this.submitting.set(false);
@@ -440,3 +493,4 @@ export class PlantaFormModalComponent {
     });
   }
 }
+
