@@ -89,12 +89,26 @@
           }
         </p>
       </div>
-      <button
-        (click)="newConversation()"
-        class="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-      >
-        {{ 'docChat.newConversation' | translate }}
-      </button>
+      <div class="flex items-center gap-2">
+        <button
+          (click)="saveAsTicket()"
+          [disabled]="!sessionId() || savingTicket()"
+          [attr.aria-label]="'tickets.saveAsTicket' | translate"
+          class="px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+        >
+          @if (savingTicket()) {
+            {{ 'tickets.saving' | translate }}
+          } @else {
+            {{ 'tickets.saveAsTicket' | translate }}
+          }
+        </button>
+        <button
+          (click)="newConversation()"
+          class="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+        >
+          {{ 'docChat.newConversation' | translate }}
+        </button>
+      </div>
     </div>
 
     <!-- Mensajes -->
