@@ -98,6 +98,7 @@
           <div class="flex items-center gap-2">
             <button
               type="button"
+              id="tk-prev"
               (click)="paginar(-1)"
               [disabled]="!hayPrev()"
               class="px-3 py-1 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -106,6 +107,7 @@
             </button>
             <button
               type="button"
+              id="tk-next"
               (click)="paginar(1)"
               [disabled]="!hayNext()"
               class="px-3 py-1 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
