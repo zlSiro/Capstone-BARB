@@ -135,6 +135,33 @@ class Settings(BaseSettings):
     def llm_fallback_providers_list(self) -> list[str]:
         return [p.strip() for p in self.llm_fallback_providers.split(",") if p.strip()]
 
+    @property
+    def llm_api_key(self) -> str:
+        """
+        Key del proveedor de chat activo.
+
+        El mapeo vive acá y no en cada consumidor: antes el health endpoint comprobaba
+        `deepseek_api_key` a mano, así que con `LLM_PROVIDER=nvidia` reportaba «offline»
+        aunque el chat funcionara. Cualquier otro sitio que necesite saber si el LLM está
+        configurado debe usar esta propiedad.
+        """
+        return {
+            "deepseek": self.deepseek_api_key,
+            "openai": self.openai_api_key,
+            "openrouter": self.openrouter_api_key,
+            "groq": self.groq_api_key,
+            "nvidia": self.nvidia_api_key,
+        }.get(self.llm_provider, "")
+
+    @property
+    def llm_env_var(self) -> str:
+        """Nombre de la variable de entorno que hay que definir para el proveedor activo."""
+        return f"{self.llm_provider.upper()}_API_KEY"
+
+    @property
+    def llm_configurado(self) -> bool:
+        return bool(self.llm_model and self.llm_api_key)
+
     # --- CORS ---
     cors_origins: str = "http://localhost:4200,http://localhost:5173,http://localhost:3000"
     cors_origin_regex: str = r"https://barb.*\.vercel\.app"

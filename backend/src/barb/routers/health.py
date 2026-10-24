@@ -37,17 +37,29 @@ async def health_redis():
 
 @router.get("/api/health/llm")
 async def health_llm():
-    db_status = await health()
-    has_key = bool(settings.deepseek_api_key)
+    """
+    Estado del motor de IA: base de datos y proveedor de chat ACTIVO.
 
-    lm_status = {
-        "status": "online" if has_key else "offline",
+    Antes comprobaba `settings.deepseek_api_key` a mano, así que con
+    `LLM_PROVIDER=nvidia` respondía «offline / falta DEEPSEEK_API_KEY» aunque el chat
+    estuviera funcionando. Ahora pregunta a `settings.llm_configurado`, que resuelve la key
+    del proveedor configurado, y devuelve cuál es y con qué modelo.
+    """
+    db_status = await health()
+    configurado = settings.llm_configurado
+
+    llm_status = {
+        "status": "ok" if configurado else "offline",
+        "provider": settings.llm_provider,
+        "model": settings.llm_model,
         "detail": (
-            "API Key de DeepSeek configurada correctamente."
-            if has_key
-            else "Falta configurar DEEPSEEK_API_KEY en el entorno."
+            f"Proveedor {settings.llm_provider} configurado ({settings.llm_env_var})."
+            if configurado
+            else f"Falta configurar {settings.llm_env_var} para el proveedor "
+            f"{settings.llm_provider}."
         ),
     }
 
-    overall = "online" if db_status.get("status") == "online" and has_key else "degraded"
-    return {"status": overall, "db": db_status, "llm": lm_status}
+    db_ok = db_status.get("status") == "online"
+    overall = "ok" if db_ok and configurado else "degraded"
+    return {"status": overall, "db": db_status, "llm": llm_status}
