@@ -83,14 +83,22 @@ def mock_repo():
 # =============================================================================
 
 class FakeChain:
+    """Sustituto de `chat.astream_respuesta` (antes parcheaba `create_conversation_chain`).
+
+    El router lo llama como función y luego itera el resultado, así que registra los
+    argumentos en `last_kwargs` y devuelve un generador asíncrono con los textos.
+    """
 
     def __init__(self, chunks: list[str], raise_after: int | None = None):
         self.chunks = chunks
         self.raise_after = raise_after
-        self.last_payload: dict | None = None
+        self.last_kwargs: dict | None = None
 
-    async def astream(self, *args, **_kwargs):
-        self.last_payload = args[0] if args else {}
+    def __call__(self, **kwargs):
+        self.last_kwargs = kwargs
+        return self._generar()
+
+    async def _generar(self):
         for i, chunk in enumerate(self.chunks):
             if self.raise_after is not None and i == self.raise_after:
                 raise RuntimeError("boom del LLM")
@@ -177,8 +185,8 @@ async def test_session_id_no_existe_404(client, override_auth, mock_repo):
 @pytest.mark.asyncio
 async def test_rate_limit_429(client, override_auth, mock_repo):
     with patch(
-        "barb.routers.chat.create_conversation_chain",
-        return_value=FakeChain(["ok"]),
+        "barb.routers.chat.astream_respuesta",
+        new=FakeChain(["ok"]),
     ):
         for _ in range(10):
             r = await client.post("/api/chat/stream", json={"message": "hi"})
@@ -207,8 +215,8 @@ async def test_stream_happy_path_sesion_nueva(client, override_auth, mock_repo):
     mock_repo["create_session"].return_value = fake_uuid
 
     with patch(
-        "barb.routers.chat.create_conversation_chain",
-        return_value=FakeChain(["Hola", " ", "mundo", "!"]),
+        "barb.routers.chat.astream_respuesta",
+        new=FakeChain(["Hola", " ", "mundo", "!"]),
     ):
         async with client.stream(
             "POST", "/api/chat/stream", json={"message": "test"}
@@ -248,7 +256,7 @@ async def test_stream_sesion_existente_recupera_historial(client, override_auth,
 
     fake_chain = FakeChain(["ok"])
     with patch(
-        "barb.routers.chat.create_conversation_chain", return_value=fake_chain
+        "barb.routers.chat.astream_respuesta", new=fake_chain
     ):
         async with client.stream(
             "POST",
@@ -257,10 +265,10 @@ async def test_stream_sesion_existente_recupera_historial(client, override_auth,
         ) as resp:
             raw = "".join([c async for c in resp.aiter_text()])
 
-    assert fake_chain.last_payload is not None
-    assert fake_chain.last_payload["input"] == "seguimiento"
-    assert len(fake_chain.last_payload["history"]) == 2
-    assert fake_chain.last_payload["history"][0]["content"] == "pregunta previa"
+    assert fake_chain.last_kwargs is not None
+    assert fake_chain.last_kwargs["mensaje"] == "seguimiento"
+    assert len(fake_chain.last_kwargs["historial"]) == 2
+    assert fake_chain.last_kwargs["historial"][0]["content"] == "pregunta previa"
 
     mock_repo["create_session"].assert_not_called()
     mock_repo["load_messages"].assert_called_once_with(fake_uuid, 1)
@@ -270,7 +278,12 @@ async def test_stream_sesion_existente_recupera_historial(client, override_auth,
 async def test_busqueda_incluye_el_mensaje_previo_del_asistente(client, override_auth, mock_repo):
     """D5 v1.1 (review HU-05): los seguimientos heredan el contexto del turno
     anterior — p. ej. el equipo que el asistente identificó en un turno con imagen
-    ("es un chancador de mandíbulas") habilita que "¿cómo funciona?" encuentre el manual."""
+    ("es un chancador de mandíbulas") habilita que "¿cómo funciona?" encuentre el manual.
+
+    Con el grafo (HU-04 Fase 2) el retrieval ocurre dentro del nodo `retrieve`, así que
+    el router ya no llama a `search_chunks`: lo que se comprueba acá es que las PISTAS
+    con las que el grafo buscará incluyen los dos mensajes previos.
+    """
     fake_uuid = "99999999-9999-9999-9999-999999999999"
     mock_repo["get_session"].return_value = {"session_id": fake_uuid, "usuario_id": 1}
     mock_repo["load_messages"].return_value = [
@@ -278,12 +291,8 @@ async def test_busqueda_incluye_el_mensaje_previo_del_asistente(client, override
         {"role": "assistant", "content": "Es un chancador de mandíbulas, trituradora primaria."},
     ]
 
-    with patch(
-        "barb.routers.chat.create_conversation_chain",
-        return_value=FakeChain(["ok"]),
-    ), patch(
-        "barb.routers.chat.search_chunks", return_value=[{"title": "Doc", "contenido": "x"}]
-    ) as search:
+    grafo_falso = FakeChain(["ok"])
+    with patch("barb.routers.chat.astream_respuesta", new=grafo_falso):
         async with client.stream(
             "POST",
             "/api/chat/stream",
@@ -291,11 +300,11 @@ async def test_busqueda_incluye_el_mensaje_previo_del_asistente(client, override
         ) as resp:
             _ = "".join([c async for c in resp.aiter_text()])
 
-    args = search.call_args.args
-    assert args[0] == 1
-    assert args[1] == "¿Cómo funciona el chancado?"
-    assert args[2] == "Descríbeme qué tipo de máquina es"  # último mensaje del usuario
-    assert args[3] == "Es un chancador de mandíbulas, trituradora primaria."  # último del asistente
+    pistas = grafo_falso.last_kwargs["pistas"]
+    assert pistas[0] == "¿Cómo funciona el chancado?"
+    assert pistas[1] == "Descríbeme qué tipo de máquina es"  # último mensaje del usuario
+    assert pistas[2] == "Es un chancador de mandíbulas, trituradora primaria."  # último del asistente
+    assert grafo_falso.last_kwargs["empresa_id"] == 1
 
 
 # =============================================================================
@@ -308,8 +317,8 @@ async def test_persistencia_guarda_user_y_assistant(client, override_auth, mock_
     mock_repo["create_session"].return_value = fake_uuid
 
     with patch(
-        "barb.routers.chat.create_conversation_chain",
-        return_value=FakeChain(["respuesta"]),
+        "barb.routers.chat.astream_respuesta",
+        new=FakeChain(["respuesta"]),
     ):
         async with client.stream(
             "POST", "/api/chat/stream", json={"message": "pregunta"}
@@ -334,8 +343,8 @@ async def test_persistencia_aunque_falle_llm(client, override_auth, mock_repo):
     mock_repo["create_session"].return_value = fake_uuid
 
     with patch(
-        "barb.routers.chat.create_conversation_chain",
-        return_value=FakeChain(["parcial", "segundo"], raise_after=1),
+        "barb.routers.chat.astream_respuesta",
+        new=FakeChain(["parcial", "segundo"], raise_after=1),
     ):
         async with client.stream(
             "POST", "/api/chat/stream", json={"message": "pregunta"}
@@ -355,8 +364,8 @@ async def test_persistencia_aunque_falle_llm(client, override_auth, mock_repo):
 @pytest.mark.asyncio
 async def test_error_llm_emite_evento_error_no_done(client, override_auth, mock_repo):
     with patch(
-        "barb.routers.chat.create_conversation_chain",
-        return_value=FakeChain(["parcial", "segundo"], raise_after=1),
+        "barb.routers.chat.astream_respuesta",
+        new=FakeChain(["parcial", "segundo"], raise_after=1),
     ):
         async with client.stream(
             "POST", "/api/chat/stream", json={"message": "hi"}
@@ -385,8 +394,8 @@ async def test_tokens_consumidos_en_happy_path(client, override_auth, mock_repo)
     antes = token_limiter.used("1")
 
     with patch(
-        "barb.routers.chat.create_conversation_chain",
-        return_value=FakeChain(["a" * 40]),
+        "barb.routers.chat.astream_respuesta",
+        new=FakeChain(["a" * 40]),
     ):
         async with client.stream(
             "POST", "/api/chat/stream", json={"message": "doce letras!"}
@@ -401,8 +410,8 @@ async def test_tokens_se_consumen_aunque_falle_el_llm(client, override_auth, moc
     antes = token_limiter.used("1")
 
     with patch(
-        "barb.routers.chat.create_conversation_chain",
-        return_value=FakeChain(["x"], raise_after=0),
+        "barb.routers.chat.astream_respuesta",
+        new=FakeChain(["x"], raise_after=0),
     ):
         async with client.stream(
             "POST", "/api/chat/stream", json={"message": "input de prueba"}
@@ -438,8 +447,8 @@ async def test_usuarios_distintos_crean_sesiones_distintas(client, mock_repo):
 
     try:
         with patch(
-            "barb.routers.chat.create_conversation_chain",
-            return_value=FakeChain(["x"]),
+            "barb.routers.chat.astream_respuesta",
+            new=FakeChain(["x"]),
         ):
             for uid, emp in ((1, 1), (2, 1)):
                 app.dependency_overrides[get_current_user] = (

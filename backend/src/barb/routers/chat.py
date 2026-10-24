@@ -24,11 +24,11 @@ from barb.schemas.chat import (
     SessionListResponse,
 )
 from barb.services import chat_repository
+from barb.services.chat_graph import astream_respuesta
 from barb.services.document_service import format_context, search_chunks
 from barb.services.llm_service import (
     MULTIMODAL_IMAGE_TOKENS,
     NO_DOCS_ANSWER,
-    create_conversation_chain,
     create_multimodal_chain,
 )
 
@@ -45,10 +45,6 @@ class ChatRequest(BaseModel):
         max_length=2000,
         description="Mensaje del usuario (1 a 2000 caracteres).",
     )
-
-
-async def _single_chunk(text: str):
-    yield text
 
 
 def _now_ms() -> int:
@@ -96,28 +92,13 @@ async def stream_chat(
         )
         history = []
 
-    # --- RAG: fragmentos relevantes de la documentación ACTIVA de la empresa ---
-    # Se incluye el último mensaje del usuario para resolver preguntas de seguimiento
-    # ("¿y el torque?") y también el último del ASISTENTE (v1.1, review de la
-    # HU-05): los turnos con imagen dejan ahí el contexto del equipo identificado
-    # ("es un chancador de mandíbulas") y los seguimientos ("¿cómo funciona?")
-    # necesitan esa pista para encontrar el manual correspondiente.
+    # --- RAG + Skills: el grafo de LangGraph hace retrieval, generación y tools ---
+    # Las dos pistas siguientes resuelven preguntas de seguimiento («¿y el torque?»): se
+    # incluye el último mensaje del usuario y también el último del ASISTENTE, porque los
+    # turnos con imagen dejan ahí el equipo identificado («es un chancador de mandíbulas»).
     previous_user_msgs = [m.get("content", "") for m in history if m.get("role") == "user"][-1:]
     previous_assistant_msgs = [m.get("content", "") for m in history if m.get("role") == "assistant"][-1:]
-    # HU-04 Fase 1 — BÚSQUEDA SEMÁNTICA: `search_chunks` embebe la pregunta y ordena por
-    # distancia coseno en pgvector (`search_chunks_semantic`), y solo cae a full-text
-    # (`search_chunks_lexical`) si el proveedor no está configurado, falla o ningún
-    # fragmento supera `rag_min_similarity`. El log dice cuál de los dos caminos se usó.
-    # La firma no cambió a propósito: así el chat textual y el multimodal comparten el
-    # mismo camino y ninguno puede quedarse atrás en la migración.
-    chunks_rag = await search_chunks(
-        empresa_id, request.message, *previous_user_msgs, *previous_assistant_msgs
-    )
-    context = format_context(chunks_rag)
-
-    # Sin documentación relevante no se consulta al LLM: se garantiza que la IA
-    # nunca responda con conocimiento ajeno a lo compartido por la empresa.
-    chain = create_conversation_chain() if chunks_rag else None
+    pistas_rag = [request.message, *previous_user_msgs, *previous_assistant_msgs]
     input_tokens = estimate_tokens(request.message)
 
     async def event_generator():
@@ -130,12 +111,14 @@ async def stream_chat(
                 "data": json.dumps({"session_id": session_id}),
             }
 
-            if chain is None:
-                stream = _single_chunk(NO_DOCS_ANSWER)
-            else:
-                stream = chain.astream(
-                    {"input": request.message, "history": history, "context": context}
-                )
+            # HU-04 Fase 2: el motor es un grafo (retrieve -> generate -> tools -> generate).
+            # El streaming sigue igual: el grafo emite los deltas del nodo `generate`.
+            stream = astream_respuesta(
+                empresa_id=empresa_id,
+                mensaje=request.message,
+                historial=history,
+                pistas=pistas_rag,
+            )
 
             async for chunk in stream:
                 if chunk:
@@ -145,6 +128,16 @@ async def stream_chat(
                         "event": "token",
                         "data": json.dumps({"text": chunk}),
                     }
+
+            # Red de seguridad: si el grafo no produjo texto (modelo mudo o sin contexto ni
+            # herramientas), se responde lo mismo de siempre en vez de dejar el chat vacío.
+            if not assistant_chunks:
+                assistant_chunks.append(NO_DOCS_ANSWER)
+                output_chars += len(NO_DOCS_ANSWER)
+                yield {
+                    "event": "token",
+                    "data": json.dumps({"text": NO_DOCS_ANSWER}),
+                }
 
             yield {"event": "done", "data": "{}"}
 
