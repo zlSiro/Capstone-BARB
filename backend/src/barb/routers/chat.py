@@ -145,6 +145,10 @@ async def stream_chat(
                 mensaje=request.message,
                 historial=history,
                 pistas=pistas_rag,
+                # Identidad para las tools de acción (`crear_ot`): decide qué técnico
+                # recibe la OT y quién figura como creador. No viaja al modelo.
+                usuario_id=user_id,
+                rol=user.get("role"),
             )
 
             async for chunk in stream:

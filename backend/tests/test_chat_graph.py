@@ -66,7 +66,7 @@ def _retrieval_aislado(monkeypatch):
 @pytest.mark.asyncio
 async def test_el_grafo_ejecuta_la_tool_y_vuelve_a_generar(monkeypatch):
     """Si el modelo pide la tool, el grafo la ejecuta y su resultado vuelve al prompt."""
-    monkeypatch.setattr(chat_graph, "crear_tools", lambda _empresa: [_tool_controlada])
+    monkeypatch.setattr(chat_graph, "crear_tools", lambda _empresa, *_a, **_k: [_tool_controlada])
 
     pedido = AIMessage(
         content="",
@@ -109,7 +109,7 @@ async def test_el_grafo_ejecuta_la_tool_y_vuelve_a_generar(monkeypatch):
 @pytest.mark.asyncio
 async def test_el_grafo_expone_la_tool_al_modelo(monkeypatch):
     """`bind_tools` recibe la Skill: si no, el modelo no sabría que puede pedirla."""
-    monkeypatch.setattr(chat_graph, "crear_tools", lambda _empresa: [_tool_controlada])
+    monkeypatch.setattr(chat_graph, "crear_tools", lambda _empresa, *_a, **_k: [_tool_controlada])
     llm = _LLMFalso([AIMessage(content="ok")])
 
     crear_grafo(empresa_id=1, llm=llm)
@@ -120,7 +120,7 @@ async def test_el_grafo_expone_la_tool_al_modelo(monkeypatch):
 @pytest.mark.asyncio
 async def test_sin_tool_calls_termina_sin_pasar_por_tools(monkeypatch):
     """El caso normal (solo RAG) no debe dar una vuelta extra por el nodo de tools."""
-    monkeypatch.setattr(chat_graph, "crear_tools", lambda _empresa: [_tool_controlada])
+    monkeypatch.setattr(chat_graph, "crear_tools", lambda _empresa, *_a, **_k: [_tool_controlada])
     llm = _LLMFalso([AIMessage(content="Según el manual, el torque es 85 Nm.")])
 
     grafo = crear_grafo(empresa_id=1, llm=llm)
@@ -141,7 +141,7 @@ async def test_sin_tool_calls_termina_sin_pasar_por_tools(monkeypatch):
 @pytest.mark.asyncio
 async def test_el_prompt_incluye_el_contexto_recuperado(monkeypatch):
     """El nodo `retrieve` alimenta al `generate`: sin eso el RAG no llegaría al modelo."""
-    monkeypatch.setattr(chat_graph, "crear_tools", lambda _empresa: [_tool_controlada])
+    monkeypatch.setattr(chat_graph, "crear_tools", lambda _empresa, *_a, **_k: [_tool_controlada])
 
     async def chunks_falsos(*_a, **_k):
         return [
@@ -184,9 +184,11 @@ async def test_el_prompt_incluye_el_contexto_recuperado(monkeypatch):
 async def test_la_tool_encuentra_una_maquina_real_y_cuenta_sus_ots(db_pool):
     """Integración: la Skill consulta datos verdaderos de la empresa 1 del seed."""
     tools = crear_tools(empresa_id=1)
-    assert [t.name for t in tools] == ["consultar_ots_maquina"]
+    # Consultar y crear; el orden importa poco, sí que estén las dos.
+    assert sorted(t.name for t in tools) == ["consultar_ots_maquina", "crear_ot"]
 
-    salida = await tools[0].ainvoke({"nombre_maquina": "Compressor A1"})
+    consultar = next(t for t in tools if t.name == "consultar_ots_maquina")
+    salida = await consultar.ainvoke({"nombre_maquina": "Compressor A1"})
 
     assert "Compressor A1" in salida
     assert "Órdenes de trabajo abiertas:" in salida
