@@ -230,7 +230,10 @@ def format_context(chunks: list[dict]) -> str:
 
 
 async def search_chunks_semantic(
-    empresa_id: int, *query_texts: str, limit: int = TOP_K
+    empresa_id: int,
+    *query_texts: str,
+    limit: int = TOP_K,
+    min_similarity: float | None = None,
 ) -> list[dict]:
     """
     Búsqueda vectorial: embebe la consulta y ordena por distancia coseno en pgvector.
@@ -239,12 +242,19 @@ async def search_chunks_semantic(
     `title`, `contenido`, `rank`), para que `format_context` y el prompt no cambien.
     El `rank` es la similitud (1 - distancia), así que mayor es mejor en ambos caminos.
 
+    `min_similarity` existe para la segunda pasada de `search_chunks`: con el umbral
+    estricto se descartan fragmentos que sí vienen al caso cuando la consulta está mal
+    escrita («compresor» por «compressor», o una frase larga y coloquial). Bajar el
+    umbral en un segundo intento es preferible a quedarse sin contexto.
+
     Lanza si el proveedor no está configurado o falla: decidir el fallback es de
     `search_chunks`, no de esta función.
     """
     consulta = " ".join(t for t in query_texts if (t or "").strip()).strip()
     if not consulta:
         return []
+
+    umbral = settings.rag_min_similarity if min_similarity is None else min_similarity
 
     vector = await embed_texto(consulta)
     filas = await search_similar_chunks(vector, empresa_id=empresa_id, top_k=limit)
@@ -260,29 +270,54 @@ async def search_chunks_semantic(
             "rank": 1.0 - float(f["distancia"]),
         }
         for f in filas
-        if (1.0 - float(f["distancia"])) >= settings.rag_min_similarity
+        if (1.0 - float(f["distancia"])) >= umbral
     ]
 
 
 async def search_chunks(empresa_id: int, *query_texts: str, limit: int = TOP_K) -> list[dict]:
     """
-    Fragmentos más relevantes de la empresa: primero semántico, con fallback léxico.
+    Fragmentos más relevantes de la empresa: semántico, semántico laxo y léxico.
 
-    El fallback cubre tres casos reales: (a) no hay key de embeddings en el entorno,
-    (b) el proveedor responde con error o timeout, (c) la tabla `documento_embedding`
-    está vacía porque el backfill todavía no se corrió. En los tres, el chat sigue
-    funcionando como antes en vez de quedarse sin contexto o romperse.
+    Se intenta en tres pasos, del más estricto al más permisivo, porque cada uno falla
+    en un caso distinto:
+
+    1. **Semántico con el umbral normal** (0.25): el caso bueno.
+    2. **Semántico con el umbral laxo** (0.15): consultas mal escritas o muy coloquiales
+       («quiero ver la instrucción del compresor», «compresor» con z). El vector sigue
+       encontrando el fragmento aunque la palabra no coincida; lo que fallaba era el
+       corte, no la recuperación.
+    3. **Full-text**: si el proveedor no está configurado, falla, la tabla está vacía o
+       ningún fragmento llega ni al umbral laxo. Es la red que garantiza que el chat
+       nunca se quede sin contexto por un servicio externo.
     """
     if embeddings_disponibles():
         try:
             chunks = await search_chunks_semantic(empresa_id, *query_texts, limit=limit)
+            if chunks:
+                logger.info("RAG: %d fragmento(s) por similitud semántica.", len(chunks))
+                return chunks
+
+            logger.info(
+                "RAG: nada sobre %.2f; segunda pasada con umbral laxo %.2f.",
+                settings.rag_min_similarity,
+                settings.rag_min_similarity_laxa,
+            )
+            chunks = await search_chunks_semantic(
+                empresa_id,
+                *query_texts,
+                limit=limit,
+                min_similarity=settings.rag_min_similarity_laxa,
+            )
+            if chunks:
+                logger.info(
+                    "RAG: %d fragmento(s) en la segunda pasada (umbral laxo).", len(chunks)
+                )
+                return chunks
         except Exception as e:  # noqa: BLE001 — el proveedor externo no debe tumbar el chat
             logger.warning("RAG: búsqueda semántica falló (%s); se usa full-text.", e)
             return await search_chunks_lexical(empresa_id, *query_texts, limit=limit)
-        if chunks:
-            logger.info("RAG: %d fragmento(s) por similitud semántica.", len(chunks))
-            return chunks
-        logger.info("RAG: sin fragmentos sobre el umbral %.2f; se intenta full-text.", settings.rag_min_similarity)
+
+        logger.info("RAG: sin fragmentos ni con umbral laxo; se intenta full-text.")
     else:
         logger.info("RAG: sin proveedor de embeddings configurado; búsqueda full-text.")
     return await search_chunks_lexical(empresa_id, *query_texts, limit=limit)

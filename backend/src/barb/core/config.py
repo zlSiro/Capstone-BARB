@@ -110,6 +110,12 @@ class Settings(BaseSettings):
     # lados. Sin umbral, «que hora es» inyectaría un manual y la IA respondería con
     # documentación que no viene al caso.
     rag_min_similarity: float = 0.25
+    # Umbral de la SEGUNDA pasada. La recuperación semántica tolera consultas mal
+    # escritas, pero el corte estricto las descartaba: «quiero ver la instrucción del
+    # compresor» daba 0.229 contra el manual y se quedaba sin contexto. Con 0.15 el
+    # fragmento entra, y como sigue siendo similitud real, lo irrelevante queda fuera
+    # (las consultas fuera de tema medidas no pasan de 0.14).
+    rag_min_similarity_laxa: float = 0.15
 
     @property
     def embeddings_api_key(self) -> str:

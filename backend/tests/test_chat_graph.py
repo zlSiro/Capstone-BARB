@@ -215,3 +215,72 @@ async def test_la_tool_no_explota_con_nombre_vacio(db_pool):
     tools = crear_tools(empresa_id=1)
     salida = await tools[0].ainvoke({"nombre_maquina": "   "})
     assert "Necesito el nombre" in salida
+
+
+# ---------------------------------------------------------------------------
+# Tolerancia a errores de tipeo (reporte de uso real, 23-10-2026)
+# ---------------------------------------------------------------------------
+
+# Todos estos son formas en que una persona real pidió el mismo equipo en una
+# conversación de prueba. La primera versión (LIKE estricto) fallaba con casi todas.
+_TIPOS = [
+    "Compressor A1",       # nombre exacto de la base
+    "Compresor A1",        # con z (como se escribe en Chile)
+    "compresor",           # sin el modelo
+    "compresor a1",        # todo en minúsculas
+    "compresor auno",      # el número escrito con letras
+    "COMP-A1",             # solo el código
+    "comp 1",              # abreviado
+    "el compresor A1 del sector 2",
+    "COMPRESOR A1!!!",     # mayúsculas y signos
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("consulta", _TIPOS)
+async def test_la_tool_tolera_como_escribe_la_gente(db_pool, consulta):
+    tools = crear_tools(empresa_id=1)
+    salida = await tools[0].ainvoke({"nombre_maquina": consulta})
+
+    assert "Compressor A1" in salida, f"no resolvió {consulta!r}: {salida[:120]}"
+    assert "Órdenes de trabajo abiertas:" in salida
+
+
+@pytest.mark.asyncio
+async def test_la_tool_sugiere_alternativas_cuando_no_encuentra(db_pool):
+    """
+    Un «no encontré» a secas deja al usuario sin salida.
+
+    En la conversación real insistió cuatro veces con un código inventado («S1») porque
+    no sabía qué equipos existen. La tool ahora lista las máquinas disponibles.
+    """
+    tools = crear_tools(empresa_id=1)
+    salida = await tools[0].ainvoke({"nombre_maquina": "S1"})
+
+    assert "No encontré" in salida
+    assert "Estas son las disponibles" in salida
+    # Las sugerencias son equipos reales de la empresa, con su código.
+    assert "Compressor A1 (COMP-A1)" in salida
+
+
+@pytest.mark.asyncio
+async def test_las_sugerencias_no_salen_de_la_empresa(db_pool):
+    """La lista de alternativas también respeta el aislamiento multi-empresa."""
+    from barb.core.db import fetch_one
+
+    ajena = await fetch_one(
+        """
+        SELECT m.nombre
+          FROM maquina m JOIN planta p ON p.planta_id = m.planta_id
+         WHERE p.empresa_id = 2
+         ORDER BY m.nombre LIMIT 1
+        """
+    )
+    if not ajena:
+        pytest.skip("el seed no tiene máquinas en la empresa 2")
+
+    tools = crear_tools(empresa_id=1)
+    salida = await tools[0].ainvoke({"nombre_maquina": "S1"})
+
+    assert "Estas son las disponibles" in salida
+    assert ajena["nombre"] not in salida

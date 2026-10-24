@@ -233,3 +233,46 @@ async def test_ingesta_puede_omitir_los_embeddings(monkeypatch):
 
     await document_service.index_chunks(cur, documento_id=44, empresa_id=1, chunks=["x"], embeber=False)
     assert len(cur.ejecutados) == 1
+
+
+@pytest.mark.asyncio
+async def test_segunda_pasada_con_umbral_laxo_cuando_el_estricto_no_devuelve_nada(monkeypatch):
+    """
+    Consulta mal escrita: el vector sí encuentra el fragmento, pero no llega al umbral
+    estricto. Antes el chat se quedaba sin contexto (el caso real: «quiero ver la
+    instrucción del compresor» puntuaba 0.229 contra un umbral de 0.25).
+    """
+    llamadas: list[float | None] = []
+    laxo = [{"chunk_id": None, "documento_id": 4, "title": "Manual Compresor A1", "contenido": "x", "rank": 0.2}]
+
+    async def semantico(_empresa, *_a, limit=4, min_similarity=None, **_k):
+        llamadas.append(min_similarity)
+        return [] if min_similarity is None else laxo
+
+    monkeypatch.setattr(document_service, "embeddings_disponibles", lambda: True)
+    monkeypatch.setattr(document_service, "search_chunks_semantic", semantico)
+
+    resultado = await document_service.search_chunks(1, "quiero ver la instruccion del compresor")
+
+    assert resultado == laxo
+    # Dos intentos: el estricto (None = usa settings) y el laxo con el umbral de config.
+    assert len(llamadas) == 2
+    assert llamadas[0] is None
+    assert llamadas[1] == document_service.settings.rag_min_similarity_laxa
+
+
+@pytest.mark.asyncio
+async def test_si_tampoco_hay_nada_con_umbral_laxo_cae_a_full_text(monkeypatch):
+    lexico = [{"chunk_id": 1, "documento_id": 1, "title": "L", "contenido": "z", "rank": 0.3}]
+
+    async def semantico(*_a, **_k):
+        return []
+
+    async def lex(*_a, **_k):
+        return lexico
+
+    monkeypatch.setattr(document_service, "embeddings_disponibles", lambda: True)
+    monkeypatch.setattr(document_service, "search_chunks_semantic", semantico)
+    monkeypatch.setattr(document_service, "search_chunks_lexical", lex)
+
+    assert await document_service.search_chunks(1, "algo") == lexico

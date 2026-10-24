@@ -187,6 +187,37 @@ async def _resumen_maquina(empresa_id: int, maquina: dict) -> str:
     return " ".join(lineas)
 
 
+async def _listar_maquinas(empresa_id: int, limite: int = 8) -> tuple[list[str], int]:
+    """
+    Nombres de las máquinas de la empresa, para sugerir cuando no hay coincidencia.
+
+    Devuelve (primeras `limite`, total). Sin esto, un «no encontré» deja al usuario en un
+    callejón sin salida: en una conversación real insistió cuatro veces con un código
+    inventado («S1») porque no sabía qué equipos existen.
+    """
+    filas = await fetch_all(
+        """
+        SELECT m.nombre, m.codigo
+          FROM maquina m
+          JOIN planta  p ON p.planta_id = m.planta_id
+         WHERE p.empresa_id = %(empresa)s
+         ORDER BY m.nombre
+         LIMIT %(limite)s
+        """,
+        {"empresa": empresa_id, "limite": limite},
+    )
+    total = await fetch_all(
+        """
+        SELECT COUNT(*) AS n
+          FROM maquina m
+          JOIN planta  p ON p.planta_id = m.planta_id
+         WHERE p.empresa_id = %(empresa)s
+        """,
+        {"empresa": empresa_id},
+    )
+    return [f"{f['nombre']} ({f['codigo']})" for f in filas], int(total[0]["n"]) if total else 0
+
+
 def crear_tools(empresa_id: int) -> list[BaseTool]:
     """
     Tools disponibles para una empresa concreta.
@@ -217,9 +248,25 @@ def crear_tools(empresa_id: int) -> list[BaseTool]:
             return f"No pude consultar las órdenes de trabajo ({type(e).__name__})."
 
         if not maquinas:
+            # Sugerir alternativas reales convierte un "no encontré" en un siguiente paso.
+            # El usuario no tiene por qué saberse los nombres del inventario.
+            try:
+                nombres, total = await _listar_maquinas(empresa_id)
+            except Exception:  # noqa: BLE001 — la sugerencia es un extra, no el dato pedido
+                nombres, total = [], 0
+
+            if not nombres:
+                return (
+                    f"No encontré ninguna máquina que coincida con «{consulta}» y tu empresa "
+                    "todavía no tiene equipos registrados en el mantenedor."
+                )
+
+            listado = ", ".join(nombres)
+            resto = f" (hay {total} en total)" if total > len(nombres) else ""
             return (
-                f"No encontré ninguna máquina que coincida con «{consulta}» en tu empresa. "
-                "Pide el nombre o el código exacto del equipo."
+                f"No encontré ninguna máquina que coincida con «{consulta}» en tu empresa.\n"
+                f"Estas son las disponibles{resto}: {listado}.\n"
+                "Dime cuál te interesa y consulto sus órdenes de trabajo."
             )
 
         if len(maquinas) > 1:
