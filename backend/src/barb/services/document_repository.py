@@ -135,6 +135,43 @@ async def set_chunks(
     return len(chunks)
 
 
+async def insert_embeddings(
+    cur,
+    documento_id: int,
+    chunks: list[tuple[int, str, list[float]]],
+) -> int:
+    """
+    Inserta vectores usando un cursor YA abierto.
+
+    Existe por la ingesta: `index_chunks` corre dentro de la transacción del POST de
+    subida, así que no puede llamar a `upsert_chunks` (que abre su propia transacción y
+    quedaría fuera de la atomicidad). La SQL vive acá, no en el servicio, para que haya
+    un solo lugar donde se escribe `documento_embedding`.
+    """
+    if not chunks:
+        return 0
+
+    await cur.executemany(
+        """
+        INSERT INTO documento_embedding (documento_id, chunk_index, content, embedding)
+        VALUES (%(documento_id)s, %(chunk_index)s, %(content)s, %(embedding)s::vector)
+        ON CONFLICT (documento_id, chunk_index) DO UPDATE
+           SET content = EXCLUDED.content,
+               embedding = EXCLUDED.embedding
+        """,
+        [
+            {
+                "documento_id": documento_id,
+                "chunk_index": index,
+                "content": content,
+                "embedding": _vector_literal(embedding),
+            }
+            for index, content, embedding in chunks
+        ],
+    )
+    return len(chunks)
+
+
 async def upsert_chunks(
     documento_id: int,
     chunks: list[tuple[int, str, list[float]]],

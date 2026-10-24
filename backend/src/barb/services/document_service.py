@@ -35,8 +35,8 @@ from fastapi import HTTPException
 
 from barb.core.config import settings
 from barb.core.db import fetch_all
-from barb.services.document_repository import search_similar_chunks
-from barb.services.embeddings import embed_texto, embeddings_disponibles
+from barb.services.document_repository import insert_embeddings, search_similar_chunks
+from barb.services.embeddings import embed_lote, embed_texto, embeddings_disponibles
 
 logger = logging.getLogger("barb.documents")
 
@@ -135,11 +135,48 @@ def split_chunks(text: str, size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP
 # 3. Indexación (se ejecuta dentro de la transacción del router)
 # ---------------------------------------------------------------------------
 
-async def index_chunks(cur, documento_id: int, empresa_id: int, chunks: list[str]) -> None:
+async def index_chunks(
+    cur, documento_id: int, empresa_id: int, chunks: list[str], *, embeber: bool = True
+) -> None:
+    """
+    Indexa los fragmentos y, si se puede, sus vectores.
+
+    Se llama dentro de la transacción del POST de subida (D5), así que usa el cursor que
+    recibe en vez de abrir una transacción propia.
+
+    Los embeddings son best-effort a propósito: si el proveedor falla, el documento queda
+    indexado igual para full-text y el error se registra. Rechazar la subida del usuario
+    porque un servicio externo tuvo un mal minuto sería peor que tener un documento que
+    se puede encontrar por texto hasta que el backfill lo complete.
+
+    Coste asumido: la llamada de red ocurre con la transacción abierta (una o dos
+    peticiones por documento). Con el volumen de esta pantalla es aceptable; si algún día
+    la ingesta crece, hay que mover el embedding antes de abrir la transacción.
+    """
     await cur.executemany(
         "INSERT INTO documento_chunk (documento_id, empresa_id, orden, contenido) VALUES (%s, %s, %s, %s)",
         [(documento_id, empresa_id, i, c) for i, c in enumerate(chunks)],
     )
+
+    if not embeber or not chunks:
+        return
+
+    try:
+        vectores = await embed_lote(chunks)
+    except Exception as e:  # noqa: BLE001 — un proveedor caído no debe tumbar la ingesta
+        logger.warning(
+            "Ingesta sin vectores para el documento %s (%s: %s). Queda indexado para "
+            "full-text; el backfill lo completará.",
+            documento_id,
+            type(e).__name__,
+            e,
+        )
+        return
+
+    escritos = await insert_embeddings(
+        cur, documento_id, list(zip(range(len(chunks)), chunks, vectores, strict=True))
+    )
+    logger.info("Documento %s indexado con %d chunks y %d vectores.", documento_id, len(chunks), escritos)
 
 
 # ---------------------------------------------------------------------------
@@ -240,9 +277,12 @@ async def search_chunks(empresa_id: int, *query_texts: str, limit: int = TOP_K) 
         try:
             chunks = await search_chunks_semantic(empresa_id, *query_texts, limit=limit)
         except Exception as e:  # noqa: BLE001 — el proveedor externo no debe tumbar el chat
-            logger.warning("Búsqueda semántica falló, se usa full-text: %s", e)
+            logger.warning("RAG: búsqueda semántica falló (%s); se usa full-text.", e)
             return await search_chunks_lexical(empresa_id, *query_texts, limit=limit)
         if chunks:
+            logger.info("RAG: %d fragmento(s) por similitud semántica.", len(chunks))
             return chunks
-        logger.info("Búsqueda semántica sin resultados; se intenta full-text.")
+        logger.info("RAG: sin fragmentos sobre el umbral %.2f; se intenta full-text.", settings.rag_min_similarity)
+    else:
+        logger.info("RAG: sin proveedor de embeddings configurado; búsqueda full-text.")
     return await search_chunks_lexical(empresa_id, *query_texts, limit=limit)

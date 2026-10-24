@@ -104,17 +104,20 @@ async def stream_chat(
     # necesitan esa pista para encontrar el manual correspondiente.
     previous_user_msgs = [m.get("content", "") for m in history if m.get("role") == "user"][-1:]
     previous_assistant_msgs = [m.get("content", "") for m in history if m.get("role") == "assistant"][-1:]
-    # HU-04 Fase 1: `search_chunks` es semántica (embeddings + pgvector) y cae a full-text
-    # si el proveedor falla. La firma no cambió a propósito: así el chat textual y el
-    # multimodal usan el MISMO camino y ninguno puede quedarse atrás en la migración.
-    chunks = await search_chunks(
+    # HU-04 Fase 1 — BÚSQUEDA SEMÁNTICA: `search_chunks` embebe la pregunta y ordena por
+    # distancia coseno en pgvector (`search_chunks_semantic`), y solo cae a full-text
+    # (`search_chunks_lexical`) si el proveedor no está configurado, falla o ningún
+    # fragmento supera `rag_min_similarity`. El log dice cuál de los dos caminos se usó.
+    # La firma no cambió a propósito: así el chat textual y el multimodal comparten el
+    # mismo camino y ninguno puede quedarse atrás en la migración.
+    chunks_rag = await search_chunks(
         empresa_id, request.message, *previous_user_msgs, *previous_assistant_msgs
     )
-    context = format_context(chunks)
+    context = format_context(chunks_rag)
 
     # Sin documentación relevante no se consulta al LLM: se garantiza que la IA
     # nunca responda con conocimiento ajeno a lo compartido por la empresa.
-    chain = create_conversation_chain() if chunks else None
+    chain = create_conversation_chain() if chunks_rag else None
     input_tokens = estimate_tokens(request.message)
 
     async def event_generator():
@@ -316,9 +319,10 @@ async def stream_multimedia_chat(
     # aporten su contexto ("es un chancador de mandíbulas") a la búsqueda.
     previous_user_msgs = [m.get("content", "") for m in history if m.get("role") == "user"][-1:]
     previous_assistant_msgs = [m.get("content", "") for m in history if m.get("role") == "assistant"][-1:]
-    # Semántica con fallback léxico (HU-04 Fase 1): misma función que el chat textual.
-    chunks = await search_chunks(empresa_id, request.message, *previous_user_msgs, *previous_assistant_msgs)
-    context = format_context(chunks) if chunks else ""
+    # HU-04 Fase 1 — misma búsqueda semántica con fallback léxico que el chat textual:
+    # los manuales se buscan por significado también cuando la pregunta trae una imagen.
+    chunks_rag = await search_chunks(empresa_id, request.message, *previous_user_msgs, *previous_assistant_msgs)
+    context = format_context(chunks_rag) if chunks_rag else ""
 
     chain = create_multimodal_chain()
     # Contabilidad de tokens (D6): el presupuesto visual de la imagen (~4096)

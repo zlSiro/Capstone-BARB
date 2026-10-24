@@ -147,3 +147,89 @@ async def test_sin_key_va_directo_al_lexico(monkeypatch):
     monkeypatch.setattr(document_service, "search_chunks_lexical", lex)
 
     assert await document_service.search_chunks(1, "consulta") == lexico
+
+
+# ---------------------------------------------------------------------------
+# Ingesta: los documentos nuevos se vectorizan en el mismo POST (HU-04 Fase 1)
+# ---------------------------------------------------------------------------
+
+
+class _CursorFalso:
+    """Cursor mínimo: registra las llamadas para poder afirmar qué se ejecutó."""
+
+    def __init__(self) -> None:
+        self.ejecutados: list[str] = []
+        self.filas: list[tuple] = []
+
+    async def executemany(self, sql: str, params) -> None:
+        self.ejecutados.append(sql)
+        self.filas.extend(params)
+
+
+@pytest.mark.asyncio
+async def test_ingesta_guarda_los_vectores(monkeypatch):
+    """Si el proveedor responde, el documento queda vectorizado sin esperar al backfill."""
+    cur = _CursorFalso()
+    capturado: dict = {}
+
+    async def fake_embed_lote(textos):
+        return [[0.1] * emb.EMBEDDING_DIM for _ in textos]
+
+    async def fake_insert(cursor, documento_id, chunks):
+        capturado["documento_id"] = documento_id
+        capturado["chunks"] = chunks
+        return len(chunks)
+
+    monkeypatch.setattr(document_service, "embed_lote", fake_embed_lote)
+    monkeypatch.setattr(document_service, "insert_embeddings", fake_insert)
+
+    await document_service.index_chunks(cur, documento_id=42, empresa_id=1, chunks=["uno", "dos"])
+
+    # Siempre se insertan los chunks de texto...
+    assert len(cur.ejecutados) == 1
+    assert "documento_chunk" in cur.ejecutados[0]
+    # ...y además los vectores, con su índice alineado al orden del chunk.
+    assert capturado["documento_id"] == 42
+    assert [c[0] for c in capturado["chunks"]] == [0, 1]
+    assert [c[1] for c in capturado["chunks"]] == ["uno", "dos"]
+
+
+@pytest.mark.asyncio
+async def test_ingesta_no_falla_si_el_proveedor_de_embeddings_cae(monkeypatch):
+    """
+    Un proveedor caído no puede rechazar la subida del usuario.
+
+    El documento queda indexado para full-text y el backfill lo completa después: es
+    preferible un documento encontrable por texto que un 500 al subirlo.
+    """
+    cur = _CursorFalso()
+    llamado = {"insert": False}
+
+    async def fake_embed_lote(_textos):
+        raise emb.EmbeddingsError("503 del proveedor")
+
+    async def fake_insert(*_a, **_k):
+        llamado["insert"] = True
+        return 0
+
+    monkeypatch.setattr(document_service, "embed_lote", fake_embed_lote)
+    monkeypatch.setattr(document_service, "insert_embeddings", fake_insert)
+
+    await document_service.index_chunks(cur, documento_id=43, empresa_id=1, chunks=["uno"])
+
+    assert len(cur.ejecutados) == 1  # los chunks de texto sí se guardaron
+    assert llamado["insert"] is False
+
+
+@pytest.mark.asyncio
+async def test_ingesta_puede_omitir_los_embeddings(monkeypatch):
+    """`embeber=False` existe para reindexar solo texto (reprocesos, pruebas)."""
+    cur = _CursorFalso()
+
+    async def fake_embed_lote(_textos):
+        raise AssertionError("no debería llamarse con embeber=False")
+
+    monkeypatch.setattr(document_service, "embed_lote", fake_embed_lote)
+
+    await document_service.index_chunks(cur, documento_id=44, empresa_id=1, chunks=["x"], embeber=False)
+    assert len(cur.ejecutados) == 1
