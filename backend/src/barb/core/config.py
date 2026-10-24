@@ -129,10 +129,15 @@ class Settings(BaseSettings):
         return bool(self.embeddings_model and self.embeddings_api_key)
 
     # --- Resiliencia LLM (HU-03) ---
-    # Lista separada por coma de proveedores de respaldo (se usan si el primario falla).
+    # Lista separada por coma de proveedores de respaldo EXTRA (además del complementario
+    # automático NVIDIA ↔ DeepSeek, que se activa solo si el otro tiene key).
     # Ejemplos: "openrouter", "openai", "groq"
-    # Si está vacío, no hay fallback entre proveedores (solo reintentos).
+    # Si está vacío, solo existe el respaldo automático entre NVIDIA y DeepSeek.
     llm_fallback_providers: str = ""
+    # Modelo a usar cuando entra un proveedor de respaldo. Vacío = el default de ese
+    # proveedor (`_MODELO_POR_PROVEEDOR` en llm_service). No se puede reusar LLM_MODEL:
+    # cada API espera su propio id y un id ajeno devuelve 400.
+    llm_fallback_model: str = ""
 
     @property
     def llm_fallback_providers_list(self) -> list[str]:

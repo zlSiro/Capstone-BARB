@@ -303,12 +303,15 @@ umero_ot` original empieza
 async def test_las_filas_originales_siguen_intactas(client):
     """El seed ampliado no debe tocar las 30 OTs que ya existían.
 
-    Se identifican por no llevar el prefijo sintético, que es exactamente el criterio
-    del comando de borrado.
+    Se identifican por su numeración original (`OT-2026-`). Antes el criterio era «todo lo
+    que no lleva el prefijo sintético», pero eso dejó de ser cierto al aparecer otra fuente
+    de OTs: las que crea la IA desde el chat (`OT-IA-...`). Contar por la numeración
+    original mide lo que este test realmente quiere medir, sin depender de cuántas OTs haya
+    creado la IA mientras corre la suite.
     """
     originales = await fetch_all(
-        "SELECT COUNT(*) AS n FROM orden_trabajo WHERE numero_ot NOT LIKE %(p)s",
-        {"p": f"{PREFIJO}%"},
+        "SELECT COUNT(*) AS n FROM orden_trabajo WHERE numero_ot LIKE %(p)s",
+        {"p": "OT-2026-%"},
     )
     assert int(originales[0]["n"]) == 30, f"esperaba 30 originales, hay {originales[0]['n']}"
 

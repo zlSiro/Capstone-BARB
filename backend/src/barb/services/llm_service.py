@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
@@ -9,19 +10,24 @@ from langchain_core.runnables import Runnable, RunnableLambda
 
 from barb.core.config import settings
 
+logger = logging.getLogger("barb.llm")
+
 # ---------------------------------------------------------------------------
 # Construcción del LLM por proveedor
 # ---------------------------------------------------------------------------
 
-def _build_llm(provider: str | None = None):
+def _build_llm(provider: str | None = None, modelo: str | None = None):
     provider = provider or settings.llm_provider
+    # `modelo` permite construir un respaldo con SU nombre de modelo: los ids no son
+    # intercambiables entre proveedores.
+    modelo = modelo or settings.llm_model
 
     if provider == "deepseek":
         from langchain_deepseek import ChatDeepSeek
         if not settings.deepseek_api_key:
             raise RuntimeError("DEEPSEEK_API_KEY no configurada en .env")
         return ChatDeepSeek(
-            model=settings.llm_model,
+            model=modelo,
             temperature=settings.llm_temperature,
             max_tokens=settings.llm_max_tokens,
             streaming=True,
@@ -33,7 +39,7 @@ def _build_llm(provider: str | None = None):
         if not settings.openai_api_key:
             raise RuntimeError("OPENAI_API_KEY no configurada en .env")
         return ChatOpenAI(
-            model=settings.llm_model,
+            model=modelo,
             temperature=settings.llm_temperature,
             max_tokens=settings.llm_max_tokens,
             streaming=True,
@@ -45,7 +51,7 @@ def _build_llm(provider: str | None = None):
         if not settings.openrouter_api_key:
             raise RuntimeError("OPENROUTER_API_KEY no configurada en .env")
         return ChatOpenRouter(
-            model=settings.llm_model,
+            model=modelo,
             temperature=settings.llm_temperature,
             max_tokens=settings.llm_max_tokens,
             streaming=True,
@@ -57,7 +63,7 @@ def _build_llm(provider: str | None = None):
         if not settings.groq_api_key:
             raise RuntimeError("GROQ_API_KEY no configurada en .env")
         return ChatGroq(
-            model=settings.llm_model,
+            model=modelo,
             temperature=settings.llm_temperature,
             max_tokens=settings.llm_max_tokens,
             streaming=True,
@@ -70,7 +76,7 @@ def _build_llm(provider: str | None = None):
         if not settings.nvidia_api_key:
             raise RuntimeError("NVIDIA_API_KEY no configurada en .env")
         return ChatOpenAI(
-            model=settings.llm_model,
+            model=modelo,
             temperature=settings.llm_temperature,
             max_tokens=settings.llm_max_tokens,
             streaming=True,
@@ -88,22 +94,98 @@ _RETRY_CONFIG = {
     "wait_exponential_jitter": True,
 }
 
+# Proveedor de respaldo natural para cada primario. Es el par que se usa en la
+# presentación: si NVIDIA (NIM) se cae, DeepSeek responde, y viceversa.
+_PROVEEDOR_ALTERNATIVO = {
+    "nvidia": "deepseek",
+    "deepseek": "nvidia",
+}
+
+# Cada API espera SU nombre de modelo: mandarle "nvidia/nemotron-3.5-lightning-30b-a3b"
+# a DeepSeek devuelve 400. Por eso el respaldo no reusa `LLM_MODEL` cuando el proveedor
+# cambia, sino su propio default (configurable con LLM_FALLBACK_MODEL).
+_MODELO_POR_PROVEEDOR = {
+    "deepseek": "deepseek-chat",
+    "nvidia": "nvidia/nemotron-3.5-lightning-30b-a3b",
+}
+
+
+def _modelo_para(provider: str) -> str:
+    if provider == settings.llm_provider:
+        return settings.llm_model
+    return settings.llm_fallback_model or _MODELO_POR_PROVEEDOR.get(provider, settings.llm_model)
+
+
+def _proveedores_de_respaldo() -> list[str]:
+    """
+    Respaldos candidatos, en orden: primero el complementario automático (NVIDIA ↔
+    DeepSeek) y después los que declare `LLM_FALLBACK_PROVIDERS`.
+    """
+    candidatos: list[str] = []
+    alterno = _PROVEEDOR_ALTERNATIVO.get(settings.llm_provider)
+    if alterno:
+        candidatos.append(alterno)
+    for proveedor in settings.llm_fallback_providers_list:
+        if proveedor not in candidatos:
+            candidatos.append(proveedor)
+    return [p for p in candidatos if p != settings.llm_provider]
+
+
+def _construir(provider: str, tools: list[Any] | None = None):
+    """
+    Modelo de `provider` listo para el grafo: tools bindeadas, luego reintentos.
+
+    El orden importa: `with_retry` devuelve un `RunnableRetry`, que ya NO expone
+    `bind_tools`. Si se aplicara antes, el modelo quedaría sin herramientas.
+    """
+    modelo = _build_llm(provider, modelo=_modelo_para(provider))
+    if tools:
+        modelo = modelo.bind_tools(tools)
+    return modelo.with_retry(**_RETRY_CONFIG)
+
+
+def _build_llm_con_fallback(tools: list[Any] | None = None):
+    """
+    LLM primario con respaldo automático entre NVIDIA y DeepSeek.
+
+    - Las tools se bindean en el primario **y en cada respaldo**: si NVIDIA se cae a mitad
+      de la presentación, DeepSeek tiene que poder usar las Skills igual. Si no, la IA
+      perdería la capacidad de consultar OTs justo cuando más se necesita.
+    - Un respaldo sin key se omite en silencio: no es un respaldo disponible, y no debe
+      romper el arranque del chat.
+    - Si el primario no se puede construir, el error se propaga (es un fallo de
+      configuración, no de red).
+    """
+    primario = _construir(settings.llm_provider, tools)
+
+    respaldos = []
+    for proveedor in _proveedores_de_respaldo():
+        try:
+            respaldos.append(_construir(proveedor, tools))
+        except RuntimeError:
+            # Sin key para ese proveedor: no hay respaldo, se sigue con el primario.
+            continue
+
+    if respaldos:
+        logger.info(
+            "LLM primario: %s (%s) con respaldo: %s",
+            settings.llm_provider,
+            _modelo_para(settings.llm_provider),
+            ", ".join(_proveedores_de_respaldo()[: len(respaldos)]),
+        )
+        return primario.with_fallbacks(respaldos)
+
+    logger.info(
+        "LLM primario: %s (%s) sin respaldo configurado.",
+        settings.llm_provider,
+        _modelo_para(settings.llm_provider),
+    )
+    return primario
+
 
 def _build_llm_with_resilience():
-    primary = _build_llm().with_retry(**_RETRY_CONFIG)
-
-    fallbacks = []
-    for provider in settings.llm_fallback_providers_list:
-        if provider == settings.llm_provider:
-            continue
-        try:
-            fallbacks.append(_build_llm(provider).with_retry(**_RETRY_CONFIG))
-        except RuntimeError:
-            continue
-
-    if fallbacks:
-        return primary.with_fallbacks(fallbacks)
-    return primary
+    """Compatibilidad con la cadena antigua: misma resiliencia, sin tools."""
+    return _build_llm_con_fallback()
 
 
 # ---------------------------------------------------------------------------

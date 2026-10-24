@@ -35,7 +35,12 @@ from langgraph.prebuilt import ToolNode
 from barb.core.config import settings
 from barb.services.ai_tools import crear_tools
 from barb.services.document_service import format_context, search_chunks
-from barb.services.llm_service import RAG_RULES, _build_llm, _dicts_to_messages, _RETRY_CONFIG
+from barb.services.llm_service import (
+    _RETRY_CONFIG,
+    RAG_RULES,
+    _build_llm_con_fallback,
+    _dicts_to_messages,
+)
 
 logger = logging.getLogger("barb.chat_graph")
 
@@ -104,7 +109,13 @@ def crear_grafo(
     # `usuario_id` y `rol` viajan a la tool de creación: decide a qué técnico se asigna la
     # OT y quién queda como creador. El modelo NO los ve ni puede cambiarlos.
     tools = crear_tools(empresa_id, usuario_id, rol)
-    modelo = (llm or _build_llm()).bind_tools(tools).with_retry(**_RETRY_CONFIG)
+    if llm is not None:
+        # Modelo inyectado (tests): se respeta tal cual, con las mismas reglas de orden.
+        modelo = llm.bind_tools(tools).with_retry(**_RETRY_CONFIG)
+    else:
+        # Producción: NVIDIA con respaldo automático en DeepSeek, y las tools bindeadas
+        # en ambos para que el respaldo también pueda usar las Skills.
+        modelo = _build_llm_con_fallback(tools)
     ejecutar_tools = ToolNode(tools)
 
     async def recuperar(estado: EstadoChat) -> dict:
