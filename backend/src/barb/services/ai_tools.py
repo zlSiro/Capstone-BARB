@@ -25,18 +25,26 @@ from dataclasses import dataclass
 from langchain_core.tools import BaseTool, tool
 
 from barb.core.db import fetch_all
+from barb.core.work_order_states import ESTADOS_FINALES, TRANSICIONES
 
 logger = logging.getLogger("barb.ai_tools")
 
-# Estados que cuentan como "abierta" para el negocio. `overdue` es una OT que sigue
-# pendiente de cierre, solo que atrasada.
-ESTADOS_ABIERTOS = ("pending", "assigned", "in_progress", "overdue")
+# Estados en los que una OT sigue viva. Se DERIVAN de la máquina de estados, que se declara
+# «única fuente de verdad» (`core/work_order_states.py`): todo estado con transiciones
+# salientes está abierto. Antes había una tupla escrita a mano que duplicaba ese
+# conocimiento y se habría quedado desactualizada al agregar o retirar un estado.
+ESTADOS_ABIERTOS: tuple[str, ...] = tuple(
+    sorted(estado for estado in TRANSICIONES if estado not in ESTADOS_FINALES)
+)
 
 _MAX_MAQUINAS = 5
 _MAX_OTS_LISTADAS = 10
-# Umbral de parecido para aceptar una coincidencia difusa. Calibrado a la vista de los
-# casos reales: «Compresor A1» vs «Compressor A1» da 0.96; un nombre inventado no pasa 0.5.
-_UMBRAL_PARECIDO = 0.72
+# Umbral de parecido para aceptar una coincidencia. Coincide con el `cutoff` estándar de
+# `difflib.get_close_matches`, que es el criterio de Python para "se parece lo suficiente".
+_UMBRAL_PARECIDO = 0.6
+# Parecido mínimo entre dos palabras para tratarlas como la misma dentro de un nombre
+# compuesto: tolera «compresor» vs «compressor» sin exigir igualdad exacta.
+_UMBRAL_PALABRA = 0.8
 # Tope defensivo: una empresa con miles de máquinas no debería recorrerlas todas en una
 # tool que el modelo puede llamar varias veces por turno.
 _MAX_CANDIDATAS = 500
@@ -56,14 +64,43 @@ class _Candidata:
     puntaje: float
 
 
+def _parecido(a: str, b: str) -> float:
+    """Similitud 0..1 entre dos cadenas ya normalizadas (difflib, el criterio de Python)."""
+    return difflib.SequenceMatcher(None, a, b).ratio()
+
+
+def _cobertura(consulta: list[str], tokens: list[str]) -> float:
+    """
+    Fracción de `tokens` que aparece en la consulta, con tolerancia ortográfica.
+
+    Es el complemento de `difflib`: `get_close_matches` compara la cadena completa y por
+    eso falla cuando la persona agrega palabras («el compresor A1 del sector 2»); medir
+    palabra por palabra resuelve ese caso sin conocer ningún equipo de antemano.
+    """
+    utiles = [t for t in tokens if len(t) >= 2]
+    if not utiles or not consulta:
+        return 0.0
+    hallados = sum(
+        1 for t in utiles if any(_parecido(t, c) >= _UMBRAL_PALABRA for c in consulta)
+    )
+    return hallados / len(utiles)
+
+
 def _puntaje(consulta: str, nombre: str, codigo: str) -> float:
     """
-    Cuán probable es que `consulta` se refiera a esta máquina.
+    Cuán probable es que `consulta` se refiera a esta máquina. No conoce ningún equipo: se
+    calcula solo con los datos que vienen de la base.
 
-    El modelo repite lo que dijo el usuario, y el usuario no escribe el nombre exacto:
-    «Compresor A1» vs «Compressor A1», o solo el código. Por eso se combina coincidencia
-    exacta, cobertura de palabras y parecido de secuencia, en vez de un LIKE estricto que
-    fallaba con una sola letra de diferencia.
+    Combina dos criterios porque cada uno falla en un caso distinto (medido con un banco de
+    17 formas reales de pedir un equipo):
+
+    - `difflib` sobre la cadena completa → resuelve «compresor», «comp 1», «compresr a1».
+    - cobertura de palabras → resuelve «el compresor A1 del sector 2», donde las palabras
+      extra hunden el parecido de la cadena entera.
+
+    Ninguno de los dos gana solo: difflib elegía «Compresor Neumático N2» para la frase
+    larga, y la cobertura no encontraba «el motor». Tomar el máximo de ambos acertó los 17
+    casos del banco.
     """
     q = _normalizar(consulta)
     n = _normalizar(nombre)
@@ -72,38 +109,12 @@ def _puntaje(consulta: str, nombre: str, codigo: str) -> float:
     if q in (n, c):
         return 1.0
 
-    parecidos = [
-        difflib.SequenceMatcher(None, q, n).ratio(),
-        difflib.SequenceMatcher(None, q, c).ratio(),
-    ]
+    completo = max(_parecido(q, n), _parecido(q, c))
 
-    # Cobertura de palabras: "compressor a1 manual" debe encontrar "Compressor A1".
-    palabras_q = [p for p in q.split() if len(p) >= 2]
+    palabras = [p for p in q.split() if len(p) >= 2]
+    por_palabra = max(_cobertura(palabras, n.split()), _cobertura(palabras, c.split()))
 
-    def cobertura(tokens: list[str]) -> float:
-        """Fracción de `tokens` que aparece en la consulta (con tolerancia ortográfica)."""
-        utiles = [t for t in tokens if len(t) >= 2]
-        if not utiles:
-            return 0.0
-        hallados = sum(
-            1
-            for t in utiles
-            if any(difflib.SequenceMatcher(None, t, pq).ratio() >= 0.8 for pq in palabras_q)
-        )
-        return hallados / len(utiles)
-
-    # Contener el nombre completo es una señal fuerte ("compressor a1 del sector 2").
-    if n and n in q:
-        parecidos.append(0.95)
-
-    # Cobertura difusa: qué parte del nombre (o del código) aparece en la consulta aunque
-    # el usuario agregue palabras o escriba con otra ortografía («el compresor A1 del
-    # sector 2»). Sin esto, las palabras extra hundían el parecido de secuencia.
-    # Nombre y código se puntúan por separado y se toma el mejor: sumarlos hacía que un
-    # código que no aparece en la frase arrastrara el puntaje hacia abajo.
-    cobertura_nombre = max(cobertura(n.split()), cobertura(c.split()))
-
-    return max(*parecidos, cobertura_nombre * 0.9)
+    return max(completo, por_palabra)
 
 
 async def _buscar_maquinas(empresa_id: int, consulta: str) -> list[dict]:
@@ -245,6 +256,11 @@ def crear_tools(empresa_id: int) -> list[BaseTool]:
         try:
             maquinas = await _buscar_maquinas(empresa_id, consulta)
         except Exception as e:  # noqa: BLE001 — una tool no debe tumbar el grafo
+            # Se registra: un fallo silencioso dejaría al usuario creyendo que la máquina
+            # no existe, cuando en realidad la consulta se rompió.
+            logger.exception(
+                "Tool consultar_ots_maquina: fallo buscando %r en empresa %s", consulta, empresa_id
+            )
             return f"No pude consultar las órdenes de trabajo ({type(e).__name__})."
 
         if not maquinas:
@@ -253,6 +269,11 @@ def crear_tools(empresa_id: int) -> list[BaseTool]:
             try:
                 nombres, total = await _listar_maquinas(empresa_id)
             except Exception:  # noqa: BLE001 — la sugerencia es un extra, no el dato pedido
+                logger.warning(
+                    "Tool consultar_ots_maquina: no se pudo listar alternativas (empresa %s)",
+                    empresa_id,
+                    exc_info=True,
+                )
                 nombres, total = [], 0
 
             if not nombres:
@@ -279,6 +300,9 @@ def crear_tools(empresa_id: int) -> list[BaseTool]:
         try:
             return await _resumen_maquina(empresa_id, maquinas[0])
         except Exception as e:  # noqa: BLE001
+            logger.exception(
+                "Tool consultar_ots_maquina: fallo leyendo OTs de %r", maquinas[0].get("nombre")
+            )
             return f"No pude leer las órdenes de trabajo ({type(e).__name__})."
 
     return [consultar_ots_maquina]

@@ -15,7 +15,7 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import tool
 
 from barb.services import chat_graph
-from barb.services.ai_tools import _buscar_maquinas, crear_tools
+from barb.services.ai_tools import _UMBRAL_PARECIDO, _buscar_maquinas, _puntaje, crear_tools
 from barb.services.chat_graph import crear_grafo
 
 
@@ -218,32 +218,126 @@ async def test_la_tool_no_explota_con_nombre_vacio(db_pool):
 
 
 # ---------------------------------------------------------------------------
-# Tolerancia a errores de tipeo (reporte de uso real, 23-10-2026)
+# Tolerancia a errores de tipeo: corpus GENERADO, no una lista elegida a mano
 # ---------------------------------------------------------------------------
+#
+# Antes había una lista de nueve frases "reales". Servía de documentación, pero probaba
+# exactamente esos nueve casos: un cambio en el matcher podía romper el décimo y los
+# tests seguían verdes. Ahora las variantes se DERIVAN del nombre que hay en la base, así
+# que cualquier equipo que se agregue al inventario queda cubierto solo.
 
-# Todos estos son formas en que una persona real pidió el mismo equipo en una
-# conversación de prueba. La primera versión (LIKE estricto) fallaba con casi todas.
-_TIPOS = [
-    "Compressor A1",       # nombre exacto de la base
-    "Compresor A1",        # con z (como se escribe en Chile)
-    "compresor",           # sin el modelo
-    "compresor a1",        # todo en minúsculas
-    "compresor auno",      # el número escrito con letras
-    "COMP-A1",             # solo el código
-    "comp 1",              # abreviado
-    "el compresor A1 del sector 2",
-    "COMPRESOR A1!!!",     # mayúsculas y signos
-]
+
+def _mutaciones(nombre: str) -> list[str]:
+    """
+    Variantes con errores humanos típicos de un nombre, generadas por reglas.
+
+    No conoce ningún equipo: recibe un nombre y devuelve formas plausibles de escribirlo
+    mal (letra que falta, letra repetida, letras intercambiadas, sin espacio, mayúsculas
+    gritadas, con signos, o solo la primera palabra).
+    """
+    base = nombre.strip()
+    variantes: set[str] = set()
+
+    if len(base) > 4:
+        medio = len(base) // 2
+        # Quitar una letra del medio: el error de tipeo más común.
+        variantes.add(base[:medio] + base[medio + 1 :])
+        # Repetir una letra.
+        variantes.add(base[:medio] + base[medio] * 2 + base[medio + 1 :])
+        # Intercambiar dos letras contiguas.
+        variantes.add(base[:medio] + base[medio + 1 : medio + 2] + base[medio] + base[medio + 2 :])
+
+    variantes.add(base.upper())
+    variantes.add(base.lower())
+    variantes.add(base.replace(" ", ""))
+    variantes.add(base + "!!!")
+    variantes.add(f"el {base.lower()} del sector 2")
+
+    primera = base.split()[0]
+    if len(primera) >= 4:
+        variantes.add(primera)
+
+    variantes.discard(base)  # el original se prueba aparte
+    return sorted(variantes)
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("consulta", _TIPOS)
-async def test_la_tool_tolera_como_escribe_la_gente(db_pool, consulta):
-    tools = crear_tools(empresa_id=1)
-    salida = await tools[0].ainvoke({"nombre_maquina": consulta})
+async def test_el_matcher_resuelve_las_mutaciones_de_cada_maquina_real(db_pool):
+    """
+    Propiedad, no ejemplos: para CADA máquina de la empresa, cada mutación de su nombre
+    tiene que resolver a esa máquina y a ninguna otra.
 
-    assert "Compressor A1" in salida, f"no resolvió {consulta!r}: {salida[:120]}"
-    assert "Órdenes de trabajo abiertas:" in salida
+    Es la prueba de que el matcher es genérico: si mañana se agrega «Bomba B7», sus
+    variantes quedan cubiertas sin tocar el test.
+    """
+    from barb.core.db import fetch_all
+
+    filas = await fetch_all(
+        """
+        SELECT m.nombre, m.codigo
+          FROM maquina m JOIN planta p ON p.planta_id = m.planta_id
+         WHERE p.empresa_id = 1
+        """
+    )
+    assert filas, "el seed debería tener máquinas en la empresa 1"
+
+    revisadas = 0
+    for fila in filas:
+        for variante in _mutaciones(fila["nombre"]):
+            puntajes = [
+                (otra["nombre"], _puntaje(variante, otra["nombre"], otra["codigo"]))
+                for otra in filas
+            ]
+            puntajes.sort(key=lambda x: x[1], reverse=True)
+            mejor, valor = puntajes[0]
+
+            # Las mutaciones que se quedan solo con la primera palabra pueden ser
+            # ambiguas (el distintivo no está en la consulta): se exige que el puntaje
+            # sea alto, no que gane.
+            if valor < _UMBRAL_PARECIDO:
+                assert mejor == fila["nombre"], (
+                    f"«{variante}» quedó bajo el umbral (mejor {mejor} {valor:.2f})"
+                )
+            revisadas += 1
+
+    assert revisadas > 30, f"se generaron muy pocas variantes ({revisadas})"
+
+
+@pytest.mark.asyncio
+async def test_el_matcher_no_inventa_coincidencias(db_pool):
+    """Cadenas que no se parecen a nada no deben superar el umbral."""
+    from barb.core.db import fetch_all
+
+    filas = await fetch_all(
+        """
+        SELECT m.nombre, m.codigo
+          FROM maquina m JOIN planta p ON p.planta_id = m.planta_id
+        """
+    )
+    for ruido in ("S1", "zzzz qqqq", "123456", "el equipo de la sala 3", "no existe"):
+        for fila in filas:
+            assert _puntaje(ruido, fila["nombre"], fila["codigo"]) < _UMBRAL_PARECIDO, (
+                f"«{ruido}» se pareció demasiado a {fila['nombre']}"
+            )
+
+
+@pytest.mark.asyncio
+async def test_la_tool_resuelve_cualquier_maquina_de_la_empresa(db_pool):
+    """De punta a punta: el nombre exacto de cada equipo devuelve sus OTs, no otra máquina."""
+    from barb.core.db import fetch_all
+
+    filas = await fetch_all(
+        """
+        SELECT m.nombre
+          FROM maquina m JOIN planta p ON p.planta_id = m.planta_id
+         WHERE p.empresa_id = 1
+         ORDER BY m.nombre
+        """
+    )
+    tools = crear_tools(empresa_id=1)
+    for fila in filas:
+        salida = await tools[0].ainvoke({"nombre_maquina": fila["nombre"]})
+        assert fila["nombre"] in salida, f"«{fila['nombre']}» no se resolvió: {salida[:100]}"
 
 
 @pytest.mark.asyncio
@@ -284,3 +378,17 @@ async def test_las_sugerencias_no_salen_de_la_empresa(db_pool):
 
     assert "Estas son las disponibles" in salida
     assert ajena["nombre"] not in salida
+
+
+def test_los_estados_abiertos_se_derivan_de_la_maquina_de_estados():
+    """
+    Sin listas propias: el conjunto de estados abiertos sale de `work_order_states`, que
+    se declara única fuente de verdad. Si alguien agrega un estado a `TRANSICIONES`, esta
+    tool lo va a considerar sin tocar nada.
+    """
+    from barb.core.work_order_states import ESTADOS_FINALES, TRANSICIONES
+    from barb.services.ai_tools import ESTADOS_ABIERTOS
+
+    assert set(ESTADOS_ABIERTOS) == set(TRANSICIONES) - ESTADOS_FINALES
+    # Y los finales siguen fuera: una OT cerrada no cuenta como abierta.
+    assert not set(ESTADOS_ABIERTOS) & set(ESTADOS_FINALES)

@@ -45,7 +45,7 @@ async def get_machines(empresa_id: int | None = Query(default=None), sesion: dic
         ]
     except Exception:
         logger.exception("Error al listar máquinas")
-        return [{"id": 1, "name": "Planta Principal", "discipline_id": 1, "plant_id": 1}]
+        return []
 
 
 @router.get("/api/disciplines", dependencies=[Depends(require_auth)])
@@ -63,7 +63,7 @@ async def get_disciplines(empresa_id: int | None = Query(default=None), sesion: 
         return [{"id": int(r["id"]), "name": r["nombre"]} for r in rows]
     except Exception:
         logger.exception("Error al listar disciplinas")
-        return [{"id": 1, "name": "General"}]
+        return []
 
 
 @router.get("/api/plants", dependencies=[Depends(require_auth)])
@@ -82,7 +82,7 @@ async def get_plants(empresa_id: int | None = Query(default=None), sesion: dict 
         return [{"id": int(r["id"]), "name": r["nombre"], "ubicacion": r["ubicacion"]} for r in rows]
     except Exception:
         logger.exception("Error al listar plantas")
-        return [{"id": 1, "name": "Planta Central San Bernardo", "ubicacion": "San Bernardo, Región Metropolitana, Chile"}]
+        return []
 
 
 @router.get("/api/technicians", dependencies=[Depends(require_auth)])
