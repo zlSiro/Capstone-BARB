@@ -339,3 +339,116 @@ EMBEDDINGS_TIMEOUT=60
 RAG_TOP_K=4
 RAG_MIN_SIMILARITY=0.25
 ```
+
+## 2.11 Skills de acción, respaldo entre proveedores y reglas de conversación
+
+Cierre de HU-04. Lo que falta respecto de 2.10: la IA ya no solo lee datos, también
+**escribe**; el motor tiene **respaldo automático** entre proveedores; y el prompt
+aprendió tres cosas de una conversación real que salió mal.
+
+### 2.11.1 Skill de acción: `crear_ot`
+
+Segunda herramienta de `services/ai_tools.py`. Crea una orden de trabajo correctiva real
+desde el chat.
+
+| Campo | Valor |
+|---|---|
+| `numero_ot` | `OT-IA-AAAAMMDD-HHMMSS-XXXX` (prefijo propio para auditar qué creó la IA) |
+| `maquina_id` | resuelta con el **mismo matcher difuso** que la consulta (`_resolver_maquina`) |
+| `tecnico_id` | el usuario si es técnico; si no, el primer técnico de la empresa |
+| `creado_por` | el usuario autenticado |
+| `tipo` / `estado` | `corrective` / `pending` |
+| `priority` | normalizada al enum (`alta` → `high`, `urgente` → `urgent`) |
+| `fecha_vencimiento` | ahora + `SLA_TARGET_MINUTES` |
+
+Decisiones que el esquema no resuelve solo:
+
+- **`tecnico_id` es NOT NULL.** Si quien escribe es técnico, se le asigna a él; si no
+  (admin, supervisor), al primer técnico de su empresa. Poner una OT a nombre de un
+  administrador sería un dato falso en el tablero de carga.
+- **Antiduplicado (10 min).** Misma máquina + misma descripción abierta reciente → devuelve
+  la OT existente en vez de crear otra. Protege del modelo que llama dos veces y del
+  reintento automático del grafo.
+- **Nunca lanza.** Devuelve texto: una excepción en un nodo de herramientas corta el grafo.
+
+**Seguridad:** el `empresa_id` va cerrado en la clausura, y ahora también `usuario_id` y
+`rol`. El modelo solo ve `nombre_maquina`, `descripcion_problema` y `prioridad`; no puede
+elegir la empresa ni el técnico.
+
+### 2.11.2 Respaldo NVIDIA ↔ DeepSeek
+
+Si la API de NVIDIA falla, el chat sigue respondiendo: el primario cae a DeepSeek sin que
+la IA se entere.
+
+```
+primario (NVIDIA, con tools) ──falla──► respaldo (DeepSeek, con tools)
+```
+
+- Las tools se bindean **en el primario y en el respaldo**: al caer NVIDIA, las Skills
+  siguen disponibles. Si no, el chat perdería justo lo que la evaluación pedía.
+- El respaldo es el proveedor complementario y se activa solo si tiene key; un respaldo sin
+  key se omite en silencio. `LLM_FALLBACK_PROVIDERS` permite agregar más.
+- Orden obligatorio: `bind_tools` → `with_retry` → `with_fallbacks`. `with_retry` devuelve
+  un `RunnableRetry` que ya no expone `bind_tools`; invertirlo deja al modelo sin
+  herramientas.
+- **Cada proveedor recibe su propio nombre de modelo** (`_modelo_para`): un id de NVIDIA en
+  la API de DeepSeek devuelve 400. El respaldo usa `deepseek-chat` por defecto,
+  configurable con `LLM_FALLBACK_MODEL`.
+
+**Simulacro de caída (verificado, 2026-10-24).** Con `NVIDIA_API_KEY` inválida solo en
+memoria (el `.env` no se tocó):
+
+```
+POST integrate.api.nvidia.com/v1/chat/completions -> 403 (x3, reintentos)
+POST api.deepseek.com/v1/chat/completions         -> 200
+```
+
+| Prueba | Resultado |
+|---|---|
+| Cadena directa | **5,1 s**, respondió `deepseek` |
+| Chat completo (grafo + streaming + tool) | **12,5 s**, respondió `deepseek` y usó `consultar_ots_maquina` con datos reales |
+
+Dos observaciones del simulacro, para tenerlas presentes:
+
+1. **Los reintentos cuestan tiempo.** Los 403 se reintentan 3 veces antes de entrar al
+   respaldo, así que una caída total de NVIDIA añade segundos por turno. Se mantiene en 3
+   porque el caso realista es un fallo transitorio de red, donde reintentar ayuda.
+2. **Los embeddings también usan NVIDIA.** Con NVIDIA caída, la búsqueda semántica devuelve
+   error y el RAG cae a full-text (registrado en el log). El chat sigue respondiendo; pierde
+   recuperación semántica, no disponibilidad.
+
+### 2.11.3 Reglas 5-9 del prompt y temperatura
+
+Salieron de una conversación real: el bot ofreció una lista de 3 opciones, el usuario dijo
+«eso, lo tercero» y el bot respondió con el **punto 3 del manual**. Cuando el usuario lo
+corrigió, contestó «tienes toda la razón» y en el mismo mensaje repitió su respuesta.
+
+Diagnóstico (con evidencia, no por intuición): **no fue la memoria** (el historial llegaba
+completo y el modelo reprodujo su lista cuando el usuario se la pegó) ni el RAG (recuperó el
+manual correcto). Fue el prompt: sus cuatro reglas hablaban solo de la documentación y
+ninguna decía cómo interpretar «eso», «lo tercero» o «el de inspecciones».
+
+| Regla | Qué impone |
+|---|---|
+| 5. Referencias del usuario | Resolver «eso»/«lo tercero» contra TU mensaje anterior; si ofreciste una lista numerada, esa numeración manda |
+| 6. Dos enumeraciones distintas | Si tu lista y la del documento no coinciden, decirlo y no mezclarlas |
+| 7. No inventar listas ni categorías | Nada de «cosas en las que puedo ayudarte» que no estén en la documentación |
+| 8. Coherencia y honestidad | Prohibido «tienes razón»/«coincidimos» si en el mismo mensaje se mantiene la respuesta anterior |
+| 9. Crear OTs | Usar `crear_ot` solo si lo piden o confirman; **pedir confirmación** antes de crear |
+
+**Temperatura `0.7 → 0.1`** (en `.env` y como default en `config.py`): con 0.7 el modelo
+inventaba taxonomías y cambiaba de postura ante la presión del usuario.
+
+**`CHAT_MEMORY_WINDOW` pasó a aplicarse de verdad.** Estaba declarada desde HU-03 y nadie la
+usaba: cada turno mandaba la conversación completa. Ahora `load_messages(..., limite=N)`
+recorta a los últimos N mensajes, alineando el corte al inicio de un turno de usuario. El
+detalle de sesión sigue pidiendo todo, porque tiene que mostrar la conversación completa.
+
+### 2.11.4 Configuración añadida
+
+```env
+LLM_FALLBACK_PROVIDERS=          # extras además del complementario automático
+LLM_FALLBACK_MODEL=              # vacío = default del proveedor de respaldo
+LLM_TEMPERATURE=0.1
+CHAT_MEMORY_WINDOW=10            # ahora sí se aplica
+```
