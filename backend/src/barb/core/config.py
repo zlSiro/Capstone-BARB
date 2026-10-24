@@ -92,6 +92,33 @@ class Settings(BaseSettings):
     def multimodal_configurado(self) -> bool:
         return bool(self.multimodal_model and self.multimodal_api_key)
 
+    # --- RAG: embeddings (HU-04 — D1, D2 y D6 de docs/RAG_ARCHITECTURE.md) ---
+    # El modelo produce 2048 dimensiones y `documento_embedding.embedding` está declarada
+    # `vector(2048) NOT NULL` con índice HNSW sobre halfvec(2048). Cambiar de modelo no es
+    # inocuo: obliga a migrar la columna (decisión de JP, ver AGENTS.md).
+    embeddings_model: str = "nvidia/nemotron-3-embed-1b"
+    # Key dedicada a embeddings. Vacía = usa NVIDIA_API_KEY: la misma key de la cuenta
+    # sirve para chat + embeddings + multimodal (validado por el equipo).
+    nvidia_embeddings_api_key: str = ""
+    # Timeout por request: el free tier de NIM es de latencia variable (ya visto en HU-03).
+    embeddings_timeout: int = 60
+    # Fragmentos que se inyectan en el prompt (D6).
+    rag_top_k: int = 4
+    # Similitud mínima (coseno, 0..1) para considerar que un fragmento es relevante.
+    # Medido sobre los 17 chunks reales con input_type correcto: las consultas con
+    # respuesta puntúan 0.34-0.61 y las irrelevantes 0.04-0.15. 0.25 deja aire a los dos
+    # lados. Sin umbral, «que hora es» inyectaría un manual y la IA respondería con
+    # documentación que no viene al caso.
+    rag_min_similarity: float = 0.25
+
+    @property
+    def embeddings_api_key(self) -> str:
+        return self.nvidia_embeddings_api_key or self.nvidia_api_key
+
+    @property
+    def embeddings_configurados(self) -> bool:
+        return bool(self.embeddings_model and self.embeddings_api_key)
+
     # --- Resiliencia LLM (HU-03) ---
     # Lista separada por coma de proveedores de respaldo (se usan si el primario falla).
     # Ejemplos: "openrouter", "openai", "groq"

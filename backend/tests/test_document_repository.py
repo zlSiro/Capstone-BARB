@@ -133,30 +133,38 @@ async def test_get_documento_de_otra_empresa_devuelve_none(cleanup_documentos):
 
 @pytest.mark.asyncio
 async def test_search_similar_no_cruza_empresas(cleanup_documentos):
-    """La búsqueda vectorial de la empresa 1 jamás recupera chunks de la 2."""
-    await _crear_documento_indexado(
+    """La búsqueda vectorial de la empresa 1 jamás recupera chunks de la 2.
+
+    No se afirma un total exacto: la base de desarrollo puede tener documentos reales
+    ya vectorizados (lo está desde el backfill de la Fase 1), así que se comprueba lo
+    que importa — que el vecino más cercano de la empresa 2 NO aparezca y que sí esté
+    el positivo.
+    """
+    positivo = await _crear_documento_indexado(
         cleanup_documentos, "Manual positivo", empresa_id=EMPRESA_1, chunk_embeddings=[_vec(1.0)]
     )
-    await _crear_documento_indexado(
+    ajeno = await _crear_documento_indexado(
         cleanup_documentos, "Manual negativo ajeno", empresa_id=EMPRESA_2,
         chunk_embeddings=[_vec(-1.0)],  # MÁS cercano al query que el de empresa 1
     )
 
     resultados = await repo.search_similar_chunks(_vec(1.0), empresa_id=EMPRESA_1, top_k=4)
 
-    assert len(resultados) == 1
-    assert "positivo" in resultados[0]["content"]
+    ids = [r["documento_id"] for r in resultados]
+    assert positivo in ids
+    assert ajeno not in ids
+    assert any("positivo" in r["content"] for r in resultados)
 
 
 @pytest.mark.asyncio
 async def test_search_similar_ignora_documentos_inactivos(cleanup_documentos):
-    await _crear_documento_indexado(
+    inactivo = await _crear_documento_indexado(
         cleanup_documentos, "Manual inactivo", empresa_id=EMPRESA_1,
         chunk_embeddings=[_vec(1.0)], activo=False,
     )
 
     resultados = await repo.search_similar_chunks(_vec(1.0), empresa_id=EMPRESA_1, top_k=4)
-    assert len(resultados) == 0
+    assert inactivo not in [r["documento_id"] for r in resultados]
 
 
 @pytest.mark.asyncio

@@ -6,11 +6,20 @@ Flujo:
   2. `split_chunks`  : texto -> fragmentos de ~1000 caracteres con solape.
   3. `index_document`: guarda los fragmentos en `documento_chunk` (con tsvector generado).
   4. `search_chunks` : dado un mensaje del usuario, devuelve los fragmentos más
-                       relevantes de LA EMPRESA indicada (full-text search 'spanish').
+                       relevantes de LA EMPRESA indicada.
 
-El aislamiento es estricto: `search_chunks` exige `empresa_id` y filtra por él en
-SQL, de modo que la IA jamás recibe texto de otra empresa. Solo se consideran
-documentos con `activo = TRUE`.
+Búsqueda (HU-04, Fase 1): `search_chunks` es **semántica** — embebe la pregunta y ordena
+por distancia coseno en pgvector (`search_similar_chunks`). Antes era solo full-text, y
+eso dejaba fuera el caso que más importa: si el usuario escribe «torque» y el manual dice
+«par de apriete», `to_tsquery` no los relaciona y los embeddings sí.
+
+Si el proveedor de embeddings no está configurado, falla o la tabla está vacía, se cae a
+`search_chunks_lexical` (el comportamiento anterior). El chat nunca se queda sin
+recuperación por un problema del proveedor.
+
+El aislamiento es estricto: ambas búsquedas exigen `empresa_id` y filtran por él en SQL,
+de modo que la IA jamás recibe texto de otra empresa. Solo se consideran documentos con
+`activo = TRUE`.
 """
 
 from __future__ import annotations
@@ -24,7 +33,10 @@ from xml.etree import ElementTree
 
 from fastapi import HTTPException
 
+from barb.core.config import settings
 from barb.core.db import fetch_all
+from barb.services.document_repository import search_similar_chunks
+from barb.services.embeddings import embed_texto, embeddings_disponibles
 
 logger = logging.getLogger("barb.documents")
 
@@ -147,8 +159,16 @@ def build_tsquery(*texts: str, max_terms: int = 12) -> str:
     return " | ".join(list(seen)[:max_terms])
 
 
-async def search_chunks(empresa_id: int, *query_texts: str, limit: int = TOP_K) -> list[dict]:
-    """Fragmentos más relevantes de documentos ACTIVOS de la empresa, ordenados por ranking."""
+async def search_chunks_lexical(
+    empresa_id: int, *query_texts: str, limit: int = TOP_K
+) -> list[dict]:
+    """
+    Búsqueda full-text (comportamiento previo a la Fase 1).
+
+    Se conserva por dos motivos: es el fallback cuando los embeddings no están
+    disponibles, y sigue siendo mejor que nada para coincidencias exactas de siglas o
+    códigos («FAG 6308», «CH-01») que un modelo semántico puede diluir.
+    """
     tsquery = build_tsquery(*query_texts)
     if not tsquery:
         return []
@@ -170,3 +190,59 @@ async def search_chunks(empresa_id: int, *query_texts: str, limit: int = TOP_K) 
 def format_context(chunks: list[dict]) -> str:
     """Arma el bloque de contexto que se inyecta en el prompt, citando el documento de origen."""
     return "\n\n".join(f"[Documento: {c['title']}]\n{c['contenido']}" for c in chunks)
+
+
+async def search_chunks_semantic(
+    empresa_id: int, *query_texts: str, limit: int = TOP_K
+) -> list[dict]:
+    """
+    Búsqueda vectorial: embebe la consulta y ordena por distancia coseno en pgvector.
+
+    Devuelve el mismo contrato que `search_chunks_lexical` (`chunk_id`, `documento_id`,
+    `title`, `contenido`, `rank`), para que `format_context` y el prompt no cambien.
+    El `rank` es la similitud (1 - distancia), así que mayor es mejor en ambos caminos.
+
+    Lanza si el proveedor no está configurado o falla: decidir el fallback es de
+    `search_chunks`, no de esta función.
+    """
+    consulta = " ".join(t for t in query_texts if (t or "").strip()).strip()
+    if not consulta:
+        return []
+
+    vector = await embed_texto(consulta)
+    filas = await search_similar_chunks(vector, empresa_id=empresa_id, top_k=limit)
+    # `search_similar_chunks` devuelve SIEMPRE los más cercanos, aunque no vengan al caso:
+    # sin este filtro, «que hora es» inyectaría un manual. El umbral está medido, no
+    # elegido a ojo (ver `rag_min_similarity` en config.py).
+    return [
+        {
+            "chunk_id": None,
+            "documento_id": f["documento_id"],
+            "title": f["documento"],
+            "contenido": f["content"],
+            "rank": 1.0 - float(f["distancia"]),
+        }
+        for f in filas
+        if (1.0 - float(f["distancia"])) >= settings.rag_min_similarity
+    ]
+
+
+async def search_chunks(empresa_id: int, *query_texts: str, limit: int = TOP_K) -> list[dict]:
+    """
+    Fragmentos más relevantes de la empresa: primero semántico, con fallback léxico.
+
+    El fallback cubre tres casos reales: (a) no hay key de embeddings en el entorno,
+    (b) el proveedor responde con error o timeout, (c) la tabla `documento_embedding`
+    está vacía porque el backfill todavía no se corrió. En los tres, el chat sigue
+    funcionando como antes en vez de quedarse sin contexto o romperse.
+    """
+    if embeddings_disponibles():
+        try:
+            chunks = await search_chunks_semantic(empresa_id, *query_texts, limit=limit)
+        except Exception as e:  # noqa: BLE001 — el proveedor externo no debe tumbar el chat
+            logger.warning("Búsqueda semántica falló, se usa full-text: %s", e)
+            return await search_chunks_lexical(empresa_id, *query_texts, limit=limit)
+        if chunks:
+            return chunks
+        logger.info("Búsqueda semántica sin resultados; se intenta full-text.")
+    return await search_chunks_lexical(empresa_id, *query_texts, limit=limit)

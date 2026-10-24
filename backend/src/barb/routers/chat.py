@@ -104,6 +104,9 @@ async def stream_chat(
     # necesitan esa pista para encontrar el manual correspondiente.
     previous_user_msgs = [m.get("content", "") for m in history if m.get("role") == "user"][-1:]
     previous_assistant_msgs = [m.get("content", "") for m in history if m.get("role") == "assistant"][-1:]
+    # HU-04 Fase 1: `search_chunks` es semántica (embeddings + pgvector) y cae a full-text
+    # si el proveedor falla. La firma no cambió a propósito: así el chat textual y el
+    # multimodal usan el MISMO camino y ninguno puede quedarse atrás en la migración.
     chunks = await search_chunks(
         empresa_id, request.message, *previous_user_msgs, *previous_assistant_msgs
     )
@@ -313,6 +316,7 @@ async def stream_multimedia_chat(
     # aporten su contexto ("es un chancador de mandíbulas") a la búsqueda.
     previous_user_msgs = [m.get("content", "") for m in history if m.get("role") == "user"][-1:]
     previous_assistant_msgs = [m.get("content", "") for m in history if m.get("role") == "assistant"][-1:]
+    # Semántica con fallback léxico (HU-04 Fase 1): misma función que el chat textual.
     chunks = await search_chunks(empresa_id, request.message, *previous_user_msgs, *previous_assistant_msgs)
     context = format_context(chunks) if chunks else ""
 
