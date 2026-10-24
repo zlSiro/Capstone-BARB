@@ -89,12 +89,43 @@ async def get_session(session_id: str, usuario_id: int) -> dict | None:
     )
 
 
-async def load_messages(session_id: str, usuario_id: int) -> list[dict]:
-    """Devuelve la lista de mensajes de la sesión, o [] si no existe / no pertenece."""
+def ventana_de_memoria(mensajes: list[dict], limite: int | None) -> list[dict]:
+    """
+    Últimos `limite` mensajes, alineados al comienzo de un turno del usuario.
+
+    `CHAT_MEMORY_WINDOW` estaba en la configuración pero nadie la aplicaba: se mandaba la
+    conversación completa al modelo en cada turno, así que el coste de tokens crecía sin
+    techo en conversaciones largas. Se aplica acá, en el único punto donde se lee el
+    historial para el modelo.
+
+    Dos detalles deliberados:
+    - El recorte se alinea a un mensaje de usuario. Si el corte deja primero una respuesta
+      del asistente, se descarta: una respuesta sin su pregunta confunde más que ayuda.
+    - `limite` vacío o <= 0 significa «sin ventana». Se usa en el detalle de sesión, que
+      tiene que mostrar la conversación completa al usuario.
+    """
+    if not limite or limite <= 0 or len(mensajes) <= limite:
+        return mensajes
+
+    recorte = mensajes[-limite:]
+    while recorte and (recorte[0].get("role") or "").lower() != "user":
+        recorte = recorte[1:]
+    return recorte
+
+
+async def load_messages(
+    session_id: str, usuario_id: int, limite: int | None = None
+) -> list[dict]:
+    """
+    Devuelve la lista de mensajes de la sesión, o [] si no existe / no pertenece.
+
+    `limite` acota cuántos mensajes viajan al modelo (ver `ventana_de_memoria`). Sin
+    `limite` se devuelve todo, que es lo correcto para mostrar la sesión al usuario.
+    """
     row = await get_session(session_id, usuario_id)
     if not row:
         return []
-    return _normalize_messages(row.get("messages"))
+    return ventana_de_memoria(_normalize_messages(row.get("messages")), limite)
 
 
 async def append_messages(

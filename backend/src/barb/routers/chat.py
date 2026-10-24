@@ -108,7 +108,9 @@ async def stream_chat(
                 detail="Sesión no encontrada o no te pertenece.",
             )
         session_id = request.session_id
-        history = await chat_repository.load_messages(session_id, user_id)
+        history = await chat_repository.load_messages(
+            session_id, user_id, limite=settings.chat_memory_window
+        )
     else:
         session_id = await chat_repository.create_session(
             usuario_id=user_id,
@@ -330,7 +332,9 @@ async def stream_multimedia_chat(
                 detail="Sesión no encontrada o no te pertenece.",
             )
         session_id = request.session_id
-        history = await chat_repository.load_messages(session_id, user_id)
+        history = await chat_repository.load_messages(
+            session_id, user_id, limite=settings.chat_memory_window
+        )
     else:
         session_id = await chat_repository.create_session(
             usuario_id=user_id,

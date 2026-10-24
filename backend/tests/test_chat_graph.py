@@ -392,3 +392,37 @@ def test_los_estados_abiertos_se_derivan_de_la_maquina_de_estados():
     assert set(ESTADOS_ABIERTOS) == set(TRANSICIONES) - ESTADOS_FINALES
     # Y los finales siguen fuera: una OT cerrada no cuenta como abierta.
     assert not set(ESTADOS_ABIERTOS) & set(ESTADOS_FINALES)
+
+
+def test_el_prompt_obliga_a_resolver_referencias_y_prohibe_la_complacencia():
+    """
+    Reglas 5 a 8: nacen del caso real «eso, lo tercero».
+
+    El bot ofreció una lista de 3 opciones, el usuario eligió la tercera y el bot respondió
+    con el punto 3 del manual; después, al ser corregido, dijo «tienes toda la razón»
+    manteniendo su respuesta anterior. Estas reglas tienen que estar en el prompt que
+    recibe el modelo, no solo en la documentación del proyecto.
+    """
+    from barb.services.chat_graph import _prompt_sistema
+
+    prompt = _prompt_sistema("(fragmentos de prueba)")
+
+    # 5: la referencia se resuelve contra la conversación, no contra el documento.
+    assert "REFERENCIAS DEL USUARIO" in prompt
+    assert "CONTRA TU MENSAJE ANTERIOR" in prompt
+    assert "ESA numeración manda" in prompt
+    # 6: no mezclar las dos enumeraciones.
+    assert "DOS ENUMERACIONES DISTINTAS" in prompt
+    # 7: no inventar categorías ni listas de ayuda.
+    assert "NO INVENTAR LISTAS NI CATEGORÍAS" in prompt
+    # 8: nada de «tienes razón» mientras se mantiene la respuesta anterior.
+    assert "COHERENCIA Y HONESTIDAD" in prompt
+    assert "«tienes razón»" in prompt
+
+
+def test_las_reglas_de_conversacion_tienen_prioridad_declarada():
+    """El prompt debe decir explícitamente que estas reglas mandan para las referencias."""
+    from barb.services.chat_graph import _prompt_sistema
+
+    prompt = _prompt_sistema("x")
+    assert "tienen prioridad sobre la documentación para interpretar" in prompt

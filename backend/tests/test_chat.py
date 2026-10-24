@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
+from barb.core.config import settings
 from barb.core.rate_limit import chat_rate_limiter
 from barb.core.security import get_current_user
 from barb.core.token_limit import token_limiter
@@ -271,7 +272,9 @@ async def test_stream_sesion_existente_recupera_historial(client, override_auth,
     assert fake_chain.last_kwargs["historial"][0]["content"] == "pregunta previa"
 
     mock_repo["create_session"].assert_not_called()
-    mock_repo["load_messages"].assert_called_once_with(fake_uuid, 1)
+    # El historial se pide con la ventana de memoria (HU: CHAT_MEMORY_WINDOW aplicada).
+    assert mock_repo["load_messages"].call_args.args[:2] == (fake_uuid, 1)
+    assert mock_repo["load_messages"].call_args.kwargs["limite"] == settings.chat_memory_window
 
 
 @pytest.mark.asyncio
@@ -462,3 +465,27 @@ async def test_usuarios_distintos_crean_sesiones_distintas(client, mock_repo):
         app.dependency_overrides.pop(get_current_user, None)
 
     assert captured_calls == [(1, 1), (2, 1)]
+
+@pytest.mark.asyncio
+async def test_el_historial_se_recorta_con_la_ventana_de_memoria(client, override_auth, mock_repo):
+    """
+    `CHAT_MEMORY_WINDOW` se aplica al historial que va al modelo.
+
+    Antes la variable existía en la configuración pero nadie la usaba: cada turno mandaba
+    la conversación completa y el coste de tokens crecía sin techo.
+    """
+    from barb.core.config import settings
+
+    fake_uuid = "77777777-7777-7777-7777-777777777777"
+    mock_repo["get_session"].return_value = {"session_id": fake_uuid, "usuario_id": 1}
+    mock_repo["load_messages"].return_value = []
+
+    with patch("barb.routers.chat.astream_respuesta", new=FakeChain(["ok"])):
+        async with client.stream(
+            "POST",
+            "/api/chat/stream",
+            json={"message": "hola", "session_id": fake_uuid},
+        ) as resp:
+            _ = "".join([c async for c in resp.aiter_text()])
+
+    assert mock_repo["load_messages"].call_args.kwargs["limite"] == settings.chat_memory_window

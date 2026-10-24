@@ -66,7 +66,10 @@ class Settings(BaseSettings):
 
     # --- Configuración LLM ---
     llm_model: str = "deepseek-chat"
-    llm_temperature: float = 0.7
+    # 0.1, no 0.7: con 0.7 el modelo inventaba taxonomias ("te ofrezco 3 categorias") y
+# cambiaba de postura ante la presion del usuario. Un asistente documental necesita
+# temperatura baja; el coste es algo menos de variedad redactando.
+    llm_temperature: float = 0.1
     llm_max_tokens: int = 1024
     chat_memory_window: int = 10
 
