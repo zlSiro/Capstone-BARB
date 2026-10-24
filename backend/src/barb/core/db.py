@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Coroutine
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
-from typing import Any
+from typing import Any, TypeVar
 
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
@@ -12,6 +13,8 @@ from psycopg_pool import AsyncConnectionPool
 from barb.core.config import settings
 
 logger = logging.getLogger("barb.db")
+
+T = TypeVar("T")
 
 pool = AsyncConnectionPool(
     conninfo=settings.database_url,
@@ -47,14 +50,46 @@ async def close_pool() -> None:
     await pool.close()
 
 
+async def _a_salvo_de_la_cancelacion(coro: Coroutine[Any, Any, T]) -> T:
+    """
+    Espera `coro` sin que una cancelación de la request lo interrumpa a media query.
+
+    El problema que resuelve: cuando el cliente corta un stream SSE, Starlette cancela la
+    tarea que lo estaba sirviendo. Si la cancelación llega con una query en vuelo, psycopg
+    devuelve al pool una conexión en estado ACTIVE y el pool la descarta con «another
+    command is already in progress»: se pierde una conexión del pool y la escritura queda
+    a medias. Reproducido abortando el cliente a mitad del `finally` que persiste el chat.
+
+    Envolver la operación en su propia tarea y esperarla con `shield` deja que termine y
+    devuelva la conexión limpia; la cancelación se propaga igual al llamador, así que el
+    stream se corta como corresponde. La tarea interna hereda el contexto de la request
+    (incluido `actor_usuario_id`), porque `create_task` copia los contextvars.
+    """
+    tarea: asyncio.Task[T] = asyncio.create_task(coro)
+    try:
+        return await asyncio.shield(tarea)
+    except asyncio.CancelledError:
+        # No se cancela la tarea interna a propósito: terminará sola y liberará la
+        # conexión. Solo se avisa si además falla, para no perder el error.
+        def _reportar(t: asyncio.Task[T]) -> None:
+            if not t.cancelled() and t.exception() is not None:
+                logger.warning("Consulta interrumpida por la request: %s", t.exception())
+
+        tarea.add_done_callback(_reportar)
+        raise
+
+
 async def fetch_all(sql: str, params: dict[str, Any] | None = None) -> list[dict]:
-    async with pool.connection() as conn:
-        async with conn.cursor() as cur:
-            if _escribe(sql):
-                await _bind_actor(cur)
-            await cur.execute(sql, params or {})
-            rows = await cur.fetchall()
-            return list(rows)
+    async def _consulta() -> list[dict]:
+        async with pool.connection() as conn:
+            async with conn.cursor() as cur:
+                if _escribe(sql):
+                    await _bind_actor(cur)
+                await cur.execute(sql, params or {})
+                rows = await cur.fetchall()
+                return list(rows)
+
+    return await _a_salvo_de_la_cancelacion(_consulta())
 
 
 async def fetch_one(sql: str, params: dict[str, Any] | None = None) -> dict | None:
@@ -63,10 +98,13 @@ async def fetch_one(sql: str, params: dict[str, Any] | None = None) -> dict | No
 
 
 async def execute(sql: str, params: dict[str, Any] | None = None) -> None:
-    async with pool.connection() as conn:
-        async with conn.cursor() as cur:
-            await _bind_actor(cur)
-            await cur.execute(sql, params or {})
+    async def _comando() -> None:
+        async with pool.connection() as conn:
+            async with conn.cursor() as cur:
+                await _bind_actor(cur)
+                await cur.execute(sql, params or {})
+
+    await _a_salvo_de_la_cancelacion(_comando())
 
 
 @asynccontextmanager

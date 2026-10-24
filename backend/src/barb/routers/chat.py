@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
 import json
@@ -33,6 +34,30 @@ from barb.services.llm_service import (
 )
 
 logger = logging.getLogger("barb.chat")
+
+# Persistencias en vuelo. Se guardan referencias para que el recolector no se lleve una
+# escritura que quedó en segundo plano tras una desconexión del cliente.
+_PERSISTENCIAS_EN_VUELO: set[asyncio.Task] = set()
+
+
+async def _persistir_pese_a_la_cancelacion(
+    session_id: str, usuario_id: int, nuevos: list[dict]
+) -> None:
+    """
+    Guarda la conversación aunque el cliente ya se haya ido.
+
+    Cuando el navegador corta el stream, Starlette cancela la tarea que lo sirve y el
+    `await` del `finally` moría a mitad de la escritura: se perdía el turno y, peor, la
+    conexión volvía al pool en estado ACTIVE (psycopg la descartaba con «another command
+    is already in progress»). La escritura va en una tarea propia y se espera con `shield`,
+    así termina sola y libera la conexión limpia.
+    """
+    tarea: asyncio.Task = asyncio.create_task(
+        chat_repository.append_messages(session_id, usuario_id, nuevos)
+    )
+    _PERSISTENCIAS_EN_VUELO.add(tarea)
+    tarea.add_done_callback(_PERSISTENCIAS_EN_VUELO.discard)
+    await asyncio.shield(tarea)
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -149,6 +174,11 @@ async def stream_chat(
             }
 
         finally:
+            # La contabilidad va primero: si el cliente se fue, no queremos saltearla por
+            # una cancelación en la escritura.
+            output_tokens = max(0, output_chars // 4)
+            token_limiter.add(str(user_id), input_tokens + output_tokens)
+
             try:
                 ts = _now_ms()
                 nuevos = [
@@ -159,14 +189,19 @@ async def stream_chat(
                         "timestamp": ts + 1,
                     },
                 ]
-                await chat_repository.append_messages(session_id, user_id, nuevos)
+                await _persistir_pese_a_la_cancelacion(session_id, user_id, nuevos)
+            except asyncio.CancelledError:
+                # El cliente cortó el stream: la escritura termina en segundo plano.
+                logger.info(
+                    "Chat: cliente desconectado; la conversación se guarda en segundo plano "
+                    "(session_id=%s)",
+                    session_id,
+                )
+                raise
             except Exception:
                 logger.exception(
                     "No se pudo persistir la conversación session_id=%s", session_id
                 )
-
-            output_tokens = max(0, output_chars // 4)
-            token_limiter.add(str(user_id), input_tokens + output_tokens)
 
     return EventSourceResponse(event_generator())
 
@@ -361,6 +396,9 @@ async def stream_multimedia_chat(
             }
 
         finally:
+            output_tokens = max(0, output_chars // 4)
+            token_limiter.add(str(user_id), input_tokens + output_tokens)
+
             try:
                 ts = _now_ms()
                 # D2: se persiste SOLO el texto del turno; la imagen no se guarda (v1).
@@ -372,14 +410,18 @@ async def stream_multimedia_chat(
                         "timestamp": ts + 1,
                     },
                 ]
-                await chat_repository.append_messages(session_id, user_id, nuevos)
+                await _persistir_pese_a_la_cancelacion(session_id, user_id, nuevos)
+            except asyncio.CancelledError:
+                logger.info(
+                    "Chat multimodal: cliente desconectado; la conversación se guarda en "
+                    "segundo plano (session_id=%s)",
+                    session_id,
+                )
+                raise
             except Exception:
                 logger.exception(
                     "No se pudo persistir la conversación session_id=%s", session_id
                 )
-
-            output_tokens = max(0, output_chars // 4)
-            token_limiter.add(str(user_id), input_tokens + output_tokens)
 
     return EventSourceResponse(event_generator())
 
