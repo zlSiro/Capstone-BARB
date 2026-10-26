@@ -249,27 +249,32 @@ reales, así que el motor se migró a `StateGraph` de LangGraph.
 ### El grafo
 
 ```
-START → retrieve → generate ──(sin tool_calls)──→ END
-                     ↑    │
-                     │    └──(con tool_calls)──→ tools
-                     └────────────────────────────┘
+START → gate_ot ──(propuesta resuelta: crea / descarta / re-pregunta)──→ END
+           │   ──(sin propuesta pendiente)──→ retrieve → generate ──(sin tool_calls)──→ END
+                                                              ↑    │
+                                                              │    └──(con tool_calls)──→ tools
+                                                              └────────────────────────────┘
+                                                                                  │
+                                          (la ronda incluyó proponer_ot) → propuesta → END
 ```
 
 | Nodo | Responsabilidad |
 |------|-----------------|
+| `gate_ot` | **El candado (CGBIDA-476):** si el turno anterior dejó una OT propuesta, la confirma o descarta con código, sin pasar por el modelo |
 | `retrieve` | Búsqueda semántica en pgvector sobre los documentos de la empresa |
 | `generate` | Arma el prompt (sistema + historial) y llama al modelo con las tools bindeadas |
 | `tools` | `ToolNode` de `langgraph.prebuilt`, ejecuta las herramientas pedidas |
+| `propuesta` | Termina el turno con el texto EXACTO de `proponer_ot` (formato parseable que el gate re-lee) |
 
 El estado (`EstadoChat`) viaja con `messages` (acumuladas por `add_messages`), `empresa_id`,
-`pistas` de búsqueda, `contexto` y `fragmentos`. La arista `generate → tools` es condicional:
-si el último `AIMessage` trae `tool_calls`, se ejecutan y el resultado vuelve a `generate`;
-si no, el grafo termina.
+`pistas` de búsqueda, `contexto` y `fragmentos`. Las aristas condicionales: `gate_ot` corta
+el turno si resolvió una propuesta; `generate → tools` si el último `AIMessage` trae
+`tool_calls`; y `tools → propuesta` si la ronda incluyó `proponer_ot` (ver 2.11.1).
 
 **Streaming:** se mantiene igual para el usuario. El router consume
-`astream(stream_mode="messages")` y reenvía por SSE solo los deltas del nodo `generate`
-(los de la vuelta de planificación vienen vacíos y se descartan). Medido: 86-97 eventos
-`token` por respuesta.
+`astream(stream_mode="messages")` y reenvía por SSE el texto de los nodos que hablan al
+usuario (`_NODOS_QUE_HABLAN`: `generate`, `gate_ot`, `propuesta`) — los deltas de la vuelta
+de planificación vienen vacíos y se descartan.
 
 ### RAG semántico (HU-04 Fase 1)
 
@@ -346,15 +351,51 @@ Cierre de HU-04. Lo que falta respecto de 2.10: la IA ya no solo lee datos, tamb
 **escribe**; el motor tiene **respaldo automático** entre proveedores; y el prompt
 aprendió tres cosas de una conversación real que salió mal.
 
-### 2.11.1 Skill de acción: `crear_ot`
+### 2.11.1 Skill de acción: `proponer_ot` + el candado (CGBIDA-476)
 
-Segunda herramienta de `services/ai_tools.py`. Crea una orden de trabajo correctiva real
-desde el chat.
+Segunda herramienta de `services/ai_tools.py`. Propone una orden de trabajo correctiva
+desde el chat y el sistema la crea solo con la confirmación explícita del usuario.
+
+**El candado es estructural, no de prompt.** El modelo no tiene ninguna herramienta que
+escriba en la base: `crear_ot` dejó de existir como tool y su INSERT vive en
+`crear_ot_aprobada`, una función interna que solo el nodo `gate_ot` del grafo llama. Ni
+aunque el modelo insista puede crear una OT — el camino no existe.
+
+El ciclo completo, en dos turnos:
+
+1. **Turno de propuesta.** El modelo llama `proponer_ot` (valida descripción ≥ 8 caracteres,
+   resuelve la máquina con el matcher difuso, normaliza la prioridad) y la arista
+   `tools → propuesta` termina el turno con el **texto exacto de la tool**, sin re-redacción
+   del modelo. Ese texto tiene formato parseable a propósito:
+
+   ```
+   PROPUESTA DE ORDEN DE TRABAJO
+
+   Voy a crear una orden de trabajo con estos datos:
+
+   - Equipo: Compressor A1 (COMP-A1) — planta Planta Norte
+   - Problema: Ruido metálico al arrancar
+   - Prioridad: alta
+
+   ¿Confirmas la creación? (responde sí o no)
+   ```
+
+2. **Turno de confirmación.** El historial persiste solo texto user/assistant y el grafo se
+   re-crea en cada turno, así que ese texto persistido ES el borrador. El nodo `gate_ot`
+   (primera parada del turno) lo re-parsea y clasifica la respuesta del usuario con listas
+   deterministas: **afirmación clara** («sí», «dale», «confirmo»…) → `crear_ot_aprobada`;
+   **rechazo** («no», «espera», «cancela»…) → descarte con aviso; **ambiguo** → se vuelve a
+   preguntar re-emitindo la propuesta idéntica. Todo lo que no sea un sí inequívoco no crea
+   nada: el error barato es re-preguntar, no crear una OT de más. La propuesta caduca sola
+   en cuanto la conversación sigue (el gate solo mira el último mensaje del asistente).
+
+El INSERT (en `crear_ot_aprobada`) re-valida todo en el momento de crear — entre la
+propuesta y el «sí» pueden pasar minutos:
 
 | Campo | Valor |
 |---|---|
 | `numero_ot` | `OT-IA-AAAAMMDD-HHMMSS-XXXX` (prefijo propio para auditar qué creó la IA) |
-| `maquina_id` | resuelta con el **mismo matcher difuso** que la consulta (`_resolver_maquina`) |
+| `maquina_id` | **re-resuelta** al confirmar con el mismo matcher difuso; si el equipo ya no existe, no se crea |
 | `tecnico_id` | el usuario si es técnico; si no, el primer técnico de la empresa |
 | `creado_por` | el usuario autenticado |
 | `tipo` / `estado` | `corrective` / `pending` |
@@ -367,13 +408,15 @@ Decisiones que el esquema no resuelve solo:
   (admin, supervisor), al primer técnico de su empresa. Poner una OT a nombre de un
   administrador sería un dato falso en el tablero de carga.
 - **Antiduplicado (10 min).** Misma máquina + misma descripción abierta reciente → devuelve
-  la OT existente en vez de crear otra. Protege del modelo que llama dos veces y del
-  reintento automático del grafo.
-- **Nunca lanza.** Devuelve texto: una excepción en un nodo de herramientas corta el grafo.
+  la OT existente en vez de crear otra. Protege del doble «sí» y del reintento del grafo.
+- **Nunca lanza.** Devuelve texto: una excepción en un nodo del grafo lo cortaría.
+- **Clasificación conservadora.** Solo el arranque explícito de la frase cuenta
+  («sí, por favor» confirma; «mmm» re-pregunta). Preferimos molestar con una pregunta más
+  a crear una OT no pedida.
 
 **Seguridad:** el `empresa_id` va cerrado en la clausura, y ahora también `usuario_id` y
 `rol`. El modelo solo ve `nombre_maquina`, `descripcion_problema` y `prioridad`; no puede
-elegir la empresa ni el técnico.
+elegir la empresa ni el técnico — ni ejecutar el INSERT, que ya no es una tool.
 
 ### 2.11.2 Respaldo NVIDIA ↔ DeepSeek
 
@@ -434,7 +477,7 @@ ninguna decía cómo interpretar «eso», «lo tercero» o «el de inspecciones�
 | 6. Dos enumeraciones distintas | Si tu lista y la del documento no coinciden, decirlo y no mezclarlas |
 | 7. No inventar listas ni categorías | Nada de «cosas en las que puedo ayudarte» que no estén en la documentación |
 | 8. Coherencia y honestidad | Prohibido «tienes razón»/«coincidimos» si en el mismo mensaje se mantiene la respuesta anterior |
-| 9. Crear OTs | Usar `crear_ot` solo si lo piden o confirman; **pedir confirmación** antes de crear |
+| 9. Proponer OTs | Usar `proponer_ot` solo si lo piden o confirman; el sistema pide la confirmación al usuario (candado CGBIDA-476) y la crea solo con su «sí» |
 
 **Temperatura `0.7 → 0.1`** (en `.env` y como default en `config.py`): con 0.7 el modelo
 inventaba taxonomías y cambiaba de postura ante la presión del usuario.

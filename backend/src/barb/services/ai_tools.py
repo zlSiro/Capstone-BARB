@@ -13,17 +13,23 @@ Decisiones que importan:
    depender de lo que el LLM escriba.
 2. **Nunca lanza:** devuelve texto. Una excepción dentro de un nodo de herramientas corta
    el grafo y el usuario ve un error; un mensaje claro deja que el modelo explique.
+3. **El INSERT de OTs está fuera del alcance del modelo (CGBIDA-476).** `proponer_ot` solo
+   arma la propuesta y no toca la base; el INSERT vive en `crear_ot_aprobada`, que no es
+   una tool: la ejecuta el gate del grafo (`chat_graph.py`) cuando el usuario confirma.
+   Ni aunque el modelo insista puede crear una OT.
 """
 
 from __future__ import annotations
 
 import difflib
 import logging
+import re
 import unicodedata
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import uuid4
 
+from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.tools import BaseTool, tool
 
 from barb.core.config import settings
@@ -36,9 +42,7 @@ logger = logging.getLogger("barb.ai_tools")
 # «única fuente de verdad» (`core/work_order_states.py`): todo estado con transiciones
 # salientes está abierto. Antes había una tupla escrita a mano que duplicaba ese
 # conocimiento y se habría quedado desactualizada al agregar o retirar un estado.
-ESTADOS_ABIERTOS: tuple[str, ...] = tuple(
-    sorted(estado for estado in TRANSICIONES if estado not in ESTADOS_FINALES)
-)
+ESTADOS_ABIERTOS: tuple[str, ...] = tuple(sorted(estado for estado in TRANSICIONES if estado not in ESTADOS_FINALES))
 
 _MAX_MAQUINAS = 5
 _MAX_OTS_LISTADAS = 10
@@ -55,9 +59,7 @@ _MAX_CANDIDATAS = 500
 
 def _normalizar(texto: str) -> str:
     """Minúsculas, sin acentos y con espacios colapsados."""
-    sin_acentos = "".join(
-        c for c in unicodedata.normalize("NFKD", (texto or "").lower()) if not unicodedata.combining(c)
-    )
+    sin_acentos = "".join(c for c in unicodedata.normalize("NFKD", (texto or "").lower()) if not unicodedata.combining(c))
     return " ".join(sin_acentos.split())
 
 
@@ -83,9 +85,7 @@ def _cobertura(consulta: list[str], tokens: list[str]) -> float:
     utiles = [t for t in tokens if len(t) >= 2]
     if not utiles or not consulta:
         return 0.0
-    hallados = sum(
-        1 for t in utiles if any(_parecido(t, c) >= _UMBRAL_PALABRA for c in consulta)
-    )
+    hallados = sum(1 for t in utiles if any(_parecido(t, c) >= _UMBRAL_PALABRA for c in consulta))
     return hallados / len(utiles)
 
 
@@ -139,9 +139,7 @@ async def _buscar_maquinas(empresa_id: int, consulta: str) -> list[dict]:
         {"empresa": empresa_id, "limite": _MAX_CANDIDATAS},
     )
 
-    candidatas = [
-        _Candidata(fila, _puntaje(consulta, fila["nombre"], fila["codigo"])) for fila in filas
-    ]
+    candidatas = [_Candidata(fila, _puntaje(consulta, fila["nombre"], fila["codigo"])) for fila in filas]
     buenas = [c for c in candidatas if c.puntaje >= _UMBRAL_PARECIDO]
     buenas.sort(key=lambda c: c.puntaje, reverse=True)
     logger.info(
@@ -185,18 +183,14 @@ async def _resumen_maquina(empresa_id: int, maquina: dict) -> str:
         {"maquina": maquina["maquina_id"], "abiertos": list(ESTADOS_ABIERTOS), "limite": _MAX_OTS_LISTADAS},
     )
 
-    detalle = ", ".join(
-        f"{e}={por_estado[e]}" for e in ESTADOS_ABIERTOS if por_estado.get(e)
-    ) or "ninguna"
+    detalle = ", ".join(f"{e}={por_estado[e]}" for e in ESTADOS_ABIERTOS if por_estado.get(e)) or "ninguna"
     lineas = [
         f"Máquina: {maquina['nombre']} (código {maquina['codigo']}) — planta {maquina['planta']}.",
         f"Órdenes de trabajo abiertas: {abiertas} ({detalle}).",
         f"Total histórico de OTs de la máquina: {sum(por_estado.values())}.",
     ]
     if recientes:
-        listado = "; ".join(
-            f"{o['numero_ot']} ({o['estado']}, prioridad {o['prioridad']})" for o in recientes
-        )
+        listado = "; ".join(f"{o['numero_ot']} ({o['estado']}, prioridad {o['prioridad']})" for o in recientes)
         lineas.append(f"Abiertas más recientes: {listado}.")
     return " ".join(lineas)
 
@@ -232,9 +226,7 @@ async def _listar_maquinas(empresa_id: int, limite: int = 8) -> tuple[list[str],
     return [f"{f['nombre']} ({f['codigo']})" for f in filas], int(total[0]["n"]) if total else 0
 
 
-async def _resolver_maquina(
-    empresa_id: int, consulta: str, accion: str
-) -> tuple[dict | None, str | None]:
+async def _resolver_maquina(empresa_id: int, consulta: str, accion: str) -> tuple[dict | None, str | None]:
     """
     Traduce lo que escribió la persona a UNA máquina de su empresa.
 
@@ -257,9 +249,7 @@ async def _resolver_maquina(
         try:
             nombres, total = await _listar_maquinas(empresa_id)
         except Exception:  # noqa: BLE001 — la sugerencia es un extra, no el dato pedido
-            logger.warning(
-                "Tool: no se pudo listar alternativas (empresa %s)", empresa_id, exc_info=True
-            )
+            logger.warning("Tool: no se pudo listar alternativas (empresa %s)", empresa_id, exc_info=True)
             nombres, total = [], 0
 
         if not nombres:
@@ -278,10 +268,7 @@ async def _resolver_maquina(
 
     if len(maquinas) > 1:
         opciones = "; ".join(f"{m['nombre']} ({m['codigo']})" for m in maquinas)
-        return None, (
-            f"«{consulta}» coincide con varias máquinas: {opciones}. "
-            "Indica cuál de ellas te interesa."
-        )
+        return None, (f"«{consulta}» coincide con varias máquinas: {opciones}. Indica cuál de ellas te interesa.")
 
     return maquinas[0], None
 
@@ -365,9 +352,217 @@ async def _resolver_tecnico(empresa_id: int, usuario_id: int | None, rol: str | 
     )
 
 
-def crear_tools(
-    empresa_id: int, usuario_id: int | None = None, rol: str | None = None
-) -> list[BaseTool]:
+# ---------------------------------------------------------------------------
+# Propuesta y confirmación de OTs (CGBIDA-476: el candado)
+# ---------------------------------------------------------------------------
+
+# Etiquetas humanas para el texto de la propuesta; la clave es el enum ya normalizado.
+_ETIQUETA_PRIORIDAD = {"low": "baja", "medium": "media", "high": "alta", "urgent": "urgente"}
+
+# La propuesta se PERSISTE como texto del asistente (el historial de chat_session guarda
+# solo user/assistant y el grafo se re-crea en cada turno), así que su formato es
+# parseable a propósito: el gate del turno siguiente (`chat_graph.py`) lo reconoce por el
+# prefijo y re-extrae los datos para ejecutar el INSERT.
+_PREFIJO_PROPUESTA = "PROPUESTA DE ORDEN DE TRABAJO"
+
+TEXTO_RECHAZO = (
+    "Entendido, descarté la propuesta de orden de trabajo. "
+    "Si quieres crearla más adelante, pídemelo y armamos la propuesta de nuevo."
+)
+
+# Clasificación conservadora de la respuesta del usuario: solo el arranque explícito de la
+# frase cuenta. Ante la duda se vuelve a preguntar — el error barato es re-preguntar, no
+# crear una OT de más.
+_AFIRMATIVAS = frozenset(
+    {
+        "si",
+        "dale",
+        "confirmo",
+        "confirmada",
+        "ok",
+        "okey",
+        "claro",
+        "adelante",
+        "correcto",
+        "exacto",
+        "creala",
+        "hazlo",
+        "yes",
+        "yep",
+        "listo",
+    }
+)
+_NEGATIVAS = frozenset({"no", "espera", "todavia", "aun", "cancela", "cancelar", "despues", "frena", "detente"})
+
+# Extracción de los datos desde el texto de la propuesta persistido. `consulta_maquina`
+# queda con nombre y código tal como se propuso: es lo que el INSERT re-resuelve (y
+# valida de nuevo) al confirmar.
+_RE_EQUIPO = re.compile(r"- Equipo: (?P<consulta>.+?) \((?P<codigo>[^)]+)\)")
+_RE_PROBLEMA = re.compile(r"- Problema: (?P<problema>.+)\n- Prioridad: ")
+_RE_PRIORIDAD = re.compile(r"- Prioridad: (?P<prioridad>.+)")
+
+
+def _texto_propuesta(maquina: dict, problema: str, prioridad: str) -> str:
+    """Texto exacto que el asistente muestra (y persiste) al proponer una OT."""
+    return (
+        f"{_PREFIJO_PROPUESTA}\n\n"
+        "Voy a crear una orden de trabajo con estos datos:\n\n"
+        f"- Equipo: {maquina['nombre']} ({maquina['codigo']})"
+        f" — planta {maquina.get('planta') or 'sin planta'}\n"
+        f"- Problema: {problema}\n"
+        f"- Prioridad: {_ETIQUETA_PRIORIDAD.get(prioridad, prioridad)}\n\n"
+        "¿Confirmas la creación? (responde sí o no)"
+    )
+
+
+def _parsear_propuesta(texto: str) -> dict | None:
+    """Datos de la propuesta desde su texto; None si el formato no cierra."""
+    equipo = _RE_EQUIPO.search(texto)
+    problema = _RE_PROBLEMA.search(texto)
+    prioridad = _RE_PRIORIDAD.search(texto)
+    if not (equipo and problema and prioridad):
+        return None
+    return {
+        "consulta_maquina": equipo.group("consulta").strip(),
+        "problema": problema.group("problema").strip(),
+        "prioridad": _normalizar_prioridad(prioridad.group("prioridad"))[0],
+    }
+
+
+def propuesta_pendiente(messages: list[BaseMessage]) -> dict | None:
+    """
+    ¿El turno anterior dejó una OT propuesta sin resolver?
+
+    El historial guarda solo texto user/assistant y el turno de propuesta termina con el
+    texto EXACTO de la tool (ver `chat_graph.finalizar_propuesta`), así que alcanza con
+    mirar el último mensaje del asistente: si es una propuesta, está pendiente; si es una
+    resolución («OT creada…», descarte) o charla común, no hay nada pendiente. La
+    propuesta caduca sola en cuanto la conversación sigue.
+    """
+    ultimo_ai = next((m for m in reversed(messages) if isinstance(m, AIMessage)), None)
+    if ultimo_ai is None or not str(ultimo_ai.content).startswith(_PREFIJO_PROPUESTA):
+        return None
+    return _parsear_propuesta(str(ultimo_ai.content))
+
+
+def _primera_palabra(texto: str) -> str:
+    """Primera palabra de la respuesta, sin puntuación y normalizada."""
+    encontrada = re.search(r"[a-z0-9]+", _normalizar(texto))
+    return encontrada.group(0) if encontrada else ""
+
+
+def es_confirmacion(texto: str) -> bool:
+    """True solo si la respuesta ARRANCA con una afirmación inequívoca."""
+    return _primera_palabra(texto) in _AFIRMATIVAS
+
+
+def es_rechazo(texto: str) -> bool:
+    """True solo si la respuesta ARRANCA con un rechazo explícito."""
+    return _primera_palabra(texto) in _NEGATIVAS
+
+
+async def crear_ot_aprobada(
+    consulta_maquina: str,
+    problema: str,
+    prioridad: str,
+    empresa_id: int,
+    usuario_id: int | None = None,
+    rol: str | None = None,
+) -> str:
+    """
+    Ejecuta el INSERT de una OT YA CONFIRMADA por el usuario.
+
+    NO es una tool: el modelo no la ve ni puede llamarla. La única vía de entrada es el
+    gate del grafo (`chat_graph.py`), que la invoca con los datos de la propuesta solo
+    después de validar la confirmación del usuario. Re-resuelve la máquina en el momento
+    de insertar: entre la propuesta y el «sí» pueden pasar minutos y el mantenedor puede
+    haber cambiado.
+    """
+    objetivo, error = await _resolver_maquina(empresa_id, consulta_maquina, "creo la orden de trabajo")
+    if error:
+        return error
+
+    prioridad_valida, reconocida = _normalizar_prioridad(prioridad)
+
+    try:
+        tecnico = await _resolver_tecnico(empresa_id, usuario_id, rol)
+        if not tecnico:
+            return (
+                f"La empresa no tiene técnicos registrados, así que no puedo asignar la "
+                f"OT de «{objetivo['nombre']}». Carga un técnico y vuelvo a intentarlo."
+            )
+
+        # Antiduplicado: mismo equipo y misma descripción abierta hace pocos minutos.
+        repetida = await fetch_one(
+            """
+            SELECT ot_id, numero_ot, estado
+              FROM orden_trabajo
+             WHERE maquina_id = %(maquina)s
+               AND lower(trim(descripcion_problema)) = lower(trim(%(problema)s))
+               AND estado NOT IN ('completed', 'cancelled')
+               AND fecha_creacion > (NOW() - make_interval(mins => %(mins)s))
+             ORDER BY ot_id DESC
+             LIMIT 1
+            """,
+            {
+                "maquina": objetivo["maquina_id"],
+                "problema": problema,
+                "mins": _MINUTOS_ANTIDUPLICADO,
+            },
+        )
+        if repetida:
+            return (
+                f"Esa OT ya estaba creada: **{repetida['numero_ot']}** "
+                f"({repetida['estado']}) para {objetivo['nombre']}. No creé otra igual."
+            )
+
+        fecha_vencimiento = await fetch_one(
+            "SELECT (NOW() + make_interval(mins => %(mins)s)) AS vence",
+            {"mins": settings.sla_target_minutes},
+        )
+
+        creada = await fetch_one(
+            """
+            INSERT INTO orden_trabajo (
+                numero_ot, maquina_id, tecnico_id, creado_por,
+                tipo, descripcion_problema, priority, estado, fecha_vencimiento
+            )
+            VALUES (
+                %(numero)s, %(maquina)s, %(tecnico)s, %(creador)s,
+                'corrective', %(problema)s, %(prioridad)s, 'pending', %(vence)s
+            )
+            RETURNING ot_id, numero_ot, estado, priority, fecha_vencimiento
+            """,
+            {
+                "numero": _nuevo_numero_ot(),
+                "maquina": objetivo["maquina_id"],
+                "tecnico": tecnico["usuario_id"],
+                "creador": usuario_id or tecnico["usuario_id"],
+                "problema": problema,
+                "prioridad": prioridad_valida,
+                "vence": fecha_vencimiento["vence"] if fecha_vencimiento else None,
+            },
+        )
+    except Exception as e:  # noqa: BLE001 — el gate no debe tumbar el grafo
+        logger.exception(
+            "crear_ot_aprobada: fallo insertando OT para %r en empresa %s",
+            objetivo.get("nombre"),
+            empresa_id,
+        )
+        return f"No pude crear la orden de trabajo ({type(e).__name__}). No se creó nada."
+
+    aviso_prioridad = "" if reconocida else " (no reconocí la prioridad que pediste, usé «medium»)"
+    return (
+        f"OT creada: **{creada['numero_ot']}**\n"
+        f"- Equipo: {objetivo['nombre']} ({objetivo['codigo']}) — {objetivo.get('planta') or 'sin planta'}\n"
+        f"- Problema: {problema}\n"
+        f"- Tipo: correctivo · Prioridad: {creada['priority']}{aviso_prioridad}\n"
+        f"- Estado: {creada['estado']} · Asignada a: {tecnico['nombre']}\n"
+        "Puedes verla en el tablero de órdenes de trabajo."
+    )
+
+
+def crear_tools(empresa_id: int, usuario_id: int | None = None, rol: str | None = None) -> list[BaseTool]:
     """
     Tools disponibles para una empresa concreta y su usuario.
 
@@ -392,31 +587,29 @@ def crear_tools(
         if not consulta:
             return "Necesito el nombre o el código de la máquina para consultar sus OTs."
 
-        maquina, error = await _resolver_maquina(
-            empresa_id, consulta, "consulto sus órdenes de trabajo"
-        )
+        maquina, error = await _resolver_maquina(empresa_id, consulta, "consulto sus órdenes de trabajo")
         if error:
             return error
 
         try:
             return await _resumen_maquina(empresa_id, maquina)
         except Exception as e:  # noqa: BLE001
-            logger.exception(
-                "Tool consultar_ots_maquina: fallo leyendo OTs de %r", maquina.get("nombre")
-            )
+            logger.exception("Tool consultar_ots_maquina: fallo leyendo OTs de %r", maquina.get("nombre"))
             return f"No pude leer las órdenes de trabajo ({type(e).__name__})."
 
-    @tool("crear_ot")
-    async def crear_ot(
+    @tool("proponer_ot")
+    async def proponer_ot(
         nombre_maquina: str,
         descripcion_problema: str,
         prioridad: str = "medium",
     ) -> str:
-        """Crea una orden de trabajo (OT) correctiva para una máquina de la empresa.
+        """Registra la propuesta de crear una orden de trabajo (OT) correctiva y el
+        sistema le pide confirmación al usuario.
 
         Úsala SOLO cuando el usuario pida explícitamente crear una OT, o cuando describa
-        una falla y confirme que quiere registrarla. Antes de llamarla, pide confirmación
-        y repite qué equipo, qué problema y qué prioridad vas a registrar.
+        una falla y confirme que quiere registrarla. NO crea nada: la OT se crea solo si
+        el usuario responde que sí. Si el usuario corrige un dato (equipo, problema o
+        prioridad), vuelve a llamarla con los datos corregidos.
 
         Args:
             nombre_maquina: Nombre o código del equipo, por ejemplo "Compresor A1".
@@ -424,9 +617,6 @@ def crear_tools(
             descripcion_problema: Qué falla hay que atender, con el detalle que dio el
                 usuario (síntoma, desde cuándo, qué se observó).
             prioridad: "low", "medium", "high" o "urgent". Por defecto "medium".
-
-        Returns:
-            Confirmación con el número de OT creado, o el motivo por el que no se creó.
         """
         maquina_txt = (nombre_maquina or "").strip()
         problema = " ".join((descripcion_problema or "").split())
@@ -437,7 +627,7 @@ def crear_tools(
         # Una OT con una descripción vacía o de dos palabras no le sirve a nadie en planta.
         if len(problema) < 8:
             return (
-                "Necesito una descripción del problema un poco más concreta antes de crear "
+                "Necesito una descripción del problema un poco más concreta antes de proponer "
                 "la OT (qué falla, cuándo empezó o qué se observó)."
             )
 
@@ -445,87 +635,7 @@ def crear_tools(
         if error:
             return error
 
-        prioridad_valida, reconocida = _normalizar_prioridad(prioridad)
+        prioridad_valida, _ = _normalizar_prioridad(prioridad)
+        return _texto_propuesta(objetivo, problema, prioridad_valida)
 
-        try:
-            tecnico = await _resolver_tecnico(empresa_id, usuario_id, rol)
-            if not tecnico:
-                return (
-                    f"La empresa no tiene técnicos registrados, así que no puedo asignar la "
-                    f"OT de «{objetivo['nombre']}». Carga un técnico y vuelvo a intentarlo."
-                )
-
-            # Antiduplicado: mismo equipo y misma descripción abierta hace pocos minutos.
-            repetida = await fetch_one(
-                """
-                SELECT ot_id, numero_ot, estado
-                  FROM orden_trabajo
-                 WHERE maquina_id = %(maquina)s
-                   AND lower(trim(descripcion_problema)) = lower(trim(%(problema)s))
-                   AND estado NOT IN ('completed', 'cancelled')
-                   AND fecha_creacion > (NOW() - make_interval(mins => %(mins)s))
-                 ORDER BY ot_id DESC
-                 LIMIT 1
-                """,
-                {
-                    "maquina": objetivo["maquina_id"],
-                    "problema": problema,
-                    "mins": _MINUTOS_ANTIDUPLICADO,
-                },
-            )
-            if repetida:
-                return (
-                    f"Esa OT ya estaba creada: **{repetida['numero_ot']}** "
-                    f"({repetida['estado']}) para {objetivo['nombre']}. No creé otra igual."
-                )
-
-            fecha_vencimiento = await fetch_one(
-                "SELECT (NOW() + make_interval(mins => %(mins)s)) AS vence",
-                {"mins": settings.sla_target_minutes},
-            )
-
-            creada = await fetch_one(
-                """
-                INSERT INTO orden_trabajo (
-                    numero_ot, maquina_id, tecnico_id, creado_por,
-                    tipo, descripcion_problema, priority, estado, fecha_vencimiento
-                )
-                VALUES (
-                    %(numero)s, %(maquina)s, %(tecnico)s, %(creador)s,
-                    'corrective', %(problema)s, %(prioridad)s, 'pending', %(vence)s
-                )
-                RETURNING ot_id, numero_ot, estado, priority, fecha_vencimiento
-                """,
-                {
-                    "numero": _nuevo_numero_ot(),
-                    "maquina": objetivo["maquina_id"],
-                    "tecnico": tecnico["usuario_id"],
-                    "creador": usuario_id or tecnico["usuario_id"],
-                    "problema": problema,
-                    "prioridad": prioridad_valida,
-                    "vence": fecha_vencimiento["vence"] if fecha_vencimiento else None,
-                },
-            )
-        except Exception as e:  # noqa: BLE001 — una tool no debe tumbar el grafo
-            logger.exception(
-                "Tool crear_ot: fallo creando OT para %r en empresa %s",
-                objetivo.get("nombre"),
-                empresa_id,
-            )
-            return f"No pude crear la orden de trabajo ({type(e).__name__}). No se creó nada."
-
-        aviso_prioridad = (
-            ""
-            if reconocida
-            else " (no reconocí la prioridad que pediste, usé «medium»)"
-        )
-        return (
-            f"OT creada: **{creada['numero_ot']}**\n"
-            f"- Equipo: {objetivo['nombre']} ({objetivo['codigo']}) — {objetivo.get('planta') or 'sin planta'}\n"
-            f"- Problema: {problema}\n"
-            f"- Tipo: correctivo · Prioridad: {creada['priority']}{aviso_prioridad}\n"
-            f"- Estado: {creada['estado']} · Asignada a: {tecnico['nombre']}\n"
-            "Puedes verla en el tablero de órdenes de trabajo."
-        )
-
-    return [consultar_ots_maquina, crear_ot]
+    return [consultar_ots_maquina, proponer_ot]
