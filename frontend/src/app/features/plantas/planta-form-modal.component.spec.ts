@@ -252,6 +252,53 @@ describe('PlantaFormModalComponent', () => {
   });
 
   describe('envío al backend', () => {
+    it('manda el SLA y el costo de inactividad de cada máquina', () => {
+      const { fixture, el, servicio } = setup();
+      llenarPlanta(fixture, el);
+
+      pulsar(el, 'agregar-maquina');
+      pulsar(el, 'agregar-maquina');
+      fixture.detectChanges();
+      escribir(el, 'maquina-nombre', 'Compressor T1', 0);
+      escribir(el, 'maquina-codigo', 'T1', 0);
+      escribir(el, 'maquina-sla-horas', '8', 0);
+      escribir(el, 'maquina-costo-inactividad', '3500', 0);
+      escribir(el, 'maquina-nombre', 'Pump T2', 1);
+      escribir(el, 'maquina-codigo', 'T2', 1);
+      // La segunda queda sin SLA: debe viajar null (default de la empresa), no 0.
+      fixture.detectChanges();
+
+      pulsar(el, 'continuar');
+      fixture.detectChanges();
+      pulsar(el, 'guardar');
+      fixture.detectChanges();
+
+      const [payload] = (servicio.crearPlantaCompleta as any).mock.calls[0];
+      expect(payload.maquinas[0].sla_horas).toBe(8);
+      expect(payload.maquinas[0].costo_inactividad_minuto).toBe(3500);
+      expect(payload.maquinas[1].sla_horas).toBeNull();
+      expect(payload.maquinas[1].costo_inactividad_minuto).toBeNull();
+    });
+
+    it('un SLA negativo bloquea el envío y no llama al backend', () => {
+      const { fixture, el, servicio } = setup();
+      llenarPlanta(fixture, el);
+
+      pulsar(el, 'agregar-maquina');
+      fixture.detectChanges();
+      escribir(el, 'maquina-nombre', 'Compressor T1', 0);
+      escribir(el, 'maquina-codigo', 'T1', 0);
+      escribir(el, 'maquina-sla-horas', '-4', 0);
+      fixture.detectChanges();
+
+      // No avanza al paso de confirmación: el error se muestra y no hay POST.
+      pulsar(el, 'continuar');
+      fixture.detectChanges();
+
+      expect(texto(el, 'error-maquinas')).toContain('SLA');
+      expect(servicio.crearPlantaCompleta).not.toHaveBeenCalled();
+    });
+
     it('manda el payload limpio: sin filas vacías, sin repetidos, ubicación null', () => {
       const { fixture, el, servicio } = setup();
       llenarPlanta(fixture, el);
@@ -288,8 +335,20 @@ describe('PlantaFormModalComponent', () => {
         ubicacion: null,
         disciplinas: ['Mecánica'],
         maquinas: [
-          { nombre: 'Compressor T1', codigo: 'T1', disciplina: 'Mecánica' },
-          { nombre: 'Pump T2', codigo: 'T2', disciplina: null },
+          {
+            nombre: 'Compressor T1',
+            codigo: 'T1',
+            disciplina: 'Mecánica',
+            sla_horas: null,
+            costo_inactividad_minuto: null,
+          },
+          {
+            nombre: 'Pump T2',
+            codigo: 'T2',
+            disciplina: null,
+            sla_horas: null,
+            costo_inactividad_minuto: null,
+          },
         ],
       });
     });

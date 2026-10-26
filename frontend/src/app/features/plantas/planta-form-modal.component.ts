@@ -18,6 +18,13 @@ interface MaquinaForm {
   nombre: string;
   codigo: string;
   disciplina: string;
+  /**
+   * SLA y costo de inactividad propios de esta máquina, como texto: vacío significa «usar
+   * el default de la empresa», mientras que "0" es un valor explícito (atención inmediata).
+   * Un `<input type="number">` con `number` no permitiría distinguir esos dos casos.
+   */
+  slaHoras: string;
+  costoInactividad: string;
 }
 
 /**
@@ -147,56 +154,90 @@ interface MaquinaForm {
             }
 
             @for (m of maquinas(); track $index) {
-              <div class="mb-3 grid gap-2 rounded border border-slate-800 p-3 md:grid-cols-4">
-                <div>
-                  <label class="fld-label" [attr.for]="'maq-nombre-' + $index">Nombre *</label>
-                  <input
-                    [id]="'maq-nombre-' + $index"
-                    type="text"
-                    class="fld-input"
-                    data-testid="maquina-nombre"
-                    [value]="m.nombre"
-                    (input)="cambiarMaquina($index, 'nombre', $any($event.target).value)"
-                  />
+              <div class="mb-3 rounded border border-slate-800 p-3">
+                <div class="grid gap-2 md:grid-cols-4">
+                  <div>
+                    <label class="fld-label" [attr.for]="'maq-nombre-' + $index">Nombre *</label>
+                    <input
+                      [id]="'maq-nombre-' + $index"
+                      type="text"
+                      class="fld-input"
+                      data-testid="maquina-nombre"
+                      [value]="m.nombre"
+                      (input)="cambiarMaquina($index, 'nombre', $any($event.target).value)"
+                    />
+                  </div>
+                  <div>
+                    <label class="fld-label" [attr.for]="'maq-codigo-' + $index">Código *</label>
+                    <input
+                      [id]="'maq-codigo-' + $index"
+                      type="text"
+                      class="fld-input"
+                      data-testid="maquina-codigo"
+                      placeholder="CMP-01"
+                      [value]="m.codigo"
+                      (input)="cambiarMaquina($index, 'codigo', $any($event.target).value)"
+                    />
+                  </div>
+                  <div>
+                    <label class="fld-label" [attr.for]="'maq-disc-' + $index">Disciplina</label>
+                    <select
+                      [id]="'maq-disc-' + $index"
+                      class="fld-input"
+                      data-testid="maquina-disciplina"
+                      [value]="m.disciplina"
+                      (change)="cambiarMaquina($index, 'disciplina', $any($event.target).value)"
+                    >
+                      <option value="">Sin disciplina</option>
+                      @for (d of opcionesDisciplina(); track d) {
+                        <option [value]="d">{{ d }}</option>
+                      }
+                    </select>
+                  </div>
+                  <div class="flex items-end">
+                    <button
+                      type="button"
+                      class="w-full rounded border border-slate-600 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800"
+                      data-testid="quitar-maquina"
+                      (click)="quitarMaquina($index)"
+                      [attr.aria-label]="'Quitar máquina ' + (m.nombre || $index + 1)"
+                    >
+                      ✕ Quitar
+                    </button>
+                  </div>
                 </div>
-                <div>
-                  <label class="fld-label" [attr.for]="'maq-codigo-' + $index">Código *</label>
-                  <input
-                    [id]="'maq-codigo-' + $index"
-                    type="text"
-                    class="fld-input"
-                    data-testid="maquina-codigo"
-                    placeholder="CMP-01"
-                    [value]="m.codigo"
-                    (input)="cambiarMaquina($index, 'codigo', $any($event.target).value)"
-                  />
+
+                <div class="mt-2 grid gap-2 md:grid-cols-2">
+                  <div>
+                    <label class="fld-label" [attr.for]="'maq-sla-' + $index">SLA (horas)</label>
+                    <input
+                      [id]="'maq-sla-' + $index"
+                      type="number"
+                      step="0.5"
+                      class="fld-input"
+                      placeholder="24"
+                      data-testid="maquina-sla-horas"
+                      [value]="m.slaHoras"
+                      (input)="cambiarMaquina($index, 'slaHoras', $any($event.target).value)"
+                    />
+                  </div>
+                  <div>
+                    <label class="fld-label" [attr.for]="'maq-costo-' + $index">Costo de inactividad (por minuto)</label>
+                    <input
+                      [id]="'maq-costo-' + $index"
+                      type="number"
+                      step="100"
+                      class="fld-input"
+                      placeholder="2000"
+                      data-testid="maquina-costo-inactividad"
+                      [value]="m.costoInactividad"
+                      (input)="cambiarMaquina($index, 'costoInactividad', $any($event.target).value)"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label class="fld-label" [attr.for]="'maq-disc-' + $index">Disciplina</label>
-                  <select
-                    [id]="'maq-disc-' + $index"
-                    class="fld-input"
-                    data-testid="maquina-disciplina"
-                    [value]="m.disciplina"
-                    (change)="cambiarMaquina($index, 'disciplina', $any($event.target).value)"
-                  >
-                    <option value="">Sin disciplina</option>
-                    @for (d of opcionesDisciplina(); track d) {
-                      <option [value]="d">{{ d }}</option>
-                    }
-                  </select>
-                </div>
-                <div class="flex items-end">
-                  <button
-                    type="button"
-                    class="w-full rounded border border-slate-600 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800"
-                    data-testid="quitar-maquina"
-                    (click)="quitarMaquina($index)"
-                    [attr.aria-label]="'Quitar máquina ' + (m.nombre || $index + 1)"
-                  >
-                    ✕ Quitar
-                  </button>
-                </div>
+                <p class="mt-1 text-xs text-slate-400">
+                  Vacío = usa el SLA y el costo generales de la empresa.
+                </p>
               </div>
             }
 
@@ -378,8 +419,18 @@ export class PlantaFormModalComponent {
         nombre: m.nombre.trim(),
         codigo: m.codigo.trim(),
         disciplina: m.disciplina.trim() || null,
+        sla_horas: this.numeroOpcional(m.slaHoras),
+        costo_inactividad_minuto: this.numeroOpcional(m.costoInactividad),
       })),
   );
+
+  /** `''` → null (sin dato); `'0'` → 0 (valor explícito). */
+  private numeroOpcional(texto: string): number | null {
+    const limpio = (texto ?? '').trim();
+    if (!limpio) return null;
+    const n = Number(limpio);
+    return Number.isFinite(n) ? n : null;
+  }
 
   protected readonly totalMaquinas = computed(() => this.maquinasLimpias().length);
 
@@ -393,8 +444,31 @@ export class PlantaFormModalComponent {
     if (new Set(codigos).size !== codigos.length) {
       return 'Hay dos máquinas con el mismo código.';
     }
+
+    // Los numéricos son opcionales, pero si se escriben tienen que ser válidos: un SLA
+    // negativo o un texto suelto no deben llegar al backend (que respondería 422).
+    if (filas.some((m) => !this.slaValido(m.slaHoras))) {
+      return 'El SLA debe ser un número entre 0 y 8760 horas (o quedar vacío).';
+    }
+    if (filas.some((m) => !this.costoValido(m.costoInactividad))) {
+      return 'El costo de inactividad debe ser un número mayor o igual a 0 (o quedar vacío).';
+    }
     return null;
   });
+
+  private slaValido(texto: string): boolean {
+    const limpio = (texto ?? '').trim();
+    if (!limpio) return true;
+    const n = Number(limpio);
+    return Number.isFinite(n) && n >= 0 && n <= 8760;
+  }
+
+  private costoValido(texto: string): boolean {
+    const limpio = (texto ?? '').trim();
+    if (!limpio) return true;
+    const n = Number(limpio);
+    return Number.isFinite(n) && n >= 0;
+  }
 
   protected agregarDisciplina(): void {
     this.disciplinas.update((d) => [...d, '']);
@@ -409,7 +483,10 @@ export class PlantaFormModalComponent {
   }
 
   protected agregarMaquina(): void {
-    this.maquinas.update((m) => [...m, { nombre: '', codigo: '', disciplina: '' }]);
+    this.maquinas.update((m) => [
+      ...m,
+      { nombre: '', codigo: '', disciplina: '', slaHoras: '', costoInactividad: '' },
+    ]);
   }
 
   protected quitarMaquina(indice: number): void {
