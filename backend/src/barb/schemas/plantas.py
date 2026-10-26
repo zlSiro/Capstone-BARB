@@ -90,3 +90,25 @@ class MaquinaNuevaRequest(BaseModel):
     disciplina: str | None = Field(default=None, max_length=50)
     sla_horas: float | None = Field(default=None, ge=0, le=8760)
     costo_inactividad_minuto: float | None = Field(default=None, ge=0)
+
+
+class MaquinaUpdateRequest(BaseModel):
+    """Campos editables de una máquina. `None` = no tocar ese campo."""
+
+    nombre: str | None = Field(default=None, min_length=1, max_length=100)
+    codigo: str | None = Field(default=None, min_length=1, max_length=50)
+    # Se edita por id: la disciplina ya existe en el catálogo de la empresa. Crear
+    # disciplinas nuevas se hace al dar de alta la planta, no al editar una máquina.
+    disciplina_id: int | None = None
+    sla_horas: float | None = Field(default=None, ge=0, le=8760)
+    costo_inactividad_minuto: float | None = Field(default=None, ge=0)
+
+
+class MaquinaActualizada(BaseModel):
+    maquina_id: int
+    planta_id: int
+    nombre: str
+    codigo: str
+    disciplina_id: int | None
+    sla_horas: float | None = None
+    costo_inactividad_minuto: float | None = None

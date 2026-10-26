@@ -15,8 +15,10 @@ from barb.core.permissions import (
 )
 from barb.schemas.plantas import (
     DisciplinaResuelta,
+    MaquinaActualizada,
     MaquinaCreada,
     MaquinaNuevaRequest,
+    MaquinaUpdateRequest,
     PlantaActualizada,
     PlantaCompletaCreate,
     PlantaCompletaResponse,
@@ -86,7 +88,7 @@ async def get_machines(empresa_id: int | None = Query(default=None), sesion: dic
         )
         rows = await fetch_all(
             f"""
-            SELECT m.maquina_id AS id, m.nombre, m.disciplina_id, m.planta_id{columnas_extra}
+            SELECT m.maquina_id AS id, m.nombre, m.codigo, m.disciplina_id, m.planta_id{columnas_extra}
             FROM maquina m
             JOIN planta p ON p.planta_id = m.planta_id
             WHERE (%(empresa_id)s::int IS NULL OR p.empresa_id = %(empresa_id)s)
@@ -98,6 +100,8 @@ async def get_machines(empresa_id: int | None = Query(default=None), sesion: dic
             {
                 "id": int(r["id"]),
                 "name": r["nombre"],
+                # El código hace falta para precargar la edición de la máquina.
+                "codigo": r["codigo"],
                 "discipline_id": r["disciplina_id"],
                 "plant_id": r["planta_id"],
                 "sla_horas": r["sla_horas"],
@@ -584,3 +588,146 @@ async def add_maquina(
 
 
 
+
+
+@router.patch(
+    "/api/maquinas/{maquina_id}",
+    response_model=MaquinaActualizada,
+    dependencies=[Depends(require_route("plantas"))],
+)
+async def update_maquina(
+    maquina_id: int,
+    payload: MaquinaUpdateRequest,
+    sesion: dict = Depends(get_sesion_actual),
+) -> MaquinaActualizada:
+    """
+    Edita una máquina existente: nombre, código, disciplina, SLA y costo de inactividad.
+
+    Multi-empresa: la máquina se resuelve a través de su planta, así que una máquina de otra
+    empresa responde 404 (no 403: no se confirma si existe en otro lado).
+
+    El código tiene `UNIQUE (planta_id, codigo)`, así que un choque con OTRA máquina de la
+    misma planta devuelve 409. Se comprueba en Python comparando sin distinguir mayúsculas,
+    igual que el alta, para que el mensaje sea del dominio.
+
+    `sla_horas` y `costo_inactividad_minuto` pueden no existir todavía en la base: si vienen
+    valores y faltan las columnas, se responde 503 con el SQL a correr en vez de ignorarlos.
+    Los campos en `None` no se tocan (patch parcial).
+    """
+    empresa_id = empresa_obligatoria(sesion)
+
+    nombre = payload.nombre.strip() if payload.nombre is not None else None
+    codigo = payload.codigo.strip() if payload.codigo is not None else None
+    if nombre is not None and not nombre:
+        raise HTTPException(status_code=422, detail="El nombre de la máquina no puede quedar vacío.")
+    if codigo is not None and not codigo:
+        raise HTTPException(status_code=422, detail="El código de la máquina no puede quedar vacío.")
+
+    extra = await _sla_costo_disponibles()
+    if not extra and (
+        payload.sla_horas is not None or payload.costo_inactividad_minuto is not None
+    ):
+        raise _error_sla_sin_columnas()
+
+    try:
+        async with transaction() as cur:
+            await cur.execute(
+                """
+                SELECT m.maquina_id, m.planta_id, m.nombre, m.codigo, m.disciplina_id
+                  FROM maquina m
+                  JOIN planta p ON p.planta_id = m.planta_id
+                 WHERE m.maquina_id = %(id)s AND p.empresa_id = %(empresa)s
+                 FOR UPDATE OF m
+                """,
+                {"id": maquina_id, "empresa": empresa_id},
+            )
+            actual = await cur.fetchone()
+            if not actual:
+                raise HTTPException(status_code=404, detail="Máquina no encontrada.")
+
+            planta_id = int(actual["planta_id"])
+
+            # 409 si el código choca con OTRA máquina de la misma planta.
+            if codigo is not None:
+                await cur.execute(
+                    """
+                    SELECT 1 FROM maquina
+                     WHERE planta_id = %(p)s AND lower(codigo) = lower(%(c)s)
+                       AND maquina_id <> %(id)s
+                     LIMIT 1
+                    """,
+                    {"p": planta_id, "c": codigo, "id": maquina_id},
+                )
+                if await cur.fetchone():
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"Ya existe una máquina con el código «{codigo}» en esta planta.",
+                    )
+
+            # La disciplina, si viene, tiene que ser de la misma empresa.
+            if payload.disciplina_id is not None:
+                await cur.execute(
+                    "SELECT 1 FROM disciplina WHERE disciplina_id = %(d)s AND empresa_id = %(e)s",
+                    {"d": payload.disciplina_id, "e": empresa_id},
+                )
+                if not await cur.fetchone():
+                    raise HTTPException(
+                        status_code=422, detail="La disciplina indicada no existe en tu empresa."
+                    )
+
+            campos: list[str] = []
+            params: dict[str, object] = {"id": maquina_id}
+            if nombre is not None:
+                campos.append("nombre = %(nombre)s")
+                params["nombre"] = nombre
+            if codigo is not None:
+                campos.append("codigo = %(codigo)s")
+                params["codigo"] = codigo
+            if payload.disciplina_id is not None:
+                campos.append("disciplina_id = %(disciplina_id)s")
+                params["disciplina_id"] = payload.disciplina_id
+            if extra:
+                if payload.sla_horas is not None:
+                    campos.append("sla_horas = %(sla_horas)s")
+                    params["sla_horas"] = payload.sla_horas
+                if payload.costo_inactividad_minuto is not None:
+                    campos.append("costo_inactividad_minuto = %(costo_inactividad_minuto)s")
+                    params["costo_inactividad_minuto"] = payload.costo_inactividad_minuto
+
+            if campos:
+                await cur.execute(
+                    f"UPDATE maquina SET {', '.join(campos)} WHERE maquina_id = %(id)s",
+                    params,
+                )
+
+            columnas_extra = (
+                ", sla_horas, costo_inactividad_minuto"
+                if extra
+                else ", NULL::numeric AS sla_horas, NULL::numeric AS costo_inactividad_minuto"
+            )
+            await cur.execute(
+                f"SELECT maquina_id, planta_id, nombre, codigo, disciplina_id{columnas_extra}"
+                " FROM maquina WHERE maquina_id = %(id)s",
+                {"id": maquina_id},
+            )
+            fila = await cur.fetchone()
+    except HTTPException:
+        raise
+    except pg_errors.UniqueViolation as e:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Ya existe una máquina con el código «{codigo}» en esta planta.",
+        ) from e
+    except Exception as e:
+        logger.exception("Error al editar la máquina")
+        raise HTTPException(status_code=500, detail="Error interno al editar la máquina.") from e
+
+    return MaquinaActualizada(
+        maquina_id=int(fila["maquina_id"]),
+        planta_id=int(fila["planta_id"]),
+        nombre=fila["nombre"],
+        codigo=fila["codigo"],
+        disciplina_id=fila["disciplina_id"],
+        sla_horas=fila["sla_horas"],
+        costo_inactividad_minuto=fila["costo_inactividad_minuto"],
+    )

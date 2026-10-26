@@ -82,7 +82,20 @@ interface PlantaFila {
               @for (fila of filtradas(); track fila.planta.id) {
                 <tr class="border-t border-gray-100 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800" data-testid="fila-planta">
                   <td class="px-4 py-2">
-                    <div class="font-medium" data-testid="planta-celda-nombre">{{ fila.planta.name }}</div>
+                    <div class="flex items-center gap-1">
+                      <button
+                        type="button"
+                        class="rounded px-1 text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-100"
+                        data-testid="expandir-planta"
+                        (click)="togglePlanta(fila.planta.id)"
+                        [attr.aria-expanded]="expandida(fila.planta.id)"
+                        [attr.aria-label]="
+                          (expandida(fila.planta.id) ? 'Ocultar' : 'Ver') +
+                          ' las máquinas de ' + fila.planta.name
+                        "
+                      >{{ expandida(fila.planta.id) ? '▾' : '▸' }}</button>
+                      <span class="font-medium" data-testid="planta-celda-nombre">{{ fila.planta.name }}</span>
+                    </div>
                     @if (fila.maquinas.length === 0) {
                       <div class="text-xs text-gray-500 dark:text-gray-400">Sin máquinas</div>
                     }
@@ -121,6 +134,54 @@ interface PlantaFila {
                     </div>
                   </td>
                 </tr>
+
+                @if (expandida(fila.planta.id)) {
+                  <tr class="bg-gray-50/60 dark:bg-gray-800/40" data-testid="fila-maquinas">
+                    <td colspan="5" class="px-4 py-3">
+                      @if (fila.maquinas.length === 0) {
+                        <p class="text-sm text-gray-600 dark:text-gray-300" data-testid="sin-maquinas-planta">
+                          Esta planta no tiene máquinas. Agrégalas con «+ Máquina».
+                        </p>
+                      } @else {
+                        <table class="w-full text-sm">
+                          <caption class="sr-only">Máquinas de {{ fila.planta.name }}</caption>
+                          <thead class="text-xs uppercase text-gray-500 dark:text-gray-400">
+                            <tr>
+                              <th scope="col" class="py-1 pr-3 text-left">Máquina</th>
+                              <th scope="col" class="py-1 pr-3 text-left">Código</th>
+                              <th scope="col" class="py-1 pr-3 text-left">Disciplina</th>
+                              <th scope="col" class="py-1 pr-3 text-right">SLA</th>
+                              <th scope="col" class="py-1 pr-3 text-right">Costo inactividad / min</th>
+                              <th scope="col" class="py-1 text-right">Acciones</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            @for (maquina of fila.maquinas; track maquina.id) {
+                              <tr class="border-t border-gray-200 dark:border-gray-700" data-testid="fila-maquina">
+                                <td class="py-1 pr-3" data-testid="maquina-nombre">{{ maquina.name }}</td>
+                                <td class="py-1 pr-3" data-testid="maquina-codigo">{{ maquina.codigo || '—' }}</td>
+                                <td class="py-1 pr-3" data-testid="maquina-disciplina">
+                                  {{ nombreDisciplina(maquina) }}
+                                </td>
+                                <td class="py-1 pr-3 text-right" data-testid="maquina-sla">{{ slaDe(maquina) }}</td>
+                                <td class="py-1 pr-3 text-right" data-testid="maquina-costo">{{ costoDe(maquina) }}</td>
+                                <td class="py-1 text-right">
+                                  <button
+                                    type="button"
+                                    class="btn-secondary"
+                                    data-testid="editar-maquina"
+                                    (click)="openEditarMaquina(fila.planta, maquina)"
+                                    [attr.aria-label]="'Editar ' + maquina.name"
+                                  >Editar</button>
+                                </td>
+                              </tr>
+                            }
+                          </tbody>
+                        </table>
+                      }
+                    </td>
+                  </tr>
+                }
               } @empty {
                 <tr>
                   <td colspan="5" class="py-6 text-center text-gray-600 dark:text-gray-300" data-testid="vacio">
@@ -142,6 +203,7 @@ interface PlantaFila {
       <app-maquina-form-modal
         [planta]="planta"
         [disciplinas]="listaDisciplinas()"
+        [maquina]="maquinaEditando()"
         (closed)="closeMaquina()"
         (saved)="onMaquinaSaved()"
       />
@@ -164,6 +226,48 @@ export class PlantasComponent {
   protected readonly editing = signal<Plant | null>(null);
   /** Planta a la que se le agrega una máquina; null = modal cerrado. */
   protected readonly maquinaPara = signal<Plant | null>(null);
+  /** Máquina en edición; null = el modal está en modo alta. */
+  protected readonly maquinaEditando = signal<Machine | null>(null);
+
+  /**
+   * Plantas expandidas. Se guarda el id (no el índice) para que la expansión sobreviva a un
+   * `load()`: después de editar una máquina la tabla se recarga y el usuario no debería
+   * perder la fila que estaba mirando.
+   */
+  protected readonly expandidas = signal<ReadonlySet<number>>(new Set());
+
+  protected expandida(plantaId: number): boolean {
+    return this.expandidas().has(plantaId);
+  }
+
+  protected togglePlanta(plantaId: number): void {
+    this.expandidas.update((actual) => {
+      const siguiente = new Set(actual);
+      if (siguiente.has(plantaId)) {
+        siguiente.delete(plantaId);
+      } else {
+        siguiente.add(plantaId);
+      }
+      return siguiente;
+    });
+  }
+
+  /** Nombre de la disciplina de una máquina, o «—». */
+  protected nombreDisciplina(maquina: Machine): string {
+    if (!maquina.discipline_id) return '—';
+    return this.disciplinas().get(maquina.discipline_id) ?? '—';
+  }
+
+  /** SLA de la máquina; si es null hereda el de la empresa, y se dice explícitamente. */
+  protected slaDe(maquina: Machine): string {
+    return maquina.sla_horas != null ? `${maquina.sla_horas} h` : '— (gral)';
+  }
+
+  /** Costo de inactividad por minuto; sin dato por equipo se muestra «— (gral)». */
+  protected costoDe(maquina: Machine): string {
+    const valor = maquina.costo_inactividad_minuto;
+    return valor != null ? valor.toLocaleString('es-CL') : '— (gral)';
+  }
 
   /**
    * Avisa que el catálogo cambió (alta o edición de planta, alta de máquina).
@@ -238,15 +342,26 @@ export class PlantasComponent {
   }
 
   protected openMaquina(planta: Plant): void {
+    this.maquinaEditando.set(null);
     this.maquinaPara.set(planta);
+  }
+
+  /** Abre el modal en modo edición con la máquina elegida (y su planta, para el título). */
+  protected openEditarMaquina(planta: Plant, maquina: Machine): void {
+    this.maquinaPara.set(planta);
+    this.maquinaEditando.set(maquina);
+    // Al editar conviene ver la planta expandida al volver.
+    this.expandidas.update((actual) => new Set(actual).add(planta.id));
   }
 
   protected closeMaquina(): void {
     this.maquinaPara.set(null);
+    this.maquinaEditando.set(null);
   }
 
   protected onMaquinaSaved(): void {
     this.maquinaPara.set(null);
+    this.maquinaEditando.set(null);
     this.load();
     this.actualizado.emit();
   }

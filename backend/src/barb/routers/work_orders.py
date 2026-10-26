@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile
+from psycopg import errors as pg_errors
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from barb.core.config import settings
@@ -166,7 +167,7 @@ async def get_work_orders(empresa_id: int | None = Query(default=None), sesion: 
     scope = resolver_empresa(sesion, empresa_id)
     try:
         rows = await fetch_all(
-            f"{_WORK_ORDER_SELECT} WHERE {_EMPRESA_FILTER} ORDER BY ot.fecha_creacion DESC, ot.ot_id DESC",
+            f"{_WORK_ORDER_SELECT} WHERE {_EMPRESA_FILTER} ORDER BY {_ORDEN_PRIORIDAD}, ot.fecha_creacion DESC, ot.ot_id DESC",
             {"empresa_id": scope},
         )
         return [row_to_work_order(row, rol=sesion["rol"]) for row in rows]
@@ -331,6 +332,13 @@ PRIORIDADES_VALIDAS = ("low", "medium", "high", "urgent")
 SEVERIDADES_VALIDAS = ("low", "medium", "high", "critical")
 DESCRIPCION_MAX_LEN = 5000
 
+# Orden del listado: primero lo urgente, después lo más reciente. Un técnico tiene que ver
+# arriba lo que más corre riesgo, no lo último que se creó.
+_ORDEN_PRIORIDAD = (
+    "CASE ot.priority "
+    "WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END"
+)
+
 
 def _validate_enum(value: str, allowed: tuple[str, ...], field_name: str) -> str:
     if value not in allowed:
@@ -339,6 +347,42 @@ def _validate_enum(value: str, allowed: tuple[str, ...], field_name: str) -> str
             detail=f"Valor inválido para '{field_name}': '{value}'. Permitidos: {', '.join(allowed)}.",
         )
     return value
+
+
+# Multiplicador del SLA según la urgencia de la OT: más urgencia, menos plazo.
+# La máquina dice cuánto tiempo tolera estar parada; la prioridad dice cuánto de ese plazo
+# se puede usar esta vez. `urgent` = la mitad del SLA, `low` = 50 % más.
+SLA_POR_PRIORIDAD = {
+    "urgent": 0.5,
+    "high": 0.75,
+    "medium": 1.0,
+    "low": 1.5,
+}
+
+
+async def _sla_efectivo_minutos(maquina_id: int, priority: str) -> int:
+    """
+    Minutos de plazo para esta OT: SLA de la máquina (o el global) × factor de prioridad.
+
+    `sla_horas` por máquina puede no existir todavía en la base (las columnas están
+    pendientes de un ALTER manual), así que la consulta tolera `UndefinedColumn` y cae al
+    SLA global. Se hace FUERA de la transacción de creación: una consulta que falla dentro
+    de una transacción la deja abortada.
+    """
+    sla_horas: float | None = None
+    try:
+        fila = await fetch_one(
+            "SELECT sla_horas FROM maquina WHERE maquina_id = %(id)s", {"id": maquina_id}
+        )
+        if fila and fila.get("sla_horas") is not None:
+            sla_horas = float(fila["sla_horas"])
+    except pg_errors.UndefinedColumn:
+        # La columna todavía no existe: se usa el SLA general. No es un error del usuario.
+        logger.info("maquina.sla_horas no existe todavia; la OT usa el SLA global.")
+
+    base_minutos = sla_horas * 60 if sla_horas and sla_horas > 0 else settings.sla_target_minutes
+    factor = SLA_POR_PRIORIDAD.get((priority or "").lower(), 1.0)
+    return max(1, int(round(base_minutos * factor)))
 
 
 async def _ensure_machine_exists(maquina_id: int, empresa_id: int | None = None) -> int:
@@ -430,6 +474,9 @@ async def create_work_order(request: Request, sesion: dict = Depends(get_sesion_
     # Multi-empresa: la máquina debe ser de la empresa del usuario (el super_usuario puede
     # operar sobre cualquiera) y el técnico debe pertenecer a la misma empresa que la máquina.
     empresa_maquina = await _ensure_machine_exists(maquina_id, resolver_empresa(sesion))
+    # SLA efectivo: SLA de la máquina (o el global) × factor de prioridad. Se calcula antes
+    # de abrir la transacción porque consulta la máquina en otra conexión.
+    sla_minutos = await _sla_efectivo_minutos(maquina_id, priority)
     await _ensure_technician_exists(tecnico_id, empresa_maquina)
 
     temp_numero_ot = f"OT-TEMP-{uuid.uuid4().hex[:6]}"
@@ -445,7 +492,9 @@ async def create_work_order(request: Request, sesion: dict = Depends(get_sesion_
                 ) VALUES (
                     %(numero_ot)s, %(maquina_id)s, %(tecnico_id)s, %(creado_por)s, %(tipo)s,
                     %(descripcion_problema)s, %(descripcion_reparacion)s, %(resolution)s,
-                    %(priority)s, %(severity)s, %(fecha_vencimiento)s, %(estado)s
+                    %(priority)s, %(severity)s,
+                    COALESCE(%(fecha_vencimiento)s, NOW() + make_interval(mins => %(sla_minutos)s)),
+                    %(estado)s
                 )
                 RETURNING ot_id
                 """,
@@ -461,6 +510,7 @@ async def create_work_order(request: Request, sesion: dict = Depends(get_sesion_
                     "priority": priority,
                     "severity": severity,
                     "fecha_vencimiento": fecha_vencimiento,
+                    "sla_minutos": sla_minutos,
                     "estado": estado,
                 },
             )

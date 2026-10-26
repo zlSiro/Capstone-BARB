@@ -25,8 +25,8 @@ const PLANTAS: Plant[] = [
 ];
 
 const MAQUINAS: Machine[] = [
-  { id: 10, name: 'Compressor A1', discipline_id: 1, plant_id: 1 },
-  { id: 11, name: 'Motor Drive D1', discipline_id: 2, plant_id: 1 },
+  { id: 10, name: 'Compressor A1', codigo: 'COMP-A1', discipline_id: 1, plant_id: 1, sla_horas: 8, costo_inactividad_minuto: 3500 },
+  { id: 11, name: 'Motor Drive D1', codigo: 'MOTOR-D1', discipline_id: 2, plant_id: 1, sla_horas: null, costo_inactividad_minuto: null },
   { id: 12, name: 'Pump E4', discipline_id: 1, plant_id: 2 },
 ];
 
@@ -43,6 +43,7 @@ function crearServicio(over: Partial<Record<'getPlants' | 'getMachines' | 'getDi
     crearPlantaCompleta: vi.fn(),
     actualizarPlanta: vi.fn(),
     agregarMaquina: vi.fn(),
+    actualizarMaquina: vi.fn(),
   };
 }
 
@@ -321,5 +322,42 @@ describe('PlantasComponent', () => {
 
       expect(avisos).toBe(0);
     });
+  });
+  it('al expandir una planta muestra sus máquinas con SLA y costo', () => {
+    const { fixture, el } = setup();
+    const filasAntes = el.querySelectorAll('[data-testid="fila-maquinas"]');
+    expect(filasAntes.length).toBe(0);
+
+    (el.querySelector('[data-testid="expandir-planta"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    const filas = el.querySelectorAll('[data-testid="fila-maquina"]');
+    expect(filas.length).toBe(2);
+    const nombres = [...el.querySelectorAll('[data-testid="maquina-nombre"]')].map((n) => n.textContent?.trim());
+    expect(nombres).toEqual(['Compressor A1', 'Motor Drive D1']);
+    expect(texto(el, 'maquina-codigo', 0)).toContain('COMP-A1');
+    expect(texto(el, 'maquina-sla', 0)).toContain('8 h');
+    expect(texto(el, 'maquina-costo', 0)).toContain('3.500');
+  });
+
+  it('una máquina sin SLA propio se muestra como «— (gral)»', () => {
+    const { fixture, el } = setup();
+    (el.querySelector('[data-testid="expandir-planta"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(texto(el, 'maquina-sla', 1)).toContain('(gral)');
+    expect(texto(el, 'maquina-costo', 1)).toContain('(gral)');
+  });
+
+  it('volver a pulsar el chevron oculta las máquinas', () => {
+    const { fixture, el } = setup();
+    const chevron = el.querySelector('[data-testid="expandir-planta"]') as HTMLButtonElement;
+    chevron.click();
+    fixture.detectChanges();
+    expect(el.querySelectorAll('[data-testid="fila-maquina"]').length).toBe(2);
+
+    chevron.click();
+    fixture.detectChanges();
+    expect(el.querySelectorAll('[data-testid="fila-maquina"]').length).toBe(0);
   });
 });

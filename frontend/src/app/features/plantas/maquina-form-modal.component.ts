@@ -1,7 +1,7 @@
-import { Component, computed, inject, input, output, signal } from '@angular/core';
+import { Component, computed, inject, input, linkedSignal, output, signal } from '@angular/core';
 import { FormField, form, required, validate } from '@angular/forms/signals';
 
-import { Discipline, MaquinaCreada, MaquinaNuevaPayload, Plant } from '../../core/models';
+import { Discipline, Machine, MaquinaActualizada, MaquinaCreada, MaquinaNuevaPayload, MaquinaUpdatePayload, Plant } from '../../core/models';
 import { CatalogService } from '../../core/services/catalog.service';
 import { ToastService } from '../../core/services/toast.service';
 import { apiErrorMessage } from '../../core/utils/http-error';
@@ -35,8 +35,12 @@ interface MaquinaModel {
   imports: [FormField, ModalComponent],
   template: `
     <app-modal
-      title="Agregar máquina"
-      [subtitle]="'Se agregará a la planta «' + planta().name + '».'"
+      [title]="esEdicion() ? 'Editar máquina' : 'Agregar máquina'"
+      [subtitle]="
+        esEdicion()
+          ? 'Cambia los datos de «' + maquina()!.name + '» en ' + planta().name + '.'
+          : 'Se agregará a la planta «' + planta().name + '».'
+      "
       (closed)="closed.emit()"
     >
       <form class="grid gap-4" (submit)="$event.preventDefault(); guardar()" novalidate>
@@ -77,24 +81,42 @@ interface MaquinaModel {
         </div>
 
         <div>
-          <label for="maq-disciplina" class="fld-label">Disciplina</label>
-          <input
-            id="maq-disciplina"
-            type="text"
-            class="fld-input"
-            list="disciplinas-existentes"
-            placeholder="Mecánica, Eléctrica… (opcional)"
-            data-testid="maquina-disciplina"
-            [formField]="f.disciplina"
-          />
-          <datalist id="disciplinas-existentes">
-            @for (d of nombresDisciplinas(); track d) {
-              <option [value]="d"></option>
-            }
-          </datalist>
-          <p class="mt-1 text-xs text-slate-400">
-            Si no existe en tu empresa, se crea.
-          </p>
+          @if (esEdicion()) {
+            <!-- En edición se elige una disciplina existente: crear una nueva es parte del
+                 alta de la planta, no de editar un equipo. -->
+            <label for="maq-disciplina" class="fld-label">Disciplina</label>
+            <select
+              id="maq-disciplina"
+              class="fld-input"
+              data-testid="maquina-disciplina-select"
+              [value]="model().disciplina"
+              (change)="cambiarDisciplinaSelect($any($event.target).value)"
+            >
+              <option value="">Sin disciplina</option>
+              @for (d of disciplinas(); track d.id) {
+                <option [value]="d.id" [selected]="model().disciplina === '' + d.id">{{ d.name }}</option>
+              }
+            </select>
+          } @else {
+            <label for="maq-disciplina" class="fld-label">Disciplina</label>
+            <input
+              id="maq-disciplina"
+              type="text"
+              class="fld-input"
+              list="disciplinas-existentes"
+              placeholder="Mecánica, Eléctrica… (opcional)"
+              data-testid="maquina-disciplina"
+              [formField]="f.disciplina"
+            />
+            <datalist id="disciplinas-existentes">
+              @for (d of nombresDisciplinas(); track d) {
+                <option [value]="d"></option>
+              }
+            </datalist>
+            <p class="mt-1 text-xs text-slate-400">
+              Si no existe en tu empresa, se crea.
+            </p>
+          }
         </div>
 
         <div class="grid gap-4 sm:grid-cols-2">
@@ -145,7 +167,7 @@ interface MaquinaModel {
             Cancelar
           </button>
           <button type="submit" class="btn-primary" data-testid="guardar-maquina" [disabled]="submitting()">
-            {{ submitting() ? 'Agregando…' : 'Agregar máquina' }}
+            {{ submitting() ? (esEdicion() ? 'Guardando…' : 'Agregando…') : (esEdicion() ? 'Guardar cambios' : 'Agregar máquina') }}
           </button>
         </div>
       </form>
@@ -162,17 +184,38 @@ export class MaquinaFormModalComponent {
   readonly disciplinas = input<Discipline[]>([]);
 
   readonly closed = output<void>();
-  readonly saved = output<MaquinaCreada>();
+  /** Máquina a editar. `null` = alta de una máquina nueva. */
+  readonly maquina = input<Machine | null>(null);
+
+  readonly saved = output<MaquinaCreada | MaquinaActualizada>();
 
   protected readonly submitting = signal(false);
   protected readonly errorGeneral = signal<string | null>(null);
 
-  protected readonly model = signal<MaquinaModel>({
-    nombre: '',
-    codigo: '',
-    disciplina: '',
-    slaHoras: '',
-    costoInactividad: '',
+  /** `true` = se está editando una máquina existente (PATCH); `false` = alta (POST). */
+  protected readonly esEdicion = computed(() => this.maquina() !== null);
+
+  /**
+   * En edición se parte de la máquina; en alta, de campos vacíos. `linkedSignal` recalcula
+   * el estado inicial cuando cambia el input, así el mismo componente sirve para los dos
+   * casos sin duplicar el formulario.
+   *
+   * En edición, `disciplina` guarda el **id** de la disciplina (se elige de una lista); en
+   * alta guarda el **nombre** (se puede escribir una nueva y el backend la crea).
+   */
+  protected readonly model = linkedSignal<MaquinaModel>(() => {
+    const m = this.maquina();
+    if (!m) {
+      return { nombre: '', codigo: '', disciplina: '', slaHoras: '', costoInactividad: '' };
+    }
+    return {
+      nombre: m.name,
+      codigo: m.codigo ?? '',
+      disciplina: m.discipline_id ? String(m.discipline_id) : '',
+      slaHoras: m.sla_horas != null ? String(m.sla_horas) : '',
+      costoInactividad:
+        m.costo_inactividad_minuto != null ? String(m.costo_inactividad_minuto) : '',
+    };
   });
   protected readonly f = form(this.model, (p) => {
     required(p.nombre, { message: 'Ingresa el nombre de la máquina.' });
@@ -216,10 +259,49 @@ export class MaquinaFormModalComponent {
     return Number.isFinite(n) ? n : null;
   }
 
+  /**
+   * Cambio de disciplina en modo edición. Va por `model.update` en vez de `[formField]`
+   * porque el `<select>` compara `string` del DOM con el `number` del catálogo y el binding
+   * de Signal Forms dejaba el control vacío.
+   */
+  protected cambiarDisciplinaSelect(valor: string): void {
+    this.model.update((m) => ({ ...m, disciplina: valor }));
+  }
+
   protected guardar(): void {
     if (this.submitting()) return;
     this.f().markAsTouched();
     if (!this.f().valid()) return;
+
+    this.submitting.set(true);
+    this.errorGeneral.set(null);
+
+    if (this.esEdicion()) {
+      const id = this.maquina()!.id;
+      // En edición, `disciplina` guarda el id: se elige de la lista de la empresa.
+      const texto = this.model().disciplina.trim();
+      const payload: MaquinaUpdatePayload = {
+        nombre: this.model().nombre.trim(),
+        codigo: this.model().codigo.trim(),
+        disciplina_id: texto ? Number(texto) : null,
+        sla_horas: this.numeroOpcional(this.model().slaHoras),
+        costo_inactividad_minuto: this.numeroOpcional(this.model().costoInactividad),
+      };
+      this.catalogo.actualizarMaquina(id, payload).subscribe({
+        next: (maquina) => {
+          this.submitting.set(false);
+          this.toast.success(`Máquina «${maquina.nombre}» actualizada.`);
+          this.saved.emit(maquina);
+        },
+        error: (err) => {
+          this.submitting.set(false);
+          const mensaje = apiErrorMessage(err, 'No se pudo actualizar la máquina.');
+          this.errorGeneral.set(mensaje);
+          this.toast.error(mensaje);
+        },
+      });
+      return;
+    }
 
     const payload: MaquinaNuevaPayload = {
       nombre: this.model().nombre.trim(),
@@ -230,8 +312,6 @@ export class MaquinaFormModalComponent {
       costo_inactividad_minuto: this.numeroOpcional(this.model().costoInactividad),
     };
 
-    this.submitting.set(true);
-    this.errorGeneral.set(null);
     this.catalogo.agregarMaquina(this.planta().id, payload).subscribe({
       next: (maquina) => {
         this.submitting.set(false);

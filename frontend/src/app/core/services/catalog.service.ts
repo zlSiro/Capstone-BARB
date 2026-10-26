@@ -2,8 +2,10 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Machine, Plant, Discipline, Technician } from '../models';
 import {
+  MaquinaActualizada,
   MaquinaCreada,
   MaquinaNuevaPayload,
+  MaquinaUpdatePayload,
   PlantaActualizada,
   PlantaCompletaPayload,
   PlantaCompletaResponse,
@@ -56,5 +58,15 @@ export class CatalogService {
   /** Agrega una máquina a una planta existente (HU-25, CGBIDA-466). */
   agregarMaquina(plantaId: number, payload: MaquinaNuevaPayload) {
     return this.http.post<MaquinaCreada>(`${this.apiUrl}/plantas/${plantaId}/maquinas`, payload);
+  }
+
+  /**
+   * Edita una máquina existente: nombre, código, disciplina, SLA y costo de inactividad.
+   *
+   * Es un PATCH parcial: solo se envían los campos que cambian. El backend valida el código
+   * repetido dentro de la planta (409) y que la máquina sea de la empresa de la sesión (404).
+   */
+  actualizarMaquina(maquinaId: number, payload: MaquinaUpdatePayload) {
+    return this.http.patch<MaquinaActualizada>(`${this.apiUrl}/maquinas/${maquinaId}`, payload);
   }
 }

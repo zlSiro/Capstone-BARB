@@ -6,13 +6,15 @@ import { forkJoin } from 'rxjs';
 import { CatalogService } from '../../../../core/services/catalog.service';
 import { WorkOrdersService } from '../../../../core/services/work-orders.service';
 import { ToastService } from '../../../../core/services/toast.service';
-import { Machine, Technician, WorkOrder, WorkOrderPriority } from '../../../../core/models';
+import { Machine, Technician, WorkOrder, WorkOrderPriority, WorkOrderSeverity } from '../../../../core/models';
 
 interface CreateOtFormModel {
   title: string;
   machineId: string;
   technicianId: string;
   priority: WorkOrderPriority;
+  /** Impacto de la falla. Vacío = sin clasificar (el backend acepta null). */
+  severity: WorkOrderSeverity | '';
   description: string;
 }
 
@@ -24,6 +26,7 @@ function defaultModel(): CreateOtFormModel {
     machineId: '',
     technicianId: '',
     priority: 'medium',
+    severity: '',
     description: '',
   };
 }
@@ -119,6 +122,21 @@ function defaultModel(): CreateOtFormModel {
               <option value="high">Alta</option>
               <option value="urgent">Urgente</option>
             </select>
+          </div>
+
+          <div>
+            <label for="ot-severity" class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Severidad</label>
+            <select
+              [formField]="otForm.severity"
+              id="ot-severity"
+              class="w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="">Sin clasificar</option>
+              <option value="low">Baja</option>
+              <option value="medium">Media</option>
+              <option value="high">Alta</option>
+              <option value="critical">Crítica</option>
+            </select>
+            <p class="mt-1 text-xs text-slate-400">Impacto de la falla (independiente de la urgencia).</p>
           </div>
 
           <div class="md:col-span-2">
@@ -267,6 +285,7 @@ export class CreateOtModalComponent {
     formData.append('tecnico_id', m.technicianId);
     formData.append('descripcion_problema', `${m.title.trim()}\n\n${m.description.trim()}`.trim());
     formData.append('priority', m.priority);
+    if (m.severity) formData.append('severity', m.severity);
     if (this.selectedFile()) {
       formData.append('photos', this.selectedFile()!);
     }
