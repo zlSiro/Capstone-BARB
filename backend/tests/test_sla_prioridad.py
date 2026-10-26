@@ -125,9 +125,18 @@ async def test_la_ot_nace_con_vencimiento_calculado(ot_creada):
     )
 
     assert fila["fecha_vencimiento"] is not None, "la OT debe nacer con plazo"
+
+    # El plazo esperado se calcula con el SLA real de la máquina, no con una constante del
+    # test: si la base ya tiene `sla_horas` poblado (lo está), manda ese valor.
+    maquina = await fetch_one("SELECT sla_horas FROM maquina WHERE maquina_id = 1")
+    sla_maquina = maquina["sla_horas"] if maquina else None
+    base_min = float(sla_maquina) * 60 if sla_maquina else settings.sla_target_minutes
+    esperado = base_min * 0.5  # urgent
+
     delta_min = (fila["fecha_vencimiento"] - fila["fecha_creacion"]).total_seconds() / 60
-    # 1440 min (global) × 0.5 = 720, con holgura por el tiempo del request.
-    assert 700 <= delta_min <= 740, f"plazo inesperado: {delta_min} minutos"
+    assert abs(delta_min - esperado) <= max(2.0, esperado * 0.02), (
+        f"plazo inesperado: {delta_min} min (esperado ~{esperado})"
+    )
 
 
 @pytest.mark.asyncio

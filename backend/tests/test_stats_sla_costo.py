@@ -122,10 +122,11 @@ async def test_las_ots_sin_vencimiento_usan_la_regla_anterior(ots):
 
 
 @pytest.mark.asyncio
-async def test_el_ahorro_usa_el_costo_global_si_la_maquina_no_tiene_costo(ots):
+async def test_el_ahorro_usa_el_costo_de_la_maquina(ots):
     """
-    Fallback de costo: sin `maquina.costo_inactividad_minuto` (columna ausente o en NULL),
-    el ahorro se valoriza con el costo global. Se comprueba por diferencia.
+    El ahorro se valoriza con el costo de la máquina de la OT; si esa máquina no tiene costo
+    propio (o la columna no existe), cae al global de la empresa. Se comprueba por
+    diferencia, y el valor esperado se lee de la base para no atarse al dataset.
     """
     r = await stats.get_financial_impact(days=None, sesion=SESION)
     ahorro_antes = r["financials"]["ahorro_generado"]
@@ -141,7 +142,11 @@ async def test_el_ahorro_usa_el_costo_global_si_la_maquina_no_tiene_costo(ots):
     r = await stats.get_financial_impact(days=None, sesion=SESION)
     delta = r["financials"]["ahorro_generado"] - ahorro_antes
 
-    assert delta == pytest.approx(minutos * settings.downtime_cost_per_minute, rel=0.01)
+    maquina = await fetch_one("SELECT costo_inactividad_minuto FROM maquina WHERE maquina_id = 1")
+    costo = maquina["costo_inactividad_minuto"] if maquina else None
+    costo_minuto = float(costo) if costo is not None else float(settings.downtime_cost_per_minute)
+
+    assert delta == pytest.approx(minutos * costo_minuto, rel=0.01)
 
 
 @pytest.mark.asyncio
