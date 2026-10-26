@@ -12,6 +12,10 @@ export interface MaquinaNuevaPayload {
   codigo: string;
   /** Nombre de la disciplina, o null si la máquina no tiene. */
   disciplina: string | null;
+  /** SLA propio de la máquina, en horas. null = default de la empresa. */
+  sla_horas?: number | null;
+  /** Costo de inactividad por minuto. null = sin dato por equipo. */
+  costo_inactividad_minuto?: number | null;
 }
 
 /** Cuerpo de `POST /api/plantas/completa`. */
@@ -35,6 +39,8 @@ export interface MaquinaCreada {
   nombre: string;
   codigo: string;
   disciplina_id: number | null;
+  sla_horas?: number | null;
+  costo_inactividad_minuto?: number | null;
 }
 
 /** Respuesta de `POST /api/plantas/completa`. */

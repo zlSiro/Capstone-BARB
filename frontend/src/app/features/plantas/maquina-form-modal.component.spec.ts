@@ -116,6 +116,8 @@ describe('MaquinaFormModalComponent', () => {
       nombre: 'Compressor N1',
       codigo: 'N1',
       disciplina: 'Mecánica',
+      sla_horas: null,
+      costo_inactividad_minuto: null,
     });
   });
 
@@ -132,6 +134,8 @@ describe('MaquinaFormModalComponent', () => {
       nombre: 'Generador',
       codigo: 'GEN-1',
       disciplina: null,
+      sla_horas: null,
+      costo_inactividad_minuto: null,
     });
   });
 

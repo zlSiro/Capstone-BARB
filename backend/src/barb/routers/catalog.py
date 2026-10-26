@@ -5,7 +5,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from psycopg import errors as pg_errors
 
-from barb.core.db import fetch_all, transaction
+from barb.core.db import fetch_all, fetch_one, transaction
 from barb.core.permissions import (
     empresa_obligatoria,
     get_sesion_actual,
@@ -27,14 +27,66 @@ logger = logging.getLogger("barb.catalog")
 
 router = APIRouter()
 
+# SLA y costo de inactividad por máquina: el código queda listo, pero las columnas tienen
+# que existir en la base. Como AGENTS.md prohíbe migrar, el router se adapta en caliente:
+# si las columnas están, se leen y escriben; si no, la API sigue funcionando (devuelve None)
+# en vez de romper el mantenedor entero con un UndefinedColumn.
+_SQL_PARA_SLA_COSTO = (
+    "ALTER TABLE maquina "
+    "ADD COLUMN IF NOT EXISTS sla_horas NUMERIC(6,2), "
+    "ADD COLUMN IF NOT EXISTS costo_inactividad_minuto NUMERIC(12,2);"
+)
+
+_sla_costo_disponibles_cache: bool | None = None
+
+
+async def _sla_costo_disponibles() -> bool:
+    """
+    ¿La tabla `maquina` tiene ya `sla_horas` y `costo_inactividad_minuto`?
+
+    Se memoriza porque lo consulta el listado de máquinas, que corre en cada carga de la
+    pantalla. Si se corre el SQL con el backend levantado, hay que reiniciarlo para que el
+    cambio se tome (o esperar al próximo arranque).
+    """
+    global _sla_costo_disponibles_cache
+    if _sla_costo_disponibles_cache is None:
+        fila = await fetch_one(
+            """
+            SELECT COUNT(*) AS n
+              FROM information_schema.columns
+             WHERE table_name = 'maquina'
+               AND column_name IN ('sla_horas', 'costo_inactividad_minuto')
+            """
+        )
+        _sla_costo_disponibles_cache = bool(fila and int(fila["n"]) == 2)
+    return _sla_costo_disponibles_cache
+
+
+def _error_sla_sin_columnas() -> HTTPException:
+    """Se enviaron valores de SLA/costo pero la base todavía no tiene las columnas."""
+    return HTTPException(
+        status_code=503,
+        detail=(
+            "La base de datos todavía no tiene las columnas sla_horas y "
+            "costo_inactividad_minuto en la tabla 'maquina'. Hay que correr este SQL "
+            f"(la aplicación no migra): {_SQL_PARA_SLA_COSTO}"
+        ),
+    )
+
 
 @router.get("/api/machines", dependencies=[Depends(require_auth)])
 async def get_machines(empresa_id: int | None = Query(default=None), sesion: dict = Depends(get_sesion_actual)):
     # Multi-empresa: la máquina pertenece a la empresa de su planta.
     try:
+        extra = await _sla_costo_disponibles()
+        columnas_extra = (
+            ", m.sla_horas, m.costo_inactividad_minuto"
+            if extra
+            else ", NULL::numeric AS sla_horas, NULL::numeric AS costo_inactividad_minuto"
+        )
         rows = await fetch_all(
-            """
-            SELECT m.maquina_id AS id, m.nombre, m.disciplina_id, m.planta_id
+            f"""
+            SELECT m.maquina_id AS id, m.nombre, m.disciplina_id, m.planta_id{columnas_extra}
             FROM maquina m
             JOIN planta p ON p.planta_id = m.planta_id
             WHERE (%(empresa_id)s::int IS NULL OR p.empresa_id = %(empresa_id)s)
@@ -43,7 +95,14 @@ async def get_machines(empresa_id: int | None = Query(default=None), sesion: dic
             {"empresa_id": resolver_empresa(sesion, empresa_id)},
         )
         return [
-            {"id": int(r["id"]), "name": r["nombre"], "discipline_id": r["disciplina_id"], "plant_id": r["planta_id"]}
+            {
+                "id": int(r["id"]),
+                "name": r["nombre"],
+                "discipline_id": r["disciplina_id"],
+                "plant_id": r["planta_id"],
+                "sla_horas": r["sla_horas"],
+                "costo_inactividad_minuto": r["costo_inactividad_minuto"],
+            }
             for r in rows
         ]
     except Exception:
@@ -222,6 +281,7 @@ async def create_planta_completa(
                 await _resolver_disciplina(cur, empresa_id, nombre, cache_disciplinas)
 
             maquinas: list[MaquinaCreada] = []
+            extra = await _sla_costo_disponibles()
             for maquina in payload.maquinas:
                 disciplina_id: int | None = None
                 if maquina.disciplina and maquina.disciplina.strip():
@@ -229,25 +289,54 @@ async def create_planta_completa(
                         cur, empresa_id, maquina.disciplina.strip(), cache_disciplinas
                     )
 
-                await cur.execute(
-                    """
-                    INSERT INTO maquina (planta_id, disciplina_id, nombre, codigo)
-                    VALUES (%(planta_id)s, %(disciplina_id)s, %(nombre)s, %(codigo)s)
-                    RETURNING maquina_id
-                    """,
-                    {
-                        "planta_id": planta_id,
-                        "disciplina_id": disciplina_id,
-                        "nombre": maquina.nombre.strip(),
-                        "codigo": maquina.codigo.strip(),
-                    },
-                )
+                if extra:
+                    await cur.execute(
+                        """
+                        INSERT INTO maquina (
+                            planta_id, disciplina_id, nombre, codigo,
+                            sla_horas, costo_inactividad_minuto
+                        )
+                        VALUES (
+                            %(planta_id)s, %(disciplina_id)s, %(nombre)s, %(codigo)s,
+                            %(sla_horas)s, %(costo_inactividad_minuto)s
+                        )
+                        RETURNING maquina_id
+                        """,
+                        {
+                            "planta_id": planta_id,
+                            "disciplina_id": disciplina_id,
+                            "nombre": maquina.nombre.strip(),
+                            "codigo": maquina.codigo.strip(),
+                            "sla_horas": maquina.sla_horas,
+                            "costo_inactividad_minuto": maquina.costo_inactividad_minuto,
+                        },
+                    )
+                else:
+                    if maquina.sla_horas is not None or maquina.costo_inactividad_minuto is not None:
+                        # No se ignora en silencio: el usuario cargó un dato que no se va a
+                        # guardar. Mejor decirlo que dejarlo creer que quedó.
+                        raise _error_sla_sin_columnas()
+                    await cur.execute(
+                        """
+                        INSERT INTO maquina (planta_id, disciplina_id, nombre, codigo)
+                        VALUES (%(planta_id)s, %(disciplina_id)s, %(nombre)s, %(codigo)s)
+                        RETURNING maquina_id
+                        """,
+                        {
+                            "planta_id": planta_id,
+                            "disciplina_id": disciplina_id,
+                            "nombre": maquina.nombre.strip(),
+                            "codigo": maquina.codigo.strip(),
+                        },
+                    )
                 maquinas.append(
                     MaquinaCreada(
                         maquina_id=int((await cur.fetchone())["maquina_id"]),
                         nombre=maquina.nombre.strip(),
                         codigo=maquina.codigo.strip(),
                         disciplina_id=disciplina_id,
+                        sla_horas=maquina.sla_horas,
+                        costo_inactividad_minuto=maquina.costo_inactividad_minuto,
                     )
                 )
     except pg_errors.UniqueViolation as e:
@@ -413,6 +502,12 @@ async def add_maquina(
     disciplina = (payload.disciplina or "").strip()
 
     try:
+        extra = await _sla_costo_disponibles()
+        if not extra and (
+            payload.sla_horas is not None or payload.costo_inactividad_minuto is not None
+        ):
+            raise _error_sla_sin_columnas()
+
         async with transaction() as cur:
             await _planta_de_la_empresa(cur, planta_id, empresa_id)
 
@@ -430,19 +525,42 @@ async def add_maquina(
             if disciplina:
                 disciplina_id = await _resolver_disciplina(cur, empresa_id, disciplina, {})
 
-            await cur.execute(
-                """
-                INSERT INTO maquina (planta_id, disciplina_id, nombre, codigo)
-                VALUES (%(planta)s, %(disc)s, %(nombre)s, %(codigo)s)
-                RETURNING maquina_id
-                """,
-                {
-                    "planta": planta_id,
-                    "disc": disciplina_id,
-                    "nombre": nombre,
-                    "codigo": codigo,
-                },
-            )
+            if extra:
+                await cur.execute(
+                    """
+                    INSERT INTO maquina (
+                        planta_id, disciplina_id, nombre, codigo,
+                        sla_horas, costo_inactividad_minuto
+                    )
+                    VALUES (
+                        %(planta)s, %(disc)s, %(nombre)s, %(codigo)s,
+                        %(sla_horas)s, %(costo_inactividad_minuto)s
+                    )
+                    RETURNING maquina_id
+                    """,
+                    {
+                        "planta": planta_id,
+                        "disc": disciplina_id,
+                        "nombre": nombre,
+                        "codigo": codigo,
+                        "sla_horas": payload.sla_horas,
+                        "costo_inactividad_minuto": payload.costo_inactividad_minuto,
+                    },
+                )
+            else:
+                await cur.execute(
+                    """
+                    INSERT INTO maquina (planta_id, disciplina_id, nombre, codigo)
+                    VALUES (%(planta)s, %(disc)s, %(nombre)s, %(codigo)s)
+                    RETURNING maquina_id
+                    """,
+                    {
+                        "planta": planta_id,
+                        "disc": disciplina_id,
+                        "nombre": nombre,
+                        "codigo": codigo,
+                    },
+                )
             maquina_id = int((await cur.fetchone())["maquina_id"])
     except pg_errors.UniqueViolation as e:
         raise HTTPException(
@@ -460,6 +578,8 @@ async def add_maquina(
         nombre=nombre,
         codigo=codigo,
         disciplina_id=disciplina_id,
+        sla_horas=payload.sla_horas,
+        costo_inactividad_minuto=payload.costo_inactividad_minuto,
     )
 
 

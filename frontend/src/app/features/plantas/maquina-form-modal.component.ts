@@ -11,6 +11,13 @@ interface MaquinaModel {
   nombre: string;
   codigo: string;
   disciplina: string;
+  /**
+   * Se guardan como texto, no como number: un `<input type="number">` vacío debe
+   * significar «usar el default», no 0. Un 0 explícito es un SLA válido (atención
+   * inmediata), así que la distinción importa y se resuelve al enviar.
+   */
+  slaHoras: string;
+  costoInactividad: string;
 }
 
 /**
@@ -90,6 +97,40 @@ interface MaquinaModel {
           </p>
         </div>
 
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label for="maq-sla-horas" class="fld-label">SLA de la máquina (horas)</label>
+            <input
+              id="maq-sla-horas"
+              type="number"
+              step="0.5"
+              class="fld-input"
+              placeholder="24"
+              data-testid="maquina-sla-horas"
+              [formField]="f.slaHoras"
+            />
+            <p class="mt-1 text-xs text-slate-400">
+              Tiempo máximo para atender una OT de este equipo. Vacío = SLA general de la empresa.
+            </p>
+          </div>
+
+          <div>
+            <label for="maq-costo-inactividad" class="fld-label">Costo de inactividad (por minuto)</label>
+            <input
+              id="maq-costo-inactividad"
+              type="number"
+              step="100"
+              class="fld-input"
+              placeholder="2000"
+              data-testid="maquina-costo-inactividad"
+              [formField]="f.costoInactividad"
+            />
+            <p class="mt-1 text-xs text-slate-400">
+              Cuánto cuesta cada minuto de esta máquina detenida. Vacío = sin valorización por equipo.
+            </p>
+          </div>
+        </div>
+
         @if (errorGeneral(); as err) {
           <p role="alert" class="fld-error" data-testid="error-servidor">{{ err }}</p>
         }
@@ -126,7 +167,13 @@ export class MaquinaFormModalComponent {
   protected readonly submitting = signal(false);
   protected readonly errorGeneral = signal<string | null>(null);
 
-  protected readonly model = signal<MaquinaModel>({ nombre: '', codigo: '', disciplina: '' });
+  protected readonly model = signal<MaquinaModel>({
+    nombre: '',
+    codigo: '',
+    disciplina: '',
+    slaHoras: '',
+    costoInactividad: '',
+  });
   protected readonly f = form(this.model, (p) => {
     required(p.nombre, { message: 'Ingresa el nombre de la máquina.' });
     required(p.codigo, { message: 'Ingresa el código de la máquina.' });
@@ -135,11 +182,39 @@ export class MaquinaFormModalComponent {
         ? undefined
         : { kind: 'required', message: 'Ingresa el código de la máquina.' },
     );
+    // Los numéricos son opcionales, pero si se escriben tienen que ser válidos: un SLA
+    // negativo o un texto suelto no deben llegar al backend.
+    validate(p.slaHoras, ({ value }) => {
+      const texto = value().trim();
+      if (!texto) return undefined;
+      const n = Number(texto);
+      if (!Number.isFinite(n) || n < 0 || n > 8760) {
+        return { kind: 'range', message: 'El SLA debe ser un número entre 0 y 8760 horas.' };
+      }
+      return undefined;
+    });
+    validate(p.costoInactividad, ({ value }) => {
+      const texto = value().trim();
+      if (!texto) return undefined;
+      const n = Number(texto);
+      if (!Number.isFinite(n) || n < 0) {
+        return { kind: 'range', message: 'El costo debe ser un número mayor o igual a 0.' };
+      }
+      return undefined;
+    });
   });
 
   protected readonly nombresDisciplinas = computed(() =>
     this.disciplinas().map((d) => d.name).sort((a, b) => a.localeCompare(b)),
   );
+
+  /** `''` → null (sin dato); `'0'` → 0 (valor explícito). */
+  private numeroOpcional(texto: string): number | null {
+    const limpio = texto.trim();
+    if (!limpio) return null;
+    const n = Number(limpio);
+    return Number.isFinite(n) ? n : null;
+  }
 
   protected guardar(): void {
     if (this.submitting()) return;
@@ -150,6 +225,9 @@ export class MaquinaFormModalComponent {
       nombre: this.model().nombre.trim(),
       codigo: this.model().codigo.trim(),
       disciplina: this.model().disciplina.trim() || null,
+      // Vacío → null (usa el default de la empresa). "0" es un valor válido y se respeta.
+      sla_horas: this.numeroOpcional(this.model().slaHoras),
+      costo_inactividad_minuto: this.numeroOpcional(this.model().costoInactividad),
     };
 
     this.submitting.set(true);

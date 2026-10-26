@@ -21,6 +21,11 @@ class MaquinaCreate(BaseModel):
     codigo: str = Field(min_length=1, max_length=50)
     # Nombre de la disciplina; debe venir también en `disciplinas` o existir en la empresa.
     disciplina: str | None = Field(default=None, max_length=50)
+    # SLA y costo de inactividad configurables POR MÁQUINA (pedido del profesor): no todos
+    # los equipos valen lo mismo parados ni toleran la misma demora. `None` = usar el
+    # default de la empresa (`SLA_TARGET_MINUTES`).
+    sla_horas: float | None = Field(default=None, ge=0, le=8760)
+    costo_inactividad_minuto: float | None = Field(default=None, ge=0)
 
 
 class PlantaCompletaCreate(BaseModel):
@@ -45,6 +50,10 @@ class MaquinaCreada(BaseModel):
     nombre: str
     codigo: str
     disciplina_id: int | None
+    # Se devuelven tal como quedaron en la base (None si la base todavía no tiene las
+    # columnas, o si no se enviaron).
+    sla_horas: float | None = None
+    costo_inactividad_minuto: float | None = None
 
 
 class PlantaCompletaResponse(BaseModel):
@@ -79,3 +88,5 @@ class MaquinaNuevaRequest(BaseModel):
     nombre: str = Field(min_length=1, max_length=100)
     codigo: str = Field(min_length=1, max_length=50)
     disciplina: str | None = Field(default=None, max_length=50)
+    sla_horas: float | None = Field(default=None, ge=0, le=8760)
+    costo_inactividad_minuto: float | None = Field(default=None, ge=0)
