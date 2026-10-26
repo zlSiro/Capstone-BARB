@@ -114,8 +114,12 @@ def test_la_query_de_machines_excluye_las_canceladas_del_costo():
     fuente = Path(stats.__file__).read_text(encoding="utf-8")
     # La consulta vive en el helper `_maquinas_sql`, que se ejecuta dos veces (por volumen
     # y por costo). El filtro tiene que estar en el SQL, así que las DOS listas lo heredan.
+    # Se delimita por el final real de la función (`machines_query =`), no por un número fijo
+    # de caracteres: con una ventana fija, cualquier línea nueva en el helper dejaba de
+    # alcanzar el filtro y el test fallaba sin que hubiera cambiado el SQL.
     inicio = fuente.index("def _maquinas_sql")
-    fragmento = fuente[inicio : inicio + 1600]
+    fin = fuente.index("machines_query =", inicio)
+    fragmento = fuente[inicio:fin]
     assert "estado != 'cancelled'" in fragmento, fragmento
     assert fragmento.count("estado != 'cancelled'") == 1, (
         "el filtro debe estar una sola vez, en el SQL compartido"

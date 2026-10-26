@@ -59,7 +59,7 @@ class _Fila(dict):
 def _fila_financiera() -> _Fila:
     """Fila del bloque `financials`. Valores neutros: lo que se prueba es el MTBF."""
     return _Fila(
-        mttr=100, costo_total_acumulado=1000, downtime_evitado_min=0,
+        mttr=100, costo_total_acumulado=1000, downtime_evitado_min=0, ahorro_inactividad=0,
         total_completadas=4, completadas_en_sla=4, total_ots=10, abiertas=6,
     )
 
@@ -89,7 +89,7 @@ def _mock_pool(fallas: int, downtime_min: int = 0):
             # en la de impacto anual, y esa ambigüedad ya provocó un bug real. Los alias
             # vienen del SELECT de stats.py y son únicos.
             if es_impacto(self._actual):
-                return _Fila(incidentes_periodo=4, tiempo_promedio_real=90.0)
+                return _Fila(incidentes_periodo=4, tiempo_promedio_real=90.0, costo_periodo=0, minutos_periodo=0)
             if es_mtbf(self._actual):  # MTBF
                 return _Fila(fallas=fallas, downtime_min=downtime_min)
             if " AS vencidas" in self._actual:  # estancadas (CGBIDA-396)
