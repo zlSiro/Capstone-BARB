@@ -184,8 +184,9 @@ async def test_el_prompt_incluye_el_contexto_recuperado(monkeypatch):
 async def test_la_tool_encuentra_una_maquina_real_y_cuenta_sus_ots(db_pool):
     """Integración: la Skill consulta datos verdaderos de la empresa 1 del seed."""
     tools = crear_tools(empresa_id=1)
-    # Consultar y crear; el orden importa poco, sí que estén las dos.
-    assert sorted(t.name for t in tools) == ["consultar_ots_maquina", "crear_ot"]
+    # Consultar y PROponer; el orden importa poco, sí que estén las dos. El candado
+    # (CGBIDA-476) garantiza que ninguna tool escriba en la base.
+    assert sorted(t.name for t in tools) == ["consultar_ots_maquina", "proponer_ot"]
 
     consultar = next(t for t in tools if t.name == "consultar_ots_maquina")
     salida = await consultar.ainvoke({"nombre_maquina": "Compressor A1"})
@@ -286,10 +287,7 @@ async def test_el_matcher_resuelve_las_mutaciones_de_cada_maquina_real(db_pool):
     revisadas = 0
     for fila in filas:
         for variante in _mutaciones(fila["nombre"]):
-            puntajes = [
-                (otra["nombre"], _puntaje(variante, otra["nombre"], otra["codigo"]))
-                for otra in filas
-            ]
+            puntajes = [(otra["nombre"], _puntaje(variante, otra["nombre"], otra["codigo"])) for otra in filas]
             puntajes.sort(key=lambda x: x[1], reverse=True)
             mejor, valor = puntajes[0]
 
@@ -297,9 +295,7 @@ async def test_el_matcher_resuelve_las_mutaciones_de_cada_maquina_real(db_pool):
             # ambiguas (el distintivo no está en la consulta): se exige que el puntaje
             # sea alto, no que gane.
             if valor < _UMBRAL_PARECIDO:
-                assert mejor == fila["nombre"], (
-                    f"«{variante}» quedó bajo el umbral (mejor {mejor} {valor:.2f})"
-                )
+                assert mejor == fila["nombre"], f"«{variante}» quedó bajo el umbral (mejor {mejor} {valor:.2f})"
             revisadas += 1
 
     assert revisadas > 30, f"se generaron muy pocas variantes ({revisadas})"
