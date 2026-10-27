@@ -20,11 +20,12 @@ Alcance de la regla:
 
 ### Por qué
 
-La base de producción (Supabase) **no está al día con `main`**. Su `alembic_version` quedó en
-`0007_tickets_conversacionales` y le faltan `0007_auditoria_cambios`, `0008_transacciones`,
-`0009_transacciones_triggers` y `0010_merge_heads` — trabajo previo ya mergeado en el repo, de
-otros autores. Cualquier migración nueva hereda esa deuda y queda "atrasada" respecto de
-producción, que es exactamente lo que bloqueó el PR #36.
+La base de producción (Supabase) está en `0010_merge_heads` (confirmado por JP el 2026-10-26),
+al día con la cadena de `main`. La regla se mantiene por decisión del equipo: un cambio
+estructural debe coordinarse con JP para no dejar el código adelantado respecto del esquema,
+que es lo que bloqueó el PR #36 cuando Supabase aún estaba en `0007_tickets_conversacionales`.
+Ese stub (migración perdida, aplicada en Supabase) se eliminó del repo al llegar Supabase a
+`0010`; una BD local que siga en esa revisión fallará con `Can't locate revision`.
 
 ### Estado conocido del entorno local
 
