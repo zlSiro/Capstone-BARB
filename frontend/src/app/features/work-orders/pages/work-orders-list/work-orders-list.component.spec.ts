@@ -1,9 +1,11 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
+import { Subject } from 'rxjs';
 
 import { WorkOrder } from '../../../../core/models';
 import { PermissionsService } from '../../../../core/permissions/permissions.service';
+import { OtLiveSimulatorService } from '../../../../core/services/ot-live-simulator.service';
 import { TenantContextService } from '../../../../core/services/tenant-context.service';
 import { ToastService } from '../../../../core/services/toast.service';
 import { WorkOrdersListComponent } from './work-orders-list.component';
@@ -87,6 +89,22 @@ describe('WorkOrdersListComponent — cambio de estado', () => {
     expect(toast.toasts()[0]).toMatchObject({ type: 'error', message: 'Transición no permitida.' });
     expect(el.querySelector('app-ot-status-change-dialog')).toBeNull();
     expect(el.querySelector('tbody select')).toBeNull(); // ahora es final: solo etiqueta
+  });
+
+  it('un cambio simulado reemplaza la fila, actualiza los conteos y avisa con un toast', () => {
+    const { fixture, http, el, toast } = setup();
+    const simulator = TestBed.inject(OtLiveSimulatorService);
+    (simulator as unknown as { subject: Subject<WorkOrder> }).subject.next({
+      ...ORDER,
+      estado: 'in_progress',
+      allowed_transitions: ['completed', 'cancelled'],
+    });
+    fixture.detectChanges();
+
+    expect((el.querySelector('tbody select') as HTMLSelectElement).options[0].textContent).toContain('En curso');
+    expect(toast.toasts()[0]).toMatchObject({ type: 'info', message: 'OT-2026-0001: Pendiente → En curso' });
+    expect(el.querySelector('tbody tr')?.classList).toContain('bg-yellow-50');
+    http.verify();
   });
 
   it('sin permiso no hay selector, solo la etiqueta de estado', () => {

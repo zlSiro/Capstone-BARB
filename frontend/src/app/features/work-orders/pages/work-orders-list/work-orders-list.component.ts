@@ -1,9 +1,12 @@
 import { DatePipe } from '@angular/common';
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { HttpErrorResponse } from '@angular/common/http';
 
+import { environment } from '../../../../../environments/environment';
 import { WorkOrder, WorkOrderStatus } from '../../../../core/models';
 import { PermissionsService } from '../../../../core/permissions/permissions.service';
+import { OtLiveSimulatorService } from '../../../../core/services/ot-live-simulator.service';
 import { TenantContextService } from '../../../../core/services/tenant-context.service';
 import { ToastService } from '../../../../core/services/toast.service';
 import { WorkOrdersService } from '../../../../core/services/work-orders.service';
@@ -11,6 +14,7 @@ import { apiErrorMessage } from '../../../../core/utils/http-error';
 import { CreateOtModalComponent } from '../../components/create-ot-modal/create-ot-modal.component';
 import { OtDetailSheetComponent } from '../../components/ot-detail-sheet/ot-detail-sheet.component';
 import { OtFilterBarComponent } from '../../components/ot-filter-bar/ot-filter-bar.component';
+import { OtLiveIndicatorComponent } from '../../components/ot-live-indicator/ot-live-indicator.component';
 import { OtStatusChangeDialogComponent } from '../../components/ot-status-change-dialog/ot-status-change-dialog.component';
 import { OtStatusSelectComponent, StatusChangeRequest } from '../../components/ot-status-select/ot-status-select.component';
 import { filterGroup, priorityMeta, statusMeta, tipoLabel } from '../../utils/work-order-labels';
@@ -22,6 +26,7 @@ import { filterGroup, priorityMeta, statusMeta, tipoLabel } from '../../utils/wo
     CreateOtModalComponent,
     OtDetailSheetComponent,
     OtFilterBarComponent,
+    OtLiveIndicatorComponent,
     OtStatusChangeDialogComponent,
     OtStatusSelectComponent,
   ],
@@ -29,7 +34,12 @@ import { filterGroup, priorityMeta, statusMeta, tipoLabel } from '../../utils/wo
     <section class="flex flex-col gap-4" aria-labelledby="ot-title">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 id="ot-title" class="text-2xl font-bold text-gray-800 dark:text-gray-100">Órdenes de Trabajo ({{ orders().length }})</h1>
+          <div class="flex flex-wrap items-center gap-3">
+            <h1 id="ot-title" class="text-2xl font-bold text-gray-800 dark:text-gray-100">Órdenes de Trabajo ({{ orders().length }})</h1>
+            @if (liveEnabled) {
+              <app-ot-live-indicator [state]="simulator.connection()" />
+            }
+          </div>
           <p class="text-sm text-gray-600 dark:text-gray-300">
             @if (canChangeStatus()) {
               Usa la columna «Estado» para actualizar el avance de cada orden. Cada cambio queda registrado con tu usuario y la hora.
@@ -75,7 +85,9 @@ import { filterGroup, priorityMeta, statusMeta, tipoLabel } from '../../utils/wo
             </thead>
             <tbody>
               @for (ot of filtered(); track ot.ot_id) {
-                <tr class="border-t border-gray-100 hover:bg-gray-50">
+                <tr
+                  class="border-t border-gray-100 transition-colors hover:bg-gray-50"
+                  [class.bg-yellow-50]="recentlyChanged().has(ot.numero_ot)">
                   <td class="whitespace-nowrap px-4 py-2">
                     <button
                       type="button"
@@ -140,6 +152,12 @@ export class WorkOrdersListComponent implements OnInit {
   private readonly toast = inject(ToastService);
   protected readonly permissions = inject(PermissionsService);
   protected readonly tenant = inject(TenantContextService);
+  protected readonly simulator = inject(OtLiveSimulatorService);
+  private readonly destroyRef = inject(DestroyRef);
+
+  protected readonly liveEnabled = environment.liveSimulation;
+  /** Filas con un cambio simulado reciente (resaltadas ~2 s). */
+  protected readonly recentlyChanged = signal<ReadonlySet<string>>(new Set());
 
   protected readonly orders = signal<WorkOrder[]>([]);
   protected readonly loading = signal(true);
@@ -183,6 +201,33 @@ export class WorkOrdersListComponent implements OnInit {
 
   ngOnInit(): void {
     this.load();
+    if (this.liveEnabled) this.startLive();
+  }
+
+  private startLive(): void {
+    this.simulator.start(() => this.orders());
+    this.destroyRef.onDestroy(() => this.simulator.stop());
+    this.simulator.changes.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(updated => this.applyLiveChange(updated));
+  }
+
+  private applyLiveChange(updated: WorkOrder): void {
+    const previous = this.orders().find(ot => ot.numero_ot === updated.numero_ot);
+    if (!previous) return;
+
+    this.orders.update(list => list.map(ot => (ot.numero_ot === updated.numero_ot ? updated : ot)));
+    if (this.detail()?.numero_ot === updated.numero_ot) this.detail.set(updated);
+    this.toast.info(`${updated.numero_ot}: ${statusMeta(previous.estado).label} → ${statusMeta(updated.estado).label}`);
+
+    this.recentlyChanged.update(set => new Set(set).add(updated.numero_ot));
+    setTimeout(
+      () =>
+        this.recentlyChanged.update(set => {
+          const next = new Set(set);
+          next.delete(updated.numero_ot);
+          return next;
+        }),
+      2000,
+    );
   }
 
   protected load(): void {
