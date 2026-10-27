@@ -129,3 +129,13 @@ Ojo:
 - **E2E en navegador**: pendiente, lado frontend.
 
 Resultados de carga: _pendiente de ejecutar con la BD arriba._
+
+## Frontend: simulador para demo
+
+El frontend **no consume el SSE real**. Para la demo del capstone (nadie crea OT ni mira SLA en vivo) el listado usa un simulador local:
+
+- `core/services/ot-live-simulator.service.ts`: cada 8–15 s avanza una OT no final (pending/assigned/overdue → in_progress; in_progress → completed, ~10 % cancelled) y recalcula `allowed_transitions`. Cada ~60 s simula una caída: `connection` pasa a `reconnecting` 3–5 s sin emitir cambios. Se pausa con la pestaña oculta.
+- `features/work-orders/components/ot-live-indicator`: pastilla «En vivo» / «Reconectando…» con la nota «(simulado)».
+- `work-orders-list`: aplica cada cambio a la lista (conteos incluidos), muestra toast y resalta la fila ~2 s.
+- Se apaga con `liveSimulation: false` en `environments/environment*.ts`.
+- Los cambios son solo de cliente: si el usuario intenta cambiar una OT simulada, el backend puede responder 409 y el listado se refresca (flujo existente).
