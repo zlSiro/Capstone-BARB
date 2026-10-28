@@ -37,7 +37,7 @@ class _Fila(dict):
 
 def _fila_financiera(costo: float) -> _Fila:
     return _Fila(
-        mttr=100, costo_total_acumulado=costo, downtime_evitado_min=0,
+        mttr=100, costo_total_acumulado=costo, downtime_evitado_min=0, ahorro_inactividad=0,
         total_completadas=4, completadas_en_sla=4, total_ots=10, abiertas=6,
     )
 
@@ -56,7 +56,7 @@ def _mock_pool(costo: float):
 
         async def fetchone(self):
             if "incidentes_periodo" in self._actual:
-                return _Fila(incidentes_periodo=4, tiempo_promedio_real=90.0)
+                return _Fila(incidentes_periodo=4, tiempo_promedio_real=90.0, costo_periodo=0, minutos_periodo=0)
             if " AS fallas" in self._actual:  # MTBF
                 return _Fila(fallas=4, downtime_min=0)
             if " AS vencidas" in self._actual:  # estancadas (CGBIDA-396)

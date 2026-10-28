@@ -3,6 +3,11 @@ import { Observable, Subject, of, throwError } from 'rxjs';
 
 import { Topology, TopologyNode, TopologyNodoDetalle, WorkOrder } from '../../core/models';
 import { TopologyService } from '../../core/services/topology.service';
+import { AuthService } from '../../core/services/auth.service';
+import { CatalogService } from '../../core/services/catalog.service';
+import { ToastService } from '../../core/services/toast.service';
+import { By } from '@angular/platform-browser';
+import { PlantasComponent } from '../plantas/plantas.component';
 import { TopologyComponent } from './topology.component';
 
 function nodo(overrides: Partial<TopologyNode> = {}): TopologyNode {
@@ -109,6 +114,23 @@ function canvas(el: HTMLElement): SVGSVGElement | null {
   return el.querySelector('[data-testid="topo-canvas"]');
 }
 
+/** Aristas dibujadas. Se excluyen los `<path>` de las puntas de flecha, que viven en defs. */
+function aristasDom(el: HTMLElement): SVGPathElement[] {
+  return Array.from(canvas(el)!.querySelectorAll<SVGPathElement>('path.arista'));
+}
+
+/** Extremos de una arista a partir de su `d`: "M x y C c1x c1y c2x c2y x2 y2". */
+function extremos(arista: SVGPathElement): [number, number, number, number] {
+  // Se descartan las letras de comando ("M", "C"): quedan solo los números.
+  const n = (arista.getAttribute('d') ?? '')
+    .trim()
+    .split(/\s+/)
+    .slice(1)
+    .map(Number)
+    .filter((v) => !Number.isNaN(v));
+  return [n[0], n[1], n[6], n[7]];
+}
+
 /** Servicio falso que no responde hasta que el test lo decide (para el estado de carga). */
 function setupConFuentePendiente() {
   const fuente = new Subject<Topology>();
@@ -193,11 +215,11 @@ describe('TopologyComponent', () => {
 
   it('dibuja una arista por conexión, recortada en el borde de cada nodo', () => {
     const { el } = setup(TOPOLOGIA);
-    const lineas = Array.from(canvas(el)!.querySelectorAll('line'));
+    const lineas = aristasDom(el);
     expect(lineas).toHaveLength(2);
     // p_1 centro = (565, 142.5) ; d_1 centro = (265, 342.5)
     const jerarquia = lineas.find((l) => l.getAttribute('data-relacion') === 'jerarquia')!;
-    const [x1, y1, x2, y2] = ['x1', 'y1', 'x2', 'y2'].map((a) => Number(jerarquia.getAttribute(a)));
+    const [x1, y1, x2, y2] = extremos(jerarquia);
 
     // La arista ya NO arranca ni termina en el centro: si lo hiciera, la punta de flecha
     // quedaría tapada por la tarjeta, que se dibuja después.
@@ -226,7 +248,7 @@ describe('TopologyComponent', () => {
       ],
     };
     const { el } = setup(rota);
-    expect(Array.from(canvas(el)!.querySelectorAll('line'))).toHaveLength(2);
+    expect(aristasDom(el)).toHaveLength(2);
   });
 
   it('muestra el error cuando el servicio falla, sin dejar el lienzo vacío mudo', () => {
@@ -468,7 +490,7 @@ describe('TopologyComponent', () => {
         // El marker-end y el :hover viven en el CSS del componente (styles), no en un
         // atributo: en jsdom no se resuelve CSS, así que se comprueba la clase.
         const { el } = setup(TOPOLOGIA);
-        const aristas = [...canvas(el)!.querySelectorAll('line')];
+        const aristas = aristasDom(el);
         expect(aristas.length).toBe(TOPOLOGIA.conexiones.length);
         for (const a of aristas) expect(a.getAttribute('class')).toContain('arista');
       });
@@ -635,7 +657,7 @@ describe('TopologyComponent', () => {
 
       // La misma instancia recibe otra topología no vuelve a pedirla, pero el
       // render debe seguir siendo consistente con lo recibido.
-      expect(canvas(fixture.nativeElement)!.querySelectorAll('line').length).toBe(2);
+      expect(aristasDom(fixture.nativeElement).length).toBe(2);
     });
 
     it('el panel se cierra y se reabre sin dejar estado colgado', () => {
@@ -1229,6 +1251,282 @@ describe('TopologyComponent', () => {
       const dialogo = el.querySelector('[role="dialog"]');
       expect(dialogo).not.toBeNull();
       expect(dialogo?.textContent).toContain('OT-2026-999');
+    });
+  });
+});
+
+
+/**
+ * Acceso al mantenedor de plantas desde Topología (HU-25, CGBIDA-466).
+ *
+ * El mantenedor dejó de tener ítem en el menú y ruta propia: se abre con un botón que
+ * sólo ven gerente y admin. El mapa se desmonta al entrar, pero la cámara vive en un
+ * signal del componente, así que se conserva.
+ */
+describe('TopologyComponent — acceso al mantenedor de plantas', () => {
+  function setupConRol(role: string | null, get = vi.fn(() => of(TOPOLOGIA))) {
+    // El subtítulo se afirma en español: se fija el idioma antes de crear el servicio.
+    window.localStorage.setItem('barb.lang', 'es');
+    TestBed.configureTestingModule({
+      imports: [TopologyComponent],
+      providers: [
+        { provide: TopologyService, useValue: { get, getNodo: getNodoDe(TOPOLOGIA) } },
+        { provide: AuthService, useValue: { user: () => (role ? { role, name: 'T' } : null) } },
+        {
+          provide: CatalogService,
+          useValue: {
+            getPlants: () => of([]),
+            getMachines: () => of([]),
+            getDisciplines: () => of([]),
+            crearPlantaCompleta: vi.fn(),
+            actualizarPlanta: vi.fn(),
+            agregarMaquina: vi.fn(),
+          },
+        },
+        {
+          provide: ToastService,
+          useValue: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() },
+        },
+      ],
+    });
+    const fixture = TestBed.createComponent(TopologyComponent);
+    fixture.detectChanges();
+    return { fixture, el: fixture.nativeElement as HTMLElement, get };
+  }
+
+  const boton = (el: HTMLElement) => el.querySelector<HTMLElement>('[data-testid="gestionar-activos"]');
+
+  it.each(['admin', 'gerente'])('muestra el botón para el rol %s', (role) => {
+    const { el } = setupConRol(role);
+    expect(boton(el)).not.toBeNull();
+    expect(boton(el)!.textContent).toContain('Gestionar activos');
+  });
+
+  it.each(['tecnico', 'operador', 'supervisor', 'engineer', 'visitante', null])(
+    'oculta el botón para el rol %s',
+    (role) => {
+      const { el } = setupConRol(role as string | null);
+      expect(boton(el)).toBeNull();
+    },
+  );
+
+  it('al pulsarlo muestra el mantenedor y esconde el mapa', () => {
+    const { fixture, el } = setupConRol('admin');
+    expect(el.querySelector('app-plantas')).toBeNull();
+    expect(canvas(el)).not.toBeNull();
+
+    boton(el)!.click();
+    fixture.detectChanges();
+
+    expect(el.querySelector('app-plantas')).not.toBeNull();
+    expect(canvas(el)).toBeNull();
+    // Los controles de cámara no tienen sentido sobre la tabla.
+    expect(el.querySelector('[data-testid="zoom-in"]')).toBeNull();
+    expect(boton(el)!.textContent).toContain('Volver al mapa');
+  });
+
+  it('al volver, el mapa reaparece y el botón recupera su texto', () => {
+    const { fixture, el } = setupConRol('admin');
+    boton(el)!.click();
+    fixture.detectChanges();
+    boton(el)!.click();
+    fixture.detectChanges();
+
+    expect(el.querySelector('app-plantas')).toBeNull();
+    expect(canvas(el)).not.toBeNull();
+    expect(boton(el)!.textContent).toContain('Gestionar activos');
+  });
+
+  it('conserva el zoom del mapa al entrar y salir del mantenedor', () => {
+    const { fixture, el } = setupConRol('admin');
+    const inicial = canvas(el)!.getAttribute('viewBox');
+
+    el.querySelector<HTMLElement>('[data-testid="zoom-in"]')!.click();
+    fixture.detectChanges();
+    const ampliado = canvas(el)!.getAttribute('viewBox');
+    expect(ampliado).not.toBe(inicial);
+
+    boton(el)!.click();
+    fixture.detectChanges();
+    boton(el)!.click();
+    fixture.detectChanges();
+
+    // La cámara vive en un signal del componente: sobrevive al desmontaje del SVG.
+    expect(canvas(el)!.getAttribute('viewBox')).toBe(ampliado);
+  });
+
+  it('no ofrece el acceso a quien no lo ve aunque llegue por URL', () => {
+    // La ruta /plantas ya no existe; el permiso sigue en la matriz y el botón lo respeta.
+    const { el } = setupConRol('tecnico');
+    expect(boton(el)).toBeNull();
+    expect(el.querySelector('app-plantas')).toBeNull();
+  });
+
+  it('el subtítulo cambia según la vista: mapa vs mantenedor', () => {
+    const { fixture, el } = setupConRol('admin');
+    const subtitulo = () => el.querySelector('[data-testid="topo-subtitulo"]')?.textContent?.trim();
+
+    expect(subtitulo()).toBe('Mapa de equipos por estado');
+
+    boton(el)!.click();
+    fixture.detectChanges();
+    expect(subtitulo()).toBe('Gestión de plantas y máquinas');
+
+    boton(el)!.click();
+    fixture.detectChanges();
+    expect(subtitulo()).toBe('Mapa de equipos por estado');
+  });
+
+  // --- Sincronización con el mantenedor (CGBIDA-466) ----------------------------
+
+  /** El hijo real, para emitir su `(actualizado)` sin pasar por la UI de alta. */
+  function hijoMantenedor(fixture: ReturnType<typeof TestBed.createComponent>) {
+    const depurar = fixture.debugElement.query(By.directive(PlantasComponent));
+    return depurar?.componentInstance as PlantasComponent | undefined;
+  }
+
+  it('recarga el mapa cuando el mantenedor avisa que hubo un cambio', () => {
+    const { fixture, el, get } = setupConRol('admin');
+    const llamadasIniciales = get.mock.calls.length;
+
+    boton(el)!.click();
+    fixture.detectChanges();
+
+    hijoMantenedor(fixture)!.actualizado.emit();
+    fixture.detectChanges();
+
+    expect(get.mock.calls.length).toBe(llamadasIniciales + 1);
+  });
+
+  it('también recarga al volver al mapa, por si el aviso no llegó', () => {
+    const { fixture, el, get } = setupConRol('admin');
+    const llamadasIniciales = get.mock.calls.length;
+
+    boton(el)!.click(); // entrar
+    fixture.detectChanges();
+    boton(el)!.click(); // volver
+    fixture.detectChanges();
+
+    expect(get.mock.calls.length).toBe(llamadasIniciales + 1);
+    expect(el.querySelector('app-plantas')).toBeNull();
+  });
+
+  it('no recarga al entrar al mantenedor: el mapa sigue siendo válido', () => {
+    const { fixture, el, get } = setupConRol('admin');
+    const llamadasIniciales = get.mock.calls.length;
+
+    boton(el)!.click();
+    fixture.detectChanges();
+
+    expect(get.mock.calls.length).toBe(llamadasIniciales);
+  });
+
+  it('se recupera de un error: una recarga posterior puede volver a pintar el mapa', () => {
+    let intentos = 0;
+    // El primer pedido falla; el segundo (la recarga) responde bien.
+    const get = vi.fn(() => (intentos++ === 0 ? throwError(() => new Error('500')) : of(TOPOLOGIA)));
+    const { fixture, el } = setupConRol('admin', get);
+
+    expect(el.querySelector('[data-testid="estado-error"]')).not.toBeNull();
+
+    boton(el)!.click();
+    fixture.detectChanges();
+    hijoMantenedor(fixture)!.actualizado.emit();
+    fixture.detectChanges();
+
+    // El lienzo solo existe en la vista de mapa, así que hay que volver para comprobarlo.
+    boton(el)!.click();
+    fixture.detectChanges();
+
+    expect(el.querySelector('[data-testid="estado-error"]')).toBeNull();
+    expect(el.querySelector('[data-testid="topo-canvas"]')).not.toBeNull();
+  });
+
+  // --- Legibilidad de las aristas: curvas y enfoque (HU-25) ----------------------
+
+  describe('legibilidad de las aristas', () => {
+    type Fixture = ReturnType<typeof TestBed.createComponent>;
+
+    /** Entra al nodo y refresca: el foco vive en un signal, sin detectChanges no se pinta. */
+    const entrar = (fixture: Fixture, el: HTMLElement, id: string) => {
+      el.querySelector(`g[data-nodo-id="${id}"]`)!.dispatchEvent(new MouseEvent('mouseenter'));
+      fixture.detectChanges();
+    };
+    const salir = (fixture: Fixture, el: HTMLElement, id: string) => {
+      el.querySelector(`g[data-nodo-id="${id}"]`)!.dispatchEvent(new MouseEvent('mouseleave'));
+      fixture.detectChanges();
+    };
+
+    const clasesArista = (el: HTMLElement) => aristasDom(el).map((a) => a.getAttribute('class') ?? '');
+
+    it('las aristas son curvas Bézier, no rectas', () => {
+      const { el } = setup(TOPOLOGIA);
+      for (const arista of aristasDom(el)) {
+        const d = arista.getAttribute('d') ?? '';
+        expect(d).toMatch(/^M [\d.]+ [\d.]+ C /);
+        // Sin curvas, el grafo se veía como una telaraña de rectas cruzadas.
+        expect(d).not.toContain('L');
+      }
+    });
+
+    it('sin foco, todas las aristas están activas y ningún nodo atenuado', () => {
+      const { el } = setup(TOPOLOGIA);
+      for (const clase of clasesArista(el)) {
+        expect(clase).not.toContain('arista-ajena');
+        expect(clase).not.toContain('arista-foco');
+      }
+      expect(el.querySelectorAll('.nodo-ajeno')).toHaveLength(0);
+    });
+
+    it('al pasar el mouse por una planta se enciende toda su rama y se atenúa el resto', () => {
+      const { fixture, el } = setup(TOPOLOGIA);
+      entrar(fixture, el, 'p_1');
+
+      // p_1 -> d_1 -> m_1: las dos aristas pertenecen a la rama de la planta.
+      const clases = clasesArista(el);
+      expect(clases.every((c) => c.includes('arista-foco'))).toBe(true);
+      expect(clases.some((c) => c.includes('arista-ajena'))).toBe(false);
+      expect(el.querySelectorAll('.nodo-ajeno')).toHaveLength(0);
+    });
+
+    it('al pasar el mouse por una máquina se encienden sus ancestros y se atenúan los hermanos', () => {
+      const topologia: Topology = {
+        nodos: [
+          ...TOPOLOGIA.nodos,
+          // Segunda máquina colgando de la misma disciplina: es "hermana" de m_1.
+          nodo({ nodo_id: 'm_2', nombre_visual: 'Motor D1', tipo: 'Máquina', pos_x: 300, pos_y: 500 }),
+        ],
+        conexiones: [
+          ...TOPOLOGIA.conexiones,
+          { conexion_id: 'conn_d1_m_2', origen_nodo_id: 'd_1', destino_nodo_id: 'm_2', tipo_relacion: 'pertenece' },
+        ],
+      };
+      const { fixture, el } = setup(topologia);
+      entrar(fixture, el, 'm_1');
+
+      const rama = aristasDom(el).filter((a) => (a.getAttribute('class') ?? '').includes('arista-foco'));
+      const ajenas = aristasDom(el).filter((a) => (a.getAttribute('class') ?? '').includes('arista-ajena'));
+
+      // Su arista (d_1 -> m_1) y la de su padre (p_1 -> d_1) quedan encendidas.
+      expect(rama).toHaveLength(2);
+      // La de su hermana (d_1 -> m_2) se apaga, y es la única que queda apagada.
+      expect(ajenas).toHaveLength(1);
+      expect(rama.length + ajenas.length).toBe(3);
+      // El nodo hermano también se atenúa; los de la rama no.
+      expect(el.querySelector('g[data-nodo-id="m_2"]')!.getAttribute('class')).toContain('nodo-ajeno');
+      expect(el.querySelector('g[data-nodo-id="p_1"]')!.getAttribute('class')).not.toContain('nodo-ajeno');
+    });
+
+    it('al salir del nodo vuelve todo a la normalidad', () => {
+      const { fixture, el } = setup(TOPOLOGIA);
+      entrar(fixture, el, 'p_1');
+      salir(fixture, el, 'p_1');
+
+      for (const clase of clasesArista(el)) {
+        expect(clase).not.toContain('arista-ajena');
+        expect(clase).not.toContain('arista-foco');
+      }
+      expect(el.querySelectorAll('.nodo-ajeno')).toHaveLength(0);
     });
   });
 });

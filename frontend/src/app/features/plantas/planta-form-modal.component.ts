@@ -1,7 +1,7 @@
-import { Component, computed, inject, output, signal } from '@angular/core';
+import { Component, computed, inject, input, linkedSignal, output, signal } from '@angular/core';
 import { FormField, form, required, validate } from '@angular/forms/signals';
 
-import { MaquinaNuevaPayload, PlantaCompletaPayload, PlantaCompletaResponse } from '../../core/models';
+import { MaquinaNuevaPayload, Plant, PlantaActualizada, PlantaCompletaPayload, PlantaCompletaResponse } from '../../core/models';
 import { CatalogService } from '../../core/services/catalog.service';
 import { ToastService } from '../../core/services/toast.service';
 import { apiErrorMessage } from '../../core/utils/http-error';
@@ -18,6 +18,13 @@ interface MaquinaForm {
   nombre: string;
   codigo: string;
   disciplina: string;
+  /**
+   * SLA y costo de inactividad propios de esta máquina, como texto: vacío significa «usar
+   * el default de la empresa», mientras que "0" es un valor explícito (atención inmediata).
+   * Un `<input type="number">` con `number` no permitiría distinguir esos dos casos.
+   */
+  slaHoras: string;
+  costoInactividad: string;
 }
 
 /**
@@ -37,17 +44,25 @@ interface MaquinaForm {
   imports: [FormField, ModalComponent],
   template: `
     <app-modal
-      [title]="paso() === 'form' ? 'Nueva planta' : 'Confirmar creación'"
+      [title]="
+        esEdicion()
+          ? 'Editar planta'
+          : paso() === 'form'
+            ? 'Nueva planta'
+            : 'Confirmar creación'
+      "
       [subtitle]="
-        paso() === 'form'
-          ? 'Crea la planta con sus disciplinas y máquinas en una sola operación.'
-          : 'Revisa el resumen antes de guardar.'
+        esEdicion()
+          ? 'Cambia el nombre o la ubicación. Las máquinas se gestionan aparte.'
+          : paso() === 'form'
+            ? 'Crea la planta con sus disciplinas y máquinas en una sola operación.'
+            : 'Revisa el resumen antes de guardar.'
       "
       size="lg"
       (closed)="closed.emit()"
     >
       @if (paso() === 'form') {
-        <form class="grid gap-4 md:grid-cols-2" (submit)="$event.preventDefault(); irAConfirmar()" novalidate>
+        <form class="grid gap-4 md:grid-cols-2" (submit)="$event.preventDefault(); esEdicion() ? guardar() : irAConfirmar()" novalidate>
           <div class="md:col-span-2">
             <label for="pla-nombre" class="fld-label">Nombre de la planta *</label>
             <input
@@ -78,6 +93,7 @@ interface MaquinaForm {
             />
           </div>
 
+          @if (!esEdicion()) {
           <!-- Disciplinas -->
           <fieldset class="md:col-span-2 rounded-lg border border-slate-700 p-4">
             <legend class="px-2 text-xs font-semibold uppercase tracking-wide text-slate-300">
@@ -138,56 +154,90 @@ interface MaquinaForm {
             }
 
             @for (m of maquinas(); track $index) {
-              <div class="mb-3 grid gap-2 rounded border border-slate-800 p-3 md:grid-cols-4">
-                <div>
-                  <label class="fld-label" [attr.for]="'maq-nombre-' + $index">Nombre *</label>
-                  <input
-                    [id]="'maq-nombre-' + $index"
-                    type="text"
-                    class="fld-input"
-                    data-testid="maquina-nombre"
-                    [value]="m.nombre"
-                    (input)="cambiarMaquina($index, 'nombre', $any($event.target).value)"
-                  />
+              <div class="mb-3 rounded border border-slate-800 p-3">
+                <div class="grid gap-2 md:grid-cols-4">
+                  <div>
+                    <label class="fld-label" [attr.for]="'maq-nombre-' + $index">Nombre *</label>
+                    <input
+                      [id]="'maq-nombre-' + $index"
+                      type="text"
+                      class="fld-input"
+                      data-testid="maquina-nombre"
+                      [value]="m.nombre"
+                      (input)="cambiarMaquina($index, 'nombre', $any($event.target).value)"
+                    />
+                  </div>
+                  <div>
+                    <label class="fld-label" [attr.for]="'maq-codigo-' + $index">Código *</label>
+                    <input
+                      [id]="'maq-codigo-' + $index"
+                      type="text"
+                      class="fld-input"
+                      data-testid="maquina-codigo"
+                      placeholder="CMP-01"
+                      [value]="m.codigo"
+                      (input)="cambiarMaquina($index, 'codigo', $any($event.target).value)"
+                    />
+                  </div>
+                  <div>
+                    <label class="fld-label" [attr.for]="'maq-disc-' + $index">Disciplina</label>
+                    <select
+                      [id]="'maq-disc-' + $index"
+                      class="fld-input"
+                      data-testid="maquina-disciplina"
+                      [value]="m.disciplina"
+                      (change)="cambiarMaquina($index, 'disciplina', $any($event.target).value)"
+                    >
+                      <option value="">Sin disciplina</option>
+                      @for (d of opcionesDisciplina(); track d) {
+                        <option [value]="d">{{ d }}</option>
+                      }
+                    </select>
+                  </div>
+                  <div class="flex items-end">
+                    <button
+                      type="button"
+                      class="w-full rounded border border-slate-600 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800"
+                      data-testid="quitar-maquina"
+                      (click)="quitarMaquina($index)"
+                      [attr.aria-label]="'Quitar máquina ' + (m.nombre || $index + 1)"
+                    >
+                      ✕ Quitar
+                    </button>
+                  </div>
                 </div>
-                <div>
-                  <label class="fld-label" [attr.for]="'maq-codigo-' + $index">Código *</label>
-                  <input
-                    [id]="'maq-codigo-' + $index"
-                    type="text"
-                    class="fld-input"
-                    data-testid="maquina-codigo"
-                    placeholder="CMP-01"
-                    [value]="m.codigo"
-                    (input)="cambiarMaquina($index, 'codigo', $any($event.target).value)"
-                  />
+
+                <div class="mt-2 grid gap-2 md:grid-cols-2">
+                  <div>
+                    <label class="fld-label" [attr.for]="'maq-sla-' + $index">SLA (horas)</label>
+                    <input
+                      [id]="'maq-sla-' + $index"
+                      type="number"
+                      step="0.5"
+                      class="fld-input"
+                      placeholder="24"
+                      data-testid="maquina-sla-horas"
+                      [value]="m.slaHoras"
+                      (input)="cambiarMaquina($index, 'slaHoras', $any($event.target).value)"
+                    />
+                  </div>
+                  <div>
+                    <label class="fld-label" [attr.for]="'maq-costo-' + $index">Costo de inactividad (por minuto)</label>
+                    <input
+                      [id]="'maq-costo-' + $index"
+                      type="number"
+                      step="100"
+                      class="fld-input"
+                      placeholder="2000"
+                      data-testid="maquina-costo-inactividad"
+                      [value]="m.costoInactividad"
+                      (input)="cambiarMaquina($index, 'costoInactividad', $any($event.target).value)"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label class="fld-label" [attr.for]="'maq-disc-' + $index">Disciplina</label>
-                  <select
-                    [id]="'maq-disc-' + $index"
-                    class="fld-input"
-                    data-testid="maquina-disciplina"
-                    [value]="m.disciplina"
-                    (change)="cambiarMaquina($index, 'disciplina', $any($event.target).value)"
-                  >
-                    <option value="">Sin disciplina</option>
-                    @for (d of opcionesDisciplina(); track d) {
-                      <option [value]="d">{{ d }}</option>
-                    }
-                  </select>
-                </div>
-                <div class="flex items-end">
-                  <button
-                    type="button"
-                    class="w-full rounded border border-slate-600 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800"
-                    data-testid="quitar-maquina"
-                    (click)="quitarMaquina($index)"
-                    [attr.aria-label]="'Quitar máquina ' + (m.nombre || $index + 1)"
-                  >
-                    ✕ Quitar
-                  </button>
-                </div>
+                <p class="mt-1 text-xs text-slate-400">
+                  Vacío = usa el SLA y el costo generales de la empresa.
+                </p>
               </div>
             }
 
@@ -204,6 +254,11 @@ interface MaquinaForm {
               <p role="alert" class="fld-error mt-2" data-testid="error-maquinas">{{ err }}</p>
             }
           </fieldset>
+          }
+
+          @if (errorGeneral(); as err) {
+            <p role="alert" class="fld-error md:col-span-2" data-testid="error-formulario">{{ err }}</p>
+          }
 
           <div class="md:col-span-2 flex justify-end gap-2 pt-2">
             <button
@@ -213,8 +268,8 @@ interface MaquinaForm {
             >
               Cancelar
             </button>
-            <button type="submit" class="btn-primary" data-testid="continuar">
-              Continuar
+              <button type="submit" class="btn-primary" data-testid="continuar" [disabled]="submitting()">
+                {{ esEdicion() ? (submitting() ? 'Guardando…' : 'Guardar cambios') : 'Continuar' }}
             </button>
           </div>
         </form>
@@ -297,15 +352,29 @@ export class PlantaFormModalComponent {
   private readonly catalogo = inject(CatalogService);
   private readonly toast = inject(ToastService);
 
+  /**
+   * Planta a editar. `null` (por defecto) = alta masiva.
+   *
+   * En edición sólo se tocan nombre y ubicación: las listas de disciplinas y máquinas se
+   * ocultan porque agregar máquinas a una planta existente tiene su propio modal
+   * (`maquina-form-modal`), y el backend no permite recrear dependencias desde el PATCH.
+   */
+  readonly planta = input<Plant | null>(null);
+
   readonly closed = output<void>();
-  readonly saved = output<PlantaCompletaResponse>();
+  readonly saved = output<PlantaActualizada | PlantaCompletaResponse>();
+
+  protected readonly esEdicion = computed(() => this.planta() !== null);
 
   /** Paso actual: captura de datos o confirmación. */
   protected readonly paso = signal<'form' | 'confirmar'>('form');
   protected readonly submitting = signal(false);
   protected readonly errorGeneral = signal<string | null>(null);
 
-  protected readonly model = signal<PlantaFormModel>({ nombre: '', ubicacion: '' });
+  protected readonly model = linkedSignal<PlantaFormModel>(() => ({
+    nombre: this.planta()?.name ?? '',
+    ubicacion: this.planta()?.ubicacion ?? '',
+  }));
   protected readonly f = form(this.model, (p) => {
     required(p.nombre, { message: 'Ingresa el nombre de la planta.' });
     validate(p.nombre, ({ value }) =>
@@ -350,8 +419,18 @@ export class PlantaFormModalComponent {
         nombre: m.nombre.trim(),
         codigo: m.codigo.trim(),
         disciplina: m.disciplina.trim() || null,
+        sla_horas: this.numeroOpcional(m.slaHoras),
+        costo_inactividad_minuto: this.numeroOpcional(m.costoInactividad),
       })),
   );
+
+  /** `''` → null (sin dato); `'0'` → 0 (valor explícito). */
+  private numeroOpcional(texto: string): number | null {
+    const limpio = (texto ?? '').trim();
+    if (!limpio) return null;
+    const n = Number(limpio);
+    return Number.isFinite(n) ? n : null;
+  }
 
   protected readonly totalMaquinas = computed(() => this.maquinasLimpias().length);
 
@@ -365,8 +444,31 @@ export class PlantaFormModalComponent {
     if (new Set(codigos).size !== codigos.length) {
       return 'Hay dos máquinas con el mismo código.';
     }
+
+    // Los numéricos son opcionales, pero si se escriben tienen que ser válidos: un SLA
+    // negativo o un texto suelto no deben llegar al backend (que respondería 422).
+    if (filas.some((m) => !this.slaValido(m.slaHoras))) {
+      return 'El SLA debe ser un número entre 0 y 8760 horas (o quedar vacío).';
+    }
+    if (filas.some((m) => !this.costoValido(m.costoInactividad))) {
+      return 'El costo de inactividad debe ser un número mayor o igual a 0 (o quedar vacío).';
+    }
     return null;
   });
+
+  private slaValido(texto: string): boolean {
+    const limpio = (texto ?? '').trim();
+    if (!limpio) return true;
+    const n = Number(limpio);
+    return Number.isFinite(n) && n >= 0 && n <= 8760;
+  }
+
+  private costoValido(texto: string): boolean {
+    const limpio = (texto ?? '').trim();
+    if (!limpio) return true;
+    const n = Number(limpio);
+    return Number.isFinite(n) && n >= 0;
+  }
 
   protected agregarDisciplina(): void {
     this.disciplinas.update((d) => [...d, '']);
@@ -381,7 +483,10 @@ export class PlantaFormModalComponent {
   }
 
   protected agregarMaquina(): void {
-    this.maquinas.update((m) => [...m, { nombre: '', codigo: '', disciplina: '' }]);
+    this.maquinas.update((m) => [
+      ...m,
+      { nombre: '', codigo: '', disciplina: '', slaHoras: '', costoInactividad: '' },
+    ]);
   }
 
   protected quitarMaquina(indice: number): void {
@@ -407,6 +512,33 @@ export class PlantaFormModalComponent {
 
   protected guardar(): void {
     if (this.submitting()) return;
+    this.submitting.set(true);
+    this.errorGeneral.set(null);
+
+    const planta = this.planta();
+
+    // Edición: PATCH con nombre y ubicación. No se tocan disciplinas ni máquinas.
+    if (planta) {
+      this.catalogo
+        .actualizarPlanta(planta.id, {
+          nombre: this.model().nombre.trim(),
+          ubicacion: this.model().ubicacion.trim() || null,
+        })
+        .subscribe({
+          next: (respuesta) => {
+            this.submitting.set(false);
+            this.toast.success(`Planta «${respuesta.nombre}» actualizada.`);
+            this.saved.emit(respuesta);
+          },
+          error: (err) => {
+            this.submitting.set(false);
+            const mensaje = apiErrorMessage(err, 'No se pudo actualizar la planta.');
+            this.errorGeneral.set(mensaje);
+            this.toast.error(mensaje);
+          },
+        });
+      return;
+    }
 
     const payload: PlantaCompletaPayload = {
       nombre: this.model().nombre.trim(),
@@ -415,8 +547,6 @@ export class PlantaFormModalComponent {
       maquinas: this.maquinasLimpias(),
     };
 
-    this.submitting.set(true);
-    this.errorGeneral.set(null);
     this.catalogo.crearPlantaCompleta(payload).subscribe({
       next: (respuesta) => {
         this.submitting.set(false);
@@ -440,3 +570,4 @@ export class PlantaFormModalComponent {
     });
   }
 }
+

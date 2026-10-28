@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { of, throwError } from 'rxjs';
 import { HttpErrorResponse } from '@angular/common/http';
 
-import { PlantaCompletaResponse } from '../../core/models';
+import { Plant, PlantaCompletaResponse } from '../../core/models';
 import { CatalogService } from '../../core/services/catalog.service';
 import { ToastService } from '../../core/services/toast.service';
 import { PlantaFormModalComponent } from './planta-form-modal.component';
@@ -29,11 +29,23 @@ const RESPUESTA: PlantaCompletaResponse = {
   maquinas: [{ maquina_id: 41, nombre: 'Compressor T1', codigo: 'T1', disciplina_id: 3 }],
 };
 
+const RESPUESTA_EDITADA = { planta_id: 9, nombre: 'Planta Norte Renombrada', ubicacion: 'Maipú' };
+
 function crearServicio(respuesta: PlantaCompletaResponse = RESPUESTA) {
-  return { crearPlantaCompleta: vi.fn(() => of(respuesta)) };
+  return {
+    crearPlantaCompleta: vi.fn(() => of(respuesta)),
+    actualizarPlanta: vi.fn(() => of(RESPUESTA_EDITADA)),
+  };
 }
 
-function setup(servicio = crearServicio()) {
+/** Planta existente para el modo edición. */
+const PLANTA_EXISTENTE: Plant = {
+  id: 9,
+  name: 'Planta Norte',
+  ubicacion: 'Quilicura',
+};
+
+function setup(servicio = crearServicio(), planta: Plant | null = null) {
   const toast = { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() };
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({
@@ -44,6 +56,7 @@ function setup(servicio = crearServicio()) {
     ],
   });
   const fixture = TestBed.createComponent(PlantaFormModalComponent);
+  if (planta) fixture.componentRef.setInput('planta', planta);
   fixture.detectChanges();
   return { fixture, el: fixture.nativeElement as HTMLElement, servicio, toast };
 }
@@ -239,6 +252,53 @@ describe('PlantaFormModalComponent', () => {
   });
 
   describe('envío al backend', () => {
+    it('manda el SLA y el costo de inactividad de cada máquina', () => {
+      const { fixture, el, servicio } = setup();
+      llenarPlanta(fixture, el);
+
+      pulsar(el, 'agregar-maquina');
+      pulsar(el, 'agregar-maquina');
+      fixture.detectChanges();
+      escribir(el, 'maquina-nombre', 'Compressor T1', 0);
+      escribir(el, 'maquina-codigo', 'T1', 0);
+      escribir(el, 'maquina-sla-horas', '8', 0);
+      escribir(el, 'maquina-costo-inactividad', '3500', 0);
+      escribir(el, 'maquina-nombre', 'Pump T2', 1);
+      escribir(el, 'maquina-codigo', 'T2', 1);
+      // La segunda queda sin SLA: debe viajar null (default de la empresa), no 0.
+      fixture.detectChanges();
+
+      pulsar(el, 'continuar');
+      fixture.detectChanges();
+      pulsar(el, 'guardar');
+      fixture.detectChanges();
+
+      const [payload] = (servicio.crearPlantaCompleta as any).mock.calls[0];
+      expect(payload.maquinas[0].sla_horas).toBe(8);
+      expect(payload.maquinas[0].costo_inactividad_minuto).toBe(3500);
+      expect(payload.maquinas[1].sla_horas).toBeNull();
+      expect(payload.maquinas[1].costo_inactividad_minuto).toBeNull();
+    });
+
+    it('un SLA negativo bloquea el envío y no llama al backend', () => {
+      const { fixture, el, servicio } = setup();
+      llenarPlanta(fixture, el);
+
+      pulsar(el, 'agregar-maquina');
+      fixture.detectChanges();
+      escribir(el, 'maquina-nombre', 'Compressor T1', 0);
+      escribir(el, 'maquina-codigo', 'T1', 0);
+      escribir(el, 'maquina-sla-horas', '-4', 0);
+      fixture.detectChanges();
+
+      // No avanza al paso de confirmación: el error se muestra y no hay POST.
+      pulsar(el, 'continuar');
+      fixture.detectChanges();
+
+      expect(texto(el, 'error-maquinas')).toContain('SLA');
+      expect(servicio.crearPlantaCompleta).not.toHaveBeenCalled();
+    });
+
     it('manda el payload limpio: sin filas vacías, sin repetidos, ubicación null', () => {
       const { fixture, el, servicio } = setup();
       llenarPlanta(fixture, el);
@@ -275,15 +335,27 @@ describe('PlantaFormModalComponent', () => {
         ubicacion: null,
         disciplinas: ['Mecánica'],
         maquinas: [
-          { nombre: 'Compressor T1', codigo: 'T1', disciplina: 'Mecánica' },
-          { nombre: 'Pump T2', codigo: 'T2', disciplina: null },
+          {
+            nombre: 'Compressor T1',
+            codigo: 'T1',
+            disciplina: 'Mecánica',
+            sla_horas: null,
+            costo_inactividad_minuto: null,
+          },
+          {
+            nombre: 'Pump T2',
+            codigo: 'T2',
+            disciplina: null,
+            sla_horas: null,
+            costo_inactividad_minuto: null,
+          },
         ],
       });
     });
 
     it('al crear avisa por toast y emite la respuesta', () => {
       const { fixture, el, toast } = setup();
-      const emitidos: PlantaCompletaResponse[] = [];
+      const emitidos: (PlantaCompletaResponse | { nombre: string })[] = [];
       fixture.componentInstance.saved.subscribe((r) => emitidos.push(r));
 
       llenarPlanta(fixture, el);
@@ -294,7 +366,7 @@ describe('PlantaFormModalComponent', () => {
 
       expect(toast.success).toHaveBeenCalled();
       expect(emitidos).toHaveLength(1);
-      expect(emitidos[0].planta_id).toBe(9);
+      expect((emitidos[0] as PlantaCompletaResponse).planta_id).toBe(9);
       // El mensaje distingue disciplinas nuevas de reutilizadas.
       expect(toast.success.mock.calls[0][0]).toContain('1 disciplina(s) nueva(s), 1 reutilizada(s)');
     });
@@ -304,9 +376,12 @@ describe('PlantaFormModalComponent', () => {
         status: 409,
         error: { detail: 'Ya existe una planta llamada «Planta Norte» en tu empresa.' },
       });
-      const servicio = { crearPlantaCompleta: vi.fn(() => throwError(() => error)) };
+      const servicio = {
+        crearPlantaCompleta: vi.fn(() => throwError(() => error)),
+        actualizarPlanta: vi.fn(),
+      };
       const { fixture, el, toast } = setup(servicio);
-      const emitidos: PlantaCompletaResponse[] = [];
+      const emitidos: (PlantaCompletaResponse | { nombre: string })[] = [];
       fixture.componentInstance.saved.subscribe((r) => emitidos.push(r));
 
       llenarPlanta(fixture, el);
@@ -333,4 +408,83 @@ describe('PlantaFormModalComponent', () => {
 
     expect(cerrado).toBe(true);
   });
+
+  // --- Modo edición (HU-25, CGBIDA-466) -----------------------------------------
+
+  describe('modo edición', () => {
+    it('con una planta precarga nombre y ubicación, y cambia el título', () => {
+      const { el } = setup(crearServicio(), PLANTA_EXISTENTE);
+      expect(el.querySelector('h2')?.textContent).toContain('Editar planta');
+      expect((el.querySelector('[data-testid="planta-nombre"]') as HTMLInputElement).value).toBe('Planta Norte');
+      expect((el.querySelector('[data-testid="planta-ubicacion"]') as HTMLInputElement).value).toBe('Quilicura');
+    });
+
+    it('oculta las listas de disciplinas y máquinas', () => {
+      const { el } = setup(crearServicio(), PLANTA_EXISTENTE);
+      expect(el.querySelector('[data-testid="agregar-disciplina"]')).toBeNull();
+      expect(el.querySelector('[data-testid="agregar-maquina"]')).toBeNull();
+    });
+
+    it('el botón dice «Guardar cambios» y no pasa por la confirmación', () => {
+      const { fixture, el } = setup(crearServicio(), PLANTA_EXISTENTE);
+      const boton = el.querySelector('[data-testid="continuar"]')!;
+      expect(boton.textContent).toContain('Guardar cambios');
+
+      boton.dispatchEvent(new Event('submit'));
+      fixture.detectChanges();
+      // Sigue en el formulario: no hay paso de confirmación en edición.
+      expect(el.querySelector('[data-testid="planta-nombre"]')).not.toBeNull();
+      expect(el.querySelector('[data-testid="confirmacion"]')).toBeNull();
+    });
+
+    it('guarda con PATCH y NO con el POST de alta', () => {
+      const { fixture, el, servicio } = setup(crearServicio(), PLANTA_EXISTENTE);
+
+      escribir(el, 'planta-nombre', 'Planta Norte Renombrada');
+      escribir(el, 'planta-ubicacion', 'Maipú');
+      fixture.detectChanges();
+
+      el.querySelector<HTMLElement>('[data-testid="continuar"]')!.click();
+      fixture.detectChanges();
+
+      expect(servicio.actualizarPlanta).toHaveBeenCalledWith(9, {
+        nombre: 'Planta Norte Renombrada',
+        ubicacion: 'Maipú',
+      });
+      expect(servicio.crearPlantaCompleta).not.toHaveBeenCalled();
+    });
+
+    it('emite la planta actualizada y avisa por toast', () => {
+      const { fixture, el, toast } = setup(crearServicio(), PLANTA_EXISTENTE);
+      const emitidos: unknown[] = [];
+      fixture.componentInstance.saved.subscribe((r) => emitidos.push(r));
+
+      el.querySelector<HTMLElement>('[data-testid="continuar"]')!.click();
+      fixture.detectChanges();
+
+      expect(toast.success).toHaveBeenCalled();
+      expect(emitidos).toHaveLength(1);
+      expect((emitidos[0] as { nombre: string }).nombre).toBe('Planta Norte Renombrada');
+    });
+
+    it('un 409 del backend se muestra y no cierra el modal', () => {
+      const error = new HttpErrorResponse({
+        status: 409,
+        error: { detail: 'Ya existe una planta llamada «Planta Norte Renombrada» en tu empresa.' },
+      });
+      const servicio = {
+        crearPlantaCompleta: vi.fn(),
+        actualizarPlanta: vi.fn(() => throwError(() => error)),
+      };
+      const { fixture, el } = setup(servicio, PLANTA_EXISTENTE);
+
+      el.querySelector<HTMLElement>('[data-testid="continuar"]')!.click();
+      fixture.detectChanges();
+
+      // El formulario sigue visible con el mensaje del servidor.
+      expect(el.querySelector('[data-testid="planta-nombre"]')).not.toBeNull();
+      expect(servicio.actualizarPlanta).toHaveBeenCalled();
+    });
+  });
 });
+

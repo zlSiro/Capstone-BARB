@@ -68,6 +68,9 @@ export const translations = {
     topology: {
       title: 'Topología de planta',
       subtitle: 'Mapa de equipos por estado',
+      // Subtítulo alternativo: Topología también aloja el mantenedor de activos
+      // (HU-25, CGBIDA-466) y ahí "mapa de equipos" ya no describe lo que se ve.
+      subtitleAssets: 'Gestión de plantas y máquinas',
       zoomIn: 'Acercar',
       zoomOut: 'Alejar',
       resetView: 'Vista inicial',
@@ -329,6 +332,7 @@ export const translations = {
     topology: {
       title: 'Plant Topology',
       subtitle: 'Equipment map by status',
+      subtitleAssets: 'Plants and machines management',
       zoomIn: 'Zoom in',
       zoomOut: 'Zoom out',
       resetView: 'Reset view',
