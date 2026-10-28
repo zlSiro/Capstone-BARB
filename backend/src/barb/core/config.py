@@ -66,7 +66,10 @@ class Settings(BaseSettings):
 
     # --- Configuración LLM ---
     llm_model: str = "deepseek-chat"
-    llm_temperature: float = 0.7
+    # 0.1, no 0.7: con 0.7 el modelo inventaba taxonomias ("te ofrezco 3 categorias") y
+# cambiaba de postura ante la presion del usuario. Un asistente documental necesita
+# temperatura baja; el coste es algo menos de variedad redactando.
+    llm_temperature: float = 0.1
     llm_max_tokens: int = 1024
     chat_memory_window: int = 10
 
@@ -92,15 +95,80 @@ class Settings(BaseSettings):
     def multimodal_configurado(self) -> bool:
         return bool(self.multimodal_model and self.multimodal_api_key)
 
+    # --- RAG: embeddings (HU-04 — D1, D2 y D6 de docs/RAG_ARCHITECTURE.md) ---
+    # El modelo produce 2048 dimensiones y `documento_embedding.embedding` está declarada
+    # `vector(2048) NOT NULL` con índice HNSW sobre halfvec(2048). Cambiar de modelo no es
+    # inocuo: obliga a migrar la columna (decisión de JP, ver AGENTS.md).
+    embeddings_model: str = "nvidia/nemotron-3-embed-1b"
+    # Key dedicada a embeddings. Vacía = usa NVIDIA_API_KEY: la misma key de la cuenta
+    # sirve para chat + embeddings + multimodal (validado por el equipo).
+    nvidia_embeddings_api_key: str = ""
+    # Timeout por request: el free tier de NIM es de latencia variable (ya visto en HU-03).
+    embeddings_timeout: int = 60
+    # Fragmentos que se inyectan en el prompt (D6).
+    rag_top_k: int = 4
+    # Similitud mínima (coseno, 0..1) para considerar que un fragmento es relevante.
+    # Medido sobre los 17 chunks reales con input_type correcto: las consultas con
+    # respuesta puntúan 0.34-0.61 y las irrelevantes 0.04-0.15. 0.25 deja aire a los dos
+    # lados. Sin umbral, «que hora es» inyectaría un manual y la IA respondería con
+    # documentación que no viene al caso.
+    rag_min_similarity: float = 0.25
+    # Umbral de la SEGUNDA pasada. La recuperación semántica tolera consultas mal
+    # escritas, pero el corte estricto las descartaba: «quiero ver la instrucción del
+    # compresor» daba 0.229 contra el manual y se quedaba sin contexto. Con 0.15 el
+    # fragmento entra, y como sigue siendo similitud real, lo irrelevante queda fuera
+    # (las consultas fuera de tema medidas no pasan de 0.14).
+    rag_min_similarity_laxa: float = 0.15
+
+    @property
+    def embeddings_api_key(self) -> str:
+        return self.nvidia_embeddings_api_key or self.nvidia_api_key
+
+    @property
+    def embeddings_configurados(self) -> bool:
+        return bool(self.embeddings_model and self.embeddings_api_key)
+
     # --- Resiliencia LLM (HU-03) ---
-    # Lista separada por coma de proveedores de respaldo (se usan si el primario falla).
+    # Lista separada por coma de proveedores de respaldo EXTRA (además del complementario
+    # automático NVIDIA ↔ DeepSeek, que se activa solo si el otro tiene key).
     # Ejemplos: "openrouter", "openai", "groq"
-    # Si está vacío, no hay fallback entre proveedores (solo reintentos).
+    # Si está vacío, solo existe el respaldo automático entre NVIDIA y DeepSeek.
     llm_fallback_providers: str = ""
+    # Modelo a usar cuando entra un proveedor de respaldo. Vacío = el default de ese
+    # proveedor (`_MODELO_POR_PROVEEDOR` en llm_service). No se puede reusar LLM_MODEL:
+    # cada API espera su propio id y un id ajeno devuelve 400.
+    llm_fallback_model: str = ""
 
     @property
     def llm_fallback_providers_list(self) -> list[str]:
         return [p.strip() for p in self.llm_fallback_providers.split(",") if p.strip()]
+
+    @property
+    def llm_api_key(self) -> str:
+        """
+        Key del proveedor de chat activo.
+
+        El mapeo vive acá y no en cada consumidor: antes el health endpoint comprobaba
+        `deepseek_api_key` a mano, así que con `LLM_PROVIDER=nvidia` reportaba «offline»
+        aunque el chat funcionara. Cualquier otro sitio que necesite saber si el LLM está
+        configurado debe usar esta propiedad.
+        """
+        return {
+            "deepseek": self.deepseek_api_key,
+            "openai": self.openai_api_key,
+            "openrouter": self.openrouter_api_key,
+            "groq": self.groq_api_key,
+            "nvidia": self.nvidia_api_key,
+        }.get(self.llm_provider, "")
+
+    @property
+    def llm_env_var(self) -> str:
+        """Nombre de la variable de entorno que hay que definir para el proveedor activo."""
+        return f"{self.llm_provider.upper()}_API_KEY"
+
+    @property
+    def llm_configurado(self) -> bool:
+        return bool(self.llm_model and self.llm_api_key)
 
     # --- CORS ---
     cors_origins: str = "http://localhost:4200,http://localhost:5173,http://localhost:3000"

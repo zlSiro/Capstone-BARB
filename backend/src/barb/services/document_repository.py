@@ -17,9 +17,11 @@ el contador en la misma transacción. Si la indexación falla, el documento
 queda en estado "subido sin indexar" y puede re-subirse — coherente con
 docs/contrato_api_documents.md.
 
-Nota: el flujo productivo actual usa búsqueda full-text (document_service);
-este repositorio es la vía vectorial (embeddings/pgvector) para ranking
-híbrido o futuras mejoras de relevancia semántica.
+Nota: desde HU-04 Fase 1 (CGBIDA-461) la búsqueda del chat es SEMÁNTICA: usa
+`search_similar_chunks` (pgvector, operador `<=>`) y cae a full-text solo si el
+proveedor de embeddings no está configurado o falla. `upsert_chunks` existe para el
+backfill: es idempotente y puede re-ejecutarse sin violar `UNIQUE(documento_id,
+chunk_index)`.
 """
 
 from __future__ import annotations
@@ -115,6 +117,83 @@ async def set_chunks(
             """
             INSERT INTO documento_embedding (documento_id, chunk_index, content, embedding)
             VALUES (%(documento_id)s, %(chunk_index)s, %(content)s, %(embedding)s::vector)
+            """,
+            [
+                {
+                    "documento_id": documento_id,
+                    "chunk_index": index,
+                    "content": content,
+                    "embedding": _vector_literal(embedding),
+                }
+                for index, content, embedding in chunks
+            ],
+        )
+        await cur.execute(
+            "UPDATE documento SET chunks_indexed = %(total)s WHERE documento_id = %(id)s",
+            {"total": len(chunks), "id": documento_id},
+        )
+    return len(chunks)
+
+
+async def insert_embeddings(
+    cur,
+    documento_id: int,
+    chunks: list[tuple[int, str, list[float]]],
+) -> int:
+    """
+    Inserta vectores usando un cursor YA abierto.
+
+    Existe por la ingesta: `index_chunks` corre dentro de la transacción del POST de
+    subida, así que no puede llamar a `upsert_chunks` (que abre su propia transacción y
+    quedaría fuera de la atomicidad). La SQL vive acá, no en el servicio, para que haya
+    un solo lugar donde se escribe `documento_embedding`.
+    """
+    if not chunks:
+        return 0
+
+    await cur.executemany(
+        """
+        INSERT INTO documento_embedding (documento_id, chunk_index, content, embedding)
+        VALUES (%(documento_id)s, %(chunk_index)s, %(content)s, %(embedding)s::vector)
+        ON CONFLICT (documento_id, chunk_index) DO UPDATE
+           SET content = EXCLUDED.content,
+               embedding = EXCLUDED.embedding
+        """,
+        [
+            {
+                "documento_id": documento_id,
+                "chunk_index": index,
+                "content": content,
+                "embedding": _vector_literal(embedding),
+            }
+            for index, content, embedding in chunks
+        ],
+    )
+    return len(chunks)
+
+
+async def upsert_chunks(
+    documento_id: int,
+    chunks: list[tuple[int, str, list[float]]],
+) -> int:
+    """
+    Igual que `set_chunks` pero idempotente: reindexar actualiza en vez de fallar.
+
+    Lo usa el backfill de embeddings, que debe poder re-ejecutarse sobre documentos ya
+    indexados (por ejemplo, para regenerar vectores con otro modelo). `set_chunks` se deja
+    intacto: en la ingesta un choque de unicidad es señal de un bug, no algo a tolerar.
+    """
+    if not chunks:
+        return 0
+
+    async with transaction() as cur:
+        await cur.executemany(
+            """
+            INSERT INTO documento_embedding (documento_id, chunk_index, content, embedding)
+            VALUES (%(documento_id)s, %(chunk_index)s, %(content)s, %(embedding)s::vector)
+            ON CONFLICT (documento_id, chunk_index) DO UPDATE
+               SET content = EXCLUDED.content,
+                   embedding = EXCLUDED.embedding
             """,
             [
                 {

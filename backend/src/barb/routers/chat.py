@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
 import json
@@ -24,15 +25,39 @@ from barb.schemas.chat import (
     SessionListResponse,
 )
 from barb.services import chat_repository
+from barb.services.chat_graph import astream_respuesta
 from barb.services.document_service import format_context, search_chunks
 from barb.services.llm_service import (
     MULTIMODAL_IMAGE_TOKENS,
     NO_DOCS_ANSWER,
-    create_conversation_chain,
     create_multimodal_chain,
 )
 
 logger = logging.getLogger("barb.chat")
+
+# Persistencias en vuelo. Se guardan referencias para que el recolector no se lleve una
+# escritura que quedó en segundo plano tras una desconexión del cliente.
+_PERSISTENCIAS_EN_VUELO: set[asyncio.Task] = set()
+
+
+async def _persistir_pese_a_la_cancelacion(
+    session_id: str, usuario_id: int, nuevos: list[dict]
+) -> None:
+    """
+    Guarda la conversación aunque el cliente ya se haya ido.
+
+    Cuando el navegador corta el stream, Starlette cancela la tarea que lo sirve y el
+    `await` del `finally` moría a mitad de la escritura: se perdía el turno y, peor, la
+    conexión volvía al pool en estado ACTIVE (psycopg la descartaba con «another command
+    is already in progress»). La escritura va en una tarea propia y se espera con `shield`,
+    así termina sola y libera la conexión limpia.
+    """
+    tarea: asyncio.Task = asyncio.create_task(
+        chat_repository.append_messages(session_id, usuario_id, nuevos)
+    )
+    _PERSISTENCIAS_EN_VUELO.add(tarea)
+    tarea.add_done_callback(_PERSISTENCIAS_EN_VUELO.discard)
+    await asyncio.shield(tarea)
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -45,10 +70,6 @@ class ChatRequest(BaseModel):
         max_length=2000,
         description="Mensaje del usuario (1 a 2000 caracteres).",
     )
-
-
-async def _single_chunk(text: str):
-    yield text
 
 
 def _now_ms() -> int:
@@ -87,7 +108,9 @@ async def stream_chat(
                 detail="Sesión no encontrada o no te pertenece.",
             )
         session_id = request.session_id
-        history = await chat_repository.load_messages(session_id, user_id)
+        history = await chat_repository.load_messages(
+            session_id, user_id, limite=settings.chat_memory_window
+        )
     else:
         session_id = await chat_repository.create_session(
             usuario_id=user_id,
@@ -96,22 +119,13 @@ async def stream_chat(
         )
         history = []
 
-    # --- RAG: fragmentos relevantes de la documentación ACTIVA de la empresa ---
-    # Se incluye el último mensaje del usuario para resolver preguntas de seguimiento
-    # ("¿y el torque?") y también el último del ASISTENTE (v1.1, review de la
-    # HU-05): los turnos con imagen dejan ahí el contexto del equipo identificado
-    # ("es un chancador de mandíbulas") y los seguimientos ("¿cómo funciona?")
-    # necesitan esa pista para encontrar el manual correspondiente.
+    # --- RAG + Skills: el grafo de LangGraph hace retrieval, generación y tools ---
+    # Las dos pistas siguientes resuelven preguntas de seguimiento («¿y el torque?»): se
+    # incluye el último mensaje del usuario y también el último del ASISTENTE, porque los
+    # turnos con imagen dejan ahí el equipo identificado («es un chancador de mandíbulas»).
     previous_user_msgs = [m.get("content", "") for m in history if m.get("role") == "user"][-1:]
     previous_assistant_msgs = [m.get("content", "") for m in history if m.get("role") == "assistant"][-1:]
-    chunks = await search_chunks(
-        empresa_id, request.message, *previous_user_msgs, *previous_assistant_msgs
-    )
-    context = format_context(chunks)
-
-    # Sin documentación relevante no se consulta al LLM: se garantiza que la IA
-    # nunca responda con conocimiento ajeno a lo compartido por la empresa.
-    chain = create_conversation_chain() if chunks else None
+    pistas_rag = [request.message, *previous_user_msgs, *previous_assistant_msgs]
     input_tokens = estimate_tokens(request.message)
 
     async def event_generator():
@@ -124,12 +138,18 @@ async def stream_chat(
                 "data": json.dumps({"session_id": session_id}),
             }
 
-            if chain is None:
-                stream = _single_chunk(NO_DOCS_ANSWER)
-            else:
-                stream = chain.astream(
-                    {"input": request.message, "history": history, "context": context}
-                )
+            # HU-04 Fase 2: el motor es un grafo (retrieve -> generate -> tools -> generate).
+            # El streaming sigue igual: el grafo emite los deltas del nodo `generate`.
+            stream = astream_respuesta(
+                empresa_id=empresa_id,
+                mensaje=request.message,
+                historial=history,
+                pistas=pistas_rag,
+                # Identidad para las tools de acción (`crear_ot`): decide qué técnico
+                # recibe la OT y quién figura como creador. No viaja al modelo.
+                usuario_id=user_id,
+                rol=user.get("role"),
+            )
 
             async for chunk in stream:
                 if chunk:
@@ -139,6 +159,16 @@ async def stream_chat(
                         "event": "token",
                         "data": json.dumps({"text": chunk}),
                     }
+
+            # Red de seguridad: si el grafo no produjo texto (modelo mudo o sin contexto ni
+            # herramientas), se responde lo mismo de siempre en vez de dejar el chat vacío.
+            if not assistant_chunks:
+                assistant_chunks.append(NO_DOCS_ANSWER)
+                output_chars += len(NO_DOCS_ANSWER)
+                yield {
+                    "event": "token",
+                    "data": json.dumps({"text": NO_DOCS_ANSWER}),
+                }
 
             yield {"event": "done", "data": "{}"}
 
@@ -150,6 +180,11 @@ async def stream_chat(
             }
 
         finally:
+            # La contabilidad va primero: si el cliente se fue, no queremos saltearla por
+            # una cancelación en la escritura.
+            output_tokens = max(0, output_chars // 4)
+            token_limiter.add(str(user_id), input_tokens + output_tokens)
+
             try:
                 ts = _now_ms()
                 nuevos = [
@@ -160,14 +195,19 @@ async def stream_chat(
                         "timestamp": ts + 1,
                     },
                 ]
-                await chat_repository.append_messages(session_id, user_id, nuevos)
+                await _persistir_pese_a_la_cancelacion(session_id, user_id, nuevos)
+            except asyncio.CancelledError:
+                # El cliente cortó el stream: la escritura termina en segundo plano.
+                logger.info(
+                    "Chat: cliente desconectado; la conversación se guarda en segundo plano "
+                    "(session_id=%s)",
+                    session_id,
+                )
+                raise
             except Exception:
                 logger.exception(
                     "No se pudo persistir la conversación session_id=%s", session_id
                 )
-
-            output_tokens = max(0, output_chars // 4)
-            token_limiter.add(str(user_id), input_tokens + output_tokens)
 
     return EventSourceResponse(event_generator())
 
@@ -296,7 +336,9 @@ async def stream_multimedia_chat(
                 detail="Sesión no encontrada o no te pertenece.",
             )
         session_id = request.session_id
-        history = await chat_repository.load_messages(session_id, user_id)
+        history = await chat_repository.load_messages(
+            session_id, user_id, limite=settings.chat_memory_window
+        )
     else:
         session_id = await chat_repository.create_session(
             usuario_id=user_id,
@@ -313,8 +355,10 @@ async def stream_multimedia_chat(
     # aporten su contexto ("es un chancador de mandíbulas") a la búsqueda.
     previous_user_msgs = [m.get("content", "") for m in history if m.get("role") == "user"][-1:]
     previous_assistant_msgs = [m.get("content", "") for m in history if m.get("role") == "assistant"][-1:]
-    chunks = await search_chunks(empresa_id, request.message, *previous_user_msgs, *previous_assistant_msgs)
-    context = format_context(chunks) if chunks else ""
+    # HU-04 Fase 1 — misma búsqueda semántica con fallback léxico que el chat textual:
+    # los manuales se buscan por significado también cuando la pregunta trae una imagen.
+    chunks_rag = await search_chunks(empresa_id, request.message, *previous_user_msgs, *previous_assistant_msgs)
+    context = format_context(chunks_rag) if chunks_rag else ""
 
     chain = create_multimodal_chain()
     # Contabilidad de tokens (D6): el presupuesto visual de la imagen (~4096)
@@ -360,6 +404,9 @@ async def stream_multimedia_chat(
             }
 
         finally:
+            output_tokens = max(0, output_chars // 4)
+            token_limiter.add(str(user_id), input_tokens + output_tokens)
+
             try:
                 ts = _now_ms()
                 # D2: se persiste SOLO el texto del turno; la imagen no se guarda (v1).
@@ -371,14 +418,18 @@ async def stream_multimedia_chat(
                         "timestamp": ts + 1,
                     },
                 ]
-                await chat_repository.append_messages(session_id, user_id, nuevos)
+                await _persistir_pese_a_la_cancelacion(session_id, user_id, nuevos)
+            except asyncio.CancelledError:
+                logger.info(
+                    "Chat multimodal: cliente desconectado; la conversación se guarda en "
+                    "segundo plano (session_id=%s)",
+                    session_id,
+                )
+                raise
             except Exception:
                 logger.exception(
                     "No se pudo persistir la conversación session_id=%s", session_id
                 )
-
-            output_tokens = max(0, output_chars // 4)
-            token_limiter.add(str(user_id), input_tokens + output_tokens)
 
     return EventSourceResponse(event_generator())
 
