@@ -34,6 +34,7 @@ from langchain_core.tools import BaseTool, tool
 
 from barb.core.config import settings
 from barb.core.db import fetch_all, fetch_one
+from barb.core.permissions import puede_ejecutar_accion
 from barb.core.work_order_states import ESTADOS_FINALES, TRANSICIONES
 
 logger = logging.getLogger("barb.ai_tools")
@@ -296,6 +297,29 @@ _PRIORIDADES = {
 # Si en los últimos minutos ya se creó una OT idéntica, no se duplica. Protege del modelo
 # que llama dos veces a la tool (o del reintento automático del grafo) sin que el usuario
 # vea dos órdenes iguales.
+# `crear_ot` es de gerente/admin por decisión del negocio (ver permissions.ACCIONES), pero
+# las tools no pasan por las dependencias de FastAPI: sin este chequeo, un técnico creaba
+# por el chat OTs que el endpoint le rechaza con 403.
+SIN_PERMISO_OT = (
+    "No tienes permisos para crear órdenes de trabajo con tu rol. "
+    "Pídeselo a un gerente o administrador."
+)
+
+
+def _puede_crear_ot(rol: str | None) -> bool:
+    """
+    ¿El rol puede crear OTs? El mismo permiso que exige el endpoint (`require_action`).
+
+    Falla cerrado: `puede_ejecutar_accion` lanza 403 si el rol no está en la matriz, y
+    una tool nunca debe tumbar el grafo por eso. Ante la duda, no se crea la OT.
+    """
+    try:
+        return puede_ejecutar_accion(rol or "", "crear_ot")
+    except Exception:  # rol desconocido o matriz incompleta
+        logger.exception("No se pudo evaluar el permiso 'crear_ot' para el rol %r", rol)
+        return False
+
+
 _MINUTOS_ANTIDUPLICADO = 10
 
 
@@ -478,6 +502,11 @@ async def crear_ot_aprobada(
     de insertar: entre la propuesta y el «sí» pueden pasar minutos y el mantenedor puede
     haber cambiado.
     """
+    # Defensa en profundidad: el gate del grafo ya pidió la confirmación, pero el permiso
+    # se vuelve a evaluar con el rol de ESTE request (pudo cambiar entre la propuesta y el "sí").
+    if not _puede_crear_ot(rol):
+        return SIN_PERMISO_OT
+
     objetivo, error = await _resolver_maquina(empresa_id, consulta_maquina, "creo la orden de trabajo")
     if error:
         return error
@@ -618,6 +647,9 @@ def crear_tools(empresa_id: int, usuario_id: int | None = None, rol: str | None 
                 usuario (síntoma, desde cuándo, qué se observó).
             prioridad: "low", "medium", "high" o "urgent". Por defecto "medium".
         """
+        if not _puede_crear_ot(rol):
+            return SIN_PERMISO_OT
+
         maquina_txt = (nombre_maquina or "").strip()
         problema = " ".join((descripcion_problema or "").split())
 

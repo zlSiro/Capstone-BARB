@@ -160,8 +160,11 @@ async def test_crear_ot_no_escribe_en_otra_empresa(db_pool):
         "Intento de escritura cruzada entre empresas",
         "medium",
         empresa_id=2,
-        usuario_id=20,
-        rol="tecnico",
+        usuario_id=17,
+        # Gerente de la empresa 2: tiene permiso para crear OTs, asi el test llega
+        # al resolver y mide lo que dice medir (aislamiento por empresa). Con un
+        # tecnico el corte ocurriria antes, en el chequeo de permisos.
+        rol="gerente",
     )
 
     despues = await fetch_one(
