@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from psycopg_pool import PoolTimeout
 
 from barb.core.config import settings
-from barb.core.db import pool
+from barb.core.db import fetch_one, pool
 from barb.core.permissions import get_sesion_actual, require_route, resolver_empresa
 
 logger = logging.getLogger("barb.stats")
@@ -199,6 +199,28 @@ IMPACTO_DIAS_MINIMOS = 90
 IMPACTO_VENTANA_DIAS = 365
 
 
+# `maquina.costo_inactividad_minuto` es parte del pedido de "costos configurables por
+# equipo", pero las columnas todavía no existen en la base (AGENTS.md prohíbe migrar). El
+# módulo detecta una vez si están y, si no, sigue usando el costo global de la empresa: los
+# KPIs no pueden romperse por una columna que aún no se creó.
+_costo_maquina_cache: bool | None = None
+
+
+async def _costo_maquina_disponible() -> bool:
+    """¿La tabla `maquina` tiene `costo_inactividad_minuto`? (memorizado por proceso)."""
+    global _costo_maquina_cache
+    if _costo_maquina_cache is None:
+        fila = await fetch_one(
+            """
+            SELECT COUNT(*) AS n
+              FROM information_schema.columns
+             WHERE table_name = 'maquina' AND column_name = 'costo_inactividad_minuto'
+            """
+        )
+        _costo_maquina_cache = bool(fila and int(fila["n"]) == 1)
+    return _costo_maquina_cache
+
+
 def _impacto_visible(days: int | None) -> bool:
     """El impacto anual solo se muestra si el período elegido es representativo.
 
@@ -227,6 +249,28 @@ async def get_financial_impact(
     downtime_cost = settings.downtime_cost_per_minute
     impact_without_barb_minutes = settings.impact_without_barb_minutes
 
+    # SLA cumplido = cerrada dentro de su propio vencimiento. Las OTs viejas no tienen
+    # `fecha_vencimiento` (antes no se calculaba), así que conservan la regla anterior:
+    # tiempo de reparación contra el SLA global. Sin ese fallback, el KPI histórico se
+    # volvería 0 de un día para otro.
+    en_sla = (
+        "(ot.fecha_vencimiento IS NOT NULL AND ot.fecha_cierre IS NOT NULL "
+        f"AND ot.fecha_cierre <= ot.fecha_vencimiento) "
+        f"OR (ot.fecha_vencimiento IS NULL AND ot.tiempo_reparacion_min <= {sla_target})"
+    )
+
+    # Costo por minuto de cada OT: el de SU máquina si está configurado, y si no el global
+    # de la empresa. Con la columna ausente se usa directamente el global.
+    con_costo_maquina = await _costo_maquina_disponible()
+    costo_minuto = (
+        f"COALESCE(m.costo_inactividad_minuto, {downtime_cost})"
+        if con_costo_maquina
+        else str(downtime_cost)
+    )
+    join_maquina = (
+        "LEFT JOIN maquina m ON m.maquina_id = ot.maquina_id" if con_costo_maquina else ""
+    )
+
     financials_query = f"""
         SELECT
             COALESCE(AVG(ot.tiempo_reparacion_min) FILTER (WHERE ot.estado = 'completed'), 0) AS mttr,
@@ -236,14 +280,19 @@ async def get_financial_impact(
             -- costo queda huérfano. La salida correcta es marcarla `completed` con nota.
             COALESCE(SUM(ot.costo_real) FILTER (WHERE ot.estado != 'cancelled'), 0) AS costo_total_acumulado,
             COALESCE(SUM(ot.downtime_minutes) FILTER (WHERE ot.estado = 'completed'), 0) AS downtime_evitado_min,
+            -- Ahorro por inactividad evitada, valorizado con el costo de CADA máquina.
+            COALESCE(
+                SUM(ot.downtime_minutes * {costo_minuto}) FILTER (WHERE ot.estado = 'completed'), 0
+            ) AS ahorro_inactividad,
             COUNT(*) FILTER (WHERE ot.estado = 'completed') AS total_completadas,
             COUNT(*) FILTER (
-                WHERE ot.estado = 'completed' AND ot.tiempo_reparacion_min <= {sla_target}
+                WHERE ot.estado = 'completed' AND ({en_sla})
             ) AS completadas_en_sla,
             COUNT(*) AS total_ots,
             -- Para el semáforo de salud (CGBIDA-438): backlog vivo del período.
             COUNT(*) FILTER (WHERE ot.estado NOT IN ('completed', 'cancelled')) AS abiertas
         FROM orden_trabajo ot
+        {join_maquina}
         WHERE 1=1 {date_filter} {ot_scope}
         """
 
@@ -274,9 +323,14 @@ async def get_financial_impact(
             m.nombre AS name,
             COUNT(ot.ot_id) AS total,
             COALESCE(SUM(ot.downtime_minutes) FILTER (WHERE ot.estado = 'completed'), 0) AS downtime_evitado_min,
+            -- Ahorro de la máquina valorizado con SU costo por minuto (o el global si no
+            -- tiene uno propio configurado).
+            COALESCE(
+                SUM(ot.downtime_minutes * {costo_minuto}) FILTER (WHERE ot.estado = 'completed'), 0
+            ) AS ahorro,
             COALESCE(AVG(ot.tiempo_reparacion_min) FILTER (WHERE ot.estado = 'completed'), 0) AS mttr,
             COALESCE(
-                100.0 * COUNT(*) FILTER (WHERE ot.estado = 'completed' AND ot.tiempo_reparacion_min <= {sla_target})
+                100.0 * COUNT(*) FILTER (WHERE ot.estado = 'completed' AND ({en_sla}))
                 / NULLIF(COUNT(*) FILTER (WHERE ot.estado = 'completed'), 0),
                 0
             ) AS sla_compliance,
@@ -381,8 +435,13 @@ async def get_financial_impact(
             COUNT(*) FILTER (
                 WHERE ot.tipo = 'corrective' AND ot.tiempo_reparacion_min IS NOT NULL
             ) AS incidentes_periodo,
-            AVG(ot.tiempo_reparacion_min) FILTER (WHERE ot.tipo = 'corrective') AS tiempo_promedio_real
+            AVG(ot.tiempo_reparacion_min) FILTER (WHERE ot.tipo = 'corrective') AS tiempo_promedio_real,
+            -- Costo promedio por minuto PONDERADO por la inactividad de cada máquina: es el
+            -- factor que se aplica en la proyección anual, en vez del global fijo.
+            COALESCE(SUM(ot.downtime_minutes * {costo_minuto}), 0) AS costo_periodo,
+            COALESCE(SUM(ot.downtime_minutes), 0) AS minutos_periodo
         FROM orden_trabajo ot
+        {join_maquina}
         WHERE ot.tipo = 'corrective' AND ot.estado != 'cancelled' {impacto_fecha} {ot_scope}
         """
 
@@ -429,7 +488,8 @@ async def get_financial_impact(
         total_completadas = int(f["total_completadas"])
         completadas_en_sla = int(f["completadas_en_sla"])
 
-        ahorro_generado = downtime_evitado * downtime_cost
+        # El ahorro ya viene valorizado con el costo de cada máquina desde SQL.
+        ahorro_generado = float(f["ahorro_inactividad"])
         efficiency = round(100.0 * completadas_en_sla / total_completadas, 1) if total_completadas > 0 else 0.0
 
         # MTBF = tiempo de operación / número de fallas.
@@ -471,8 +531,17 @@ async def get_financial_impact(
                 incompletos = tiempo_real is None
                 minutos_con_barb = float(tiempo_real) if tiempo_real is not None else impact_without_barb_minutes
 
-                sin_barb = incidentes * factor_anual * impact_without_barb_minutes * downtime_cost
-                con_barb = incidentes * factor_anual * minutos_con_barb * downtime_cost
+                # Costo promedio por minuto del período, ponderado por la inactividad de
+                # cada máquina (antes era el global fijo). Si no hay minutos medidos, cae
+                # al global para no dividir por cero.
+                minutos_periodo = float(impacto_row["minutos_periodo"] or 0)
+                costo_promedio_minuto = (
+                    float(impacto_row["costo_periodo"]) / minutos_periodo
+                    if minutos_periodo > 0
+                    else float(downtime_cost)
+                )
+                sin_barb = incidentes * factor_anual * impact_without_barb_minutes * costo_promedio_minuto
+                con_barb = incidentes * factor_anual * minutos_con_barb * costo_promedio_minuto
                 impacto.update({
                     "escenario_sin_barb": round(sin_barb, 2),
                     "escenario_con_barb": round(con_barb, 2),
@@ -515,7 +584,7 @@ async def get_financial_impact(
                     "id": str(row["id"]),
                     "name": row["name"],
                     "total": int(row["total"]),
-                    "ahorroGenerado": round(float(row["downtime_evitado_min"]) * downtime_cost, 2),
+                    "ahorroGenerado": round(float(row["ahorro"]), 2),
                     "mttr": round(float(row["mttr"]), 1),
                     "slaCompliance": round(float(row["sla_compliance"]), 1),
                     # Costo real de la maquina en el periodo, sin canceladas.
@@ -531,7 +600,7 @@ async def get_financial_impact(
                     "id": str(row["id"]),
                     "name": row["name"],
                     "total": int(row["total"]),
-                    "ahorroGenerado": round(float(row["downtime_evitado_min"]) * downtime_cost, 2),
+                    "ahorroGenerado": round(float(row["ahorro"]), 2),
                     "mttr": round(float(row["mttr"]), 1),
                     "slaCompliance": round(float(row["sla_compliance"]), 1),
                     "costo_total": round(float(row["costo_total"]), 2),

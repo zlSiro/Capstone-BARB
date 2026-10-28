@@ -1,6 +1,6 @@
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { catchError, map, of } from 'rxjs';
+import { Subject, catchError, map, merge, of, switchMap } from 'rxjs';
 
 import {
   Topology,
@@ -14,6 +14,8 @@ import {
 import { I18nService } from '../../core/i18n/i18n.service';
 import { TopologyService } from '../../core/services/topology.service';
 import { OtDetailSheetComponent } from '../work-orders/components/ot-detail-sheet/ot-detail-sheet.component';
+import { PlantasComponent } from '../plantas/plantas.component';
+import { PermissionsService } from '../../core/permissions/permissions.service';
 import { filterGroup } from '../work-orders/utils/work-order-labels';
 
 /** Dimensiones de la tarjeta de cada nodo, en unidades del viewBox. */
@@ -148,19 +150,50 @@ interface GrupoEnPanel {
 @Component({
   selector: 'app-topology',
   standalone: true,
-  imports: [OtDetailSheetComponent],
+  imports: [OtDetailSheetComponent, PlantasComponent],
   // El hover de las aristas no se puede expresar con atributos: cambiar el grosor, el
   // color y la punta de flecha a la vez pide CSS.
   styles: `
+    /*
+     * Aristas (HU-25, mejora visual): curvas en vez de rectas.
+     *
+     * Con líneas rectas el grafo se leía como una telaraña: todas las aristas de una planta
+     * salían en abanico y se cruzaban con las de la otra. La curva Bézier vertical mantiene
+     * cada arista en su "carril" entre niveles, así que los cruces dejan de ser una X.
+     */
     .arista {
       marker-end: url(#flecha-topo);
-      transition: stroke 120ms ease, stroke-width 120ms ease;
+      stroke-width: 1.5;
+      opacity: 0.8;
+      transition: stroke 120ms ease, stroke-width 120ms ease, opacity 160ms ease;
     }
 
     .arista:hover {
-      stroke-width: 3;
+      stroke-width: 2.5;
+      opacity: 1;
       stroke: var(--color-blue-600);
       marker-end: url(#flecha-topo-activa);
+    }
+
+    /* Al pasar el mouse por un nodo: su rama se enciende y el resto se apaga. */
+    .arista-foco {
+      stroke-width: 2.25;
+      opacity: 1;
+      stroke: var(--color-blue-600);
+      marker-end: url(#flecha-topo-activa);
+    }
+
+    .arista-ajena {
+      opacity: 0.1;
+    }
+
+    .topo-node {
+      cursor: pointer;
+      transition: opacity 160ms ease;
+    }
+
+    .nodo-ajeno {
+      opacity: 0.3;
     }
   `,
   template: `
@@ -168,32 +201,49 @@ interface GrupoEnPanel {
       <div class="flex items-center justify-between">
         <div>
           <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100">{{ t().title }}</h1>
-          <p class="text-sm text-gray-500 dark:text-gray-400">{{ t().subtitle }}</p>
+          <p class="text-sm text-gray-500 dark:text-gray-400" data-testid="topo-subtitulo">{{ vistaActivos() ? t().subtitleAssets : t().subtitle }}</p>
         </div>
         <div class="flex gap-2">
-          <button
-            type="button"
-            data-testid="zoom-in"
-            (click)="zoom(1.2)"
-            class="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
-            [attr.aria-label]="t().zoomIn"
-          >+</button>
-          <button
-            type="button"
-            data-testid="zoom-out"
-            (click)="zoom(0.8)"
-            class="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
-            [attr.aria-label]="t().zoomOut"
-          >−</button>
-          <button
-            type="button"
-            data-testid="zoom-reset"
-            (click)="resetView()"
-            class="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
-          >{{ t().resetView }}</button>
+          <!--
+            El mantenedor de plantas vive acá y no en el menú lateral: se entra desde el
+            mapa, que es donde tiene sentido (los activos que se están mirando). Solo lo ve
+            gerente/admin, el mismo permiso que exige el backend para la ruta plantas.
+          -->
+          @if (puedeGestionar()) {
+            <button
+              type="button"
+              data-testid="gestionar-activos"
+              (click)="alternarVista()"
+              class="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
+            >{{ vistaActivos() ? 'Volver al mapa' : 'Gestionar activos' }}</button>
+          }
+          <!-- Los controles de cámara solo tienen sentido sobre el mapa. -->
+          @if (!vistaActivos()) {
+            <button
+              type="button"
+              data-testid="zoom-in"
+              (click)="zoom(1.2)"
+              class="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
+              [attr.aria-label]="t().zoomIn"
+            >+</button>
+            <button
+              type="button"
+              data-testid="zoom-out"
+              (click)="zoom(0.8)"
+              class="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
+              [attr.aria-label]="t().zoomOut"
+            >−</button>
+            <button
+              type="button"
+              data-testid="zoom-reset"
+              (click)="resetView()"
+              class="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
+            >{{ t().resetView }}</button>
+          }
         </div>
       </div>
 
+      @if (!vistaActivos()) {
       <!-- Leyenda de estados -->
       <div class="flex flex-wrap gap-4 text-sm text-gray-600 dark:text-gray-300">
         @for (e of estados; track e) {
@@ -270,15 +320,14 @@ interface GrupoEnPanel {
                 </marker>
               </defs>
 
-              <!-- Conexiones -->
-              <g class="stroke-gray-300 dark:stroke-gray-600" stroke-width="2" fill="none">
+              <!-- Conexiones: curvas Bézier con enfoque por nodo -->
+              <g class="stroke-gray-300 dark:stroke-gray-600" fill="none">
                 @for (e of aristas(); track e.conexion_id) {
-                  <line
+                  <path
                     class="arista"
-                    [attr.x1]="e.x1"
-                    [attr.y1]="e.y1"
-                    [attr.x2]="e.x2"
-                    [attr.y2]="e.y2"
+                    [class.arista-foco]="leToca(e)"
+                    [class.arista-ajena]="hayFoco() && !leToca(e)"
+                    [attr.d]="e.d"
                     [attr.data-relacion]="e.tipo_relacion"
                   />
                 }
@@ -288,11 +337,14 @@ interface GrupoEnPanel {
               @for (n of nodos(); track n.nodo_id) {
                 <g
                   class="topo-node"
+                  [class.nodo-ajeno]="hayFoco() && !nodoEnFoco(n)"
                   [attr.transform]="'translate(' + n.pos_x + ',' + n.pos_y + ')'"
                   [attr.data-nodo-id]="n.nodo_id"
                   [attr.data-tipo]="n.tipo"
                   [attr.data-estado]="n.estado_actual"
                   (click)="seleccionar(n, $event)"
+                  (mouseenter)="resaltado.set(n.nodo_id)"
+                  (mouseleave)="resaltado.set(null)"
                 >
                   <rect
                     x="0"
@@ -558,15 +610,47 @@ interface GrupoEnPanel {
           }
         }
       </div>
+      } @else {
+        <!-- Mantenedor de plantas dentro de Topología (HU-25, CGBIDA-466).
+             El mapa se desmonta, pero su cámara (viewBox) vive en signals del
+             componente, así que al volver se conserva el zoom y el paneo. -->
+        <app-plantas (actualizado)="recargarTopologia()" />
+      }
     </div>
   `,
 })
 export class TopologyComponent {
   private readonly topologyService = inject(TopologyService);
   private readonly i18n = inject(I18nService);
+  private readonly permisos = inject(PermissionsService);
 
   /** Textos de la pantalla. Es un computed, así que cambia al alternar el idioma. */
   protected readonly t = computed(() => this.i18n.tree().topology);
+
+  /**
+   * El mantenedor de plantas se abre desde acá (HU-25, CGBIDA-466), no desde el menú.
+   *
+   * Mismo permiso que exige el backend para la ruta `plantas`: sólo gerente y admin. El
+   * `role()` de dentro del computed hace que se recalcule al iniciar o cerrar sesión.
+   */
+  protected readonly puedeGestionar = computed(() => {
+    this.permisos.role();
+    return this.permisos.canAccess('plantas');
+  });
+
+  /** Mapa o tabla de activos. El mapa se desmonta, pero su cámara no se pierde. */
+  protected readonly vistaActivos = signal(false);
+
+  protected alternarVista(): void {
+    if (this.vistaActivos()) {
+      // Al cerrar el mantenedor se sale del panel de detalle: si no, al volver al mapa
+      // aparecería el panel de un nodo que el usuario ya no recuerda haber abierto.
+      this.seleccionado.set(null);
+      // Y se refresca el mapa: el usuario pudo haber creado o editado activos.
+      this.recargarTopologia();
+    }
+    this.vistaActivos.update((v) => !v);
+  }
 
   protected readonly nodeW = NODE_W;
   protected readonly nodeH = NODE_H;
@@ -575,14 +659,35 @@ export class TopologyComponent {
   /** Equipo cuyo panel de detalle está abierto (CGBIDA-364). */
   protected readonly seleccionado = signal<TopologyNode | null>(null);
 
+  /**
+   * Recarga de la topología.
+   *
+   * El mapa se pide una vez al entrar, pero la tabla del mantenedor vive en la misma
+   * pantalla: al crear o editar una planta o una máquina, lo que se ve en el mapa queda
+   * viejo. Este subject vuelve a disparar la petición sin recargar la página.
+   */
+  private readonly recarga$ = new Subject<void>();
+
   /** `initialValue` obliga a que el tipo no incluya `undefined`; de ahí la unión. */
   private readonly carga = toSignal(
-    this.topologyService.get().pipe(
-      map((t): EstadoCarga => (t.nodos.length ? { tipo: 'listo', topologia: t } : { tipo: 'vacio' })),
-      catchError(() => of<EstadoCarga>({ tipo: 'error' })),
+    // `merge` con un primer valor da la carga inicial; cada `recarga$` pide de nuevo.
+    merge(of(undefined), this.recarga$).pipe(
+      switchMap(() =>
+        this.topologyService.get().pipe(
+          map((t): EstadoCarga => (t.nodos.length ? { tipo: 'listo', topologia: t } : { tipo: 'vacio' })),
+          // El `catchError` va DENTRO del switchMap: si estuviera afuera, un fallo cerraría
+          // el stream y las recargas posteriores no volverían a pedir nada.
+          catchError(() => of<EstadoCarga>({ tipo: 'error' })),
+        ),
+      ),
     ),
     { initialValue: { tipo: 'cargando' } as EstadoCarga },
   );
+
+  /** Vuelve a pedir el mapa. No toca la cámara: el zoom y el paneo se conservan. */
+  protected recargarTopologia(): void {
+    this.recarga$.next();
+  }
 
   /** Tipo de estado actual: `cargando` · `error` · `vacio` · `listo`. */
   protected readonly estado = computed(() => this.carga().tipo);
@@ -637,9 +742,14 @@ export class TopologyComponent {
   /**
    * Aristas resueltas: se descartan las que apunten a un nodo ausente y se recortan al
    * borde de la tarjeta para que la flecha quede a la vista.
+   *
+   * Cada arista viaja como una curva Bézier cúbica con los puntos de control en vertical:
+   * sale hacia abajo desde el borde del nodo origen y entra en vertical al destino, así
+   * que dos aristas que nacen del mismo nodo no se pisan en el primer tramo.
    */
   protected readonly aristas = computed(() => {
     const centros = this.centros();
+    const r = (n: number) => Math.round(n * 100) / 100;
     return this.conexiones()
       .map((c) => {
         const o = centros.get(c.origen_nodo_id);
@@ -647,10 +757,102 @@ export class TopologyComponent {
         if (!o || !d) return null;
         const inicio = this.bordeNodo(o, d);
         const fin = this.bordeNodo(d, o);
-        return { ...c, x1: inicio.x, y1: inicio.y, x2: fin.x, y2: fin.y };
+
+        // El 45 % de la distancia vertical deja el tramo central recto y los extremos
+        // curvos: es lo que separa visualmente un abanico de líneas rectas.
+        const dy = fin.y - inicio.y;
+        const c1 = { x: inicio.x, y: inicio.y + dy * 0.45 };
+        const c2 = { x: fin.x, y: fin.y - dy * 0.45 };
+
+        return {
+          ...c,
+          x1: inicio.x,
+          y1: inicio.y,
+          x2: fin.x,
+          y2: fin.y,
+          // Formato estable ("M x y C x y x y x y") para poder afirmarlo en los tests.
+          d:
+            `M ${r(inicio.x)} ${r(inicio.y)} ` +
+            `C ${r(c1.x)} ${r(c1.y)} ${r(c2.x)} ${r(c2.y)} ${r(fin.x)} ${r(fin.y)}`,
+        };
       })
       .filter((e): e is NonNullable<typeof e> => e !== null);
   });
+
+  // --- Enfoque: al pasar el mouse por un nodo se enciende su rama ------------------
+
+  /** Nodo bajo el cursor. `null` = sin foco. */
+  protected readonly resaltado = signal<string | null>(null);
+
+  /** Hijos por nodo, derivados de las aristas (origen → destino). */
+  private readonly hijosPorNodo = computed(() => {
+    const mapa = new Map<string, string[]>();
+    for (const c of this.conexiones()) {
+      const lista = mapa.get(c.origen_nodo_id) ?? [];
+      lista.push(c.destino_nodo_id);
+      mapa.set(c.origen_nodo_id, lista);
+    }
+    return mapa;
+  });
+
+  /** Padre de cada nodo. En esta jerarquía (planta → disciplina → máquina) hay uno solo. */
+  private readonly padrePorNodo = computed(() => {
+    const mapa = new Map<string, string>();
+    for (const c of this.conexiones()) {
+      if (!mapa.has(c.destino_nodo_id)) mapa.set(c.destino_nodo_id, c.origen_nodo_id);
+    }
+    return mapa;
+  });
+
+  /**
+   * Nodos que forman la rama del nodo resaltado: él mismo, sus ancestros y todos sus
+   * descendientes. Los hermanos quedan fuera a propósito: si se incluyeran, pasar el mouse
+   * por una máquina encendería media planta y el enfoque perdería sentido.
+   */
+  protected readonly ramaEnFoco = computed<ReadonlySet<string>>(() => {
+    const raiz = this.resaltado();
+    if (!raiz) return new Set<string>();
+
+    const rama = new Set<string>([raiz]);
+
+    // Ancestros: sube hasta la planta.
+    const padres = this.padrePorNodo();
+    let actual = raiz;
+    for (;;) {
+      const padre = padres.get(actual);
+      if (!padre || rama.has(padre)) break;
+      rama.add(padre);
+      actual = padre;
+    }
+
+    // Descendientes: baja por todas las ramas.
+    const hijos = this.hijosPorNodo();
+    const cola = [raiz];
+    while (cola.length) {
+      const nodo = cola.shift()!;
+      for (const hijo of hijos.get(nodo) ?? []) {
+        if (rama.has(hijo)) continue;
+        rama.add(hijo);
+        cola.push(hijo);
+      }
+    }
+
+    return rama;
+  });
+
+  protected readonly hayFoco = computed(() => this.ramaEnFoco().size > 0);
+
+  /** Una arista pertenece a la rama si sus dos extremos están dentro. */
+  protected leToca(arista: { origen_nodo_id: string; destino_nodo_id: string }): boolean {
+    const rama = this.ramaEnFoco();
+    if (!rama.size) return false;
+    return rama.has(arista.origen_nodo_id) && rama.has(arista.destino_nodo_id);
+  }
+
+  protected nodoEnFoco(nodo: { nodo_id: string }): boolean {
+    const rama = this.ramaEnFoco();
+    return !rama.size || rama.has(nodo.nodo_id);
+  }
 
   // --- CGBIDA-363: cámara del lienzo -----------------------------------------
 
@@ -975,6 +1177,9 @@ export class TopologyComponent {
     return textos[clave] ?? estado;
   }
 }
+
+
+
 
 
 

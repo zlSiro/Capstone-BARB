@@ -1,4 +1,4 @@
-import { Component, computed, effect, inject, output, signal } from '@angular/core';
+import { Component, inject, output, signal } from '@angular/core';
 import { form, required, validate, FormField } from '@angular/forms/signals';
 import { HttpErrorResponse } from '@angular/common/http';
 import { forkJoin } from 'rxjs';
@@ -6,15 +6,15 @@ import { forkJoin } from 'rxjs';
 import { CatalogService } from '../../../../core/services/catalog.service';
 import { WorkOrdersService } from '../../../../core/services/work-orders.service';
 import { ToastService } from '../../../../core/services/toast.service';
-import { Discipline, Machine, Technician, WorkOrder, WorkOrderPriority } from '../../../../core/models';
+import { Machine, Technician, WorkOrder, WorkOrderPriority, WorkOrderSeverity } from '../../../../core/models';
 
 interface CreateOtFormModel {
   title: string;
-  disciplineId: string;
   machineId: string;
   technicianId: string;
   priority: WorkOrderPriority;
-  estado: string;
+  /** Impacto de la falla. Vacío = sin clasificar (el backend acepta null). */
+  severity: WorkOrderSeverity | '';
   description: string;
 }
 
@@ -23,11 +23,10 @@ const ALLOWED_PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 function defaultModel(): CreateOtFormModel {
   return {
     title: '',
-    disciplineId: '',
     machineId: '',
     technicianId: '',
     priority: 'medium',
-    estado: 'pending',
+    severity: '',
     description: '',
   };
 }
@@ -77,24 +76,6 @@ function defaultModel(): CreateOtFormModel {
           </div>
 
           <div>
-            <label for="ot-disciplineId" class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Disciplina *</label>
-            <select
-              [formField]="otForm.disciplineId"
-              id="ot-disciplineId"
-              [attr.aria-invalid]="otForm.disciplineId().touched() && otForm.disciplineId().invalid()"
-              [attr.aria-describedby]="otForm.disciplineId().touched() && otForm.disciplineId().invalid() ? 'ot-disciplineId-error' : null"
-              class="w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option value="">Selecciona una disciplina</option>
-              @for (d of disciplines(); track d.id) {
-                <option [value]="d.id">{{ d.name }}</option>
-              }
-            </select>
-            @if (otForm.disciplineId().touched() && otForm.disciplineId().invalid()) {
-              <p id="ot-disciplineId-error" role="alert" class="mt-1 text-xs text-red-400">{{ otForm.disciplineId().errors()[0]?.message }}</p>
-            }
-          </div>
-
-          <div>
             <label for="ot-machineId" class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Máquina *</label>
             <select
               [formField]="otForm.machineId"
@@ -103,7 +84,7 @@ function defaultModel(): CreateOtFormModel {
               [attr.aria-describedby]="otForm.machineId().touched() && otForm.machineId().invalid() ? 'ot-machineId-error' : null"
               class="w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
               <option value="">Selecciona una máquina</option>
-              @for (m of filteredMachines(); track m.id) {
+              @for (m of machines(); track m.id) {
                 <option [value]="m.id">{{ m.name }}</option>
               }
             </select>
@@ -144,17 +125,18 @@ function defaultModel(): CreateOtFormModel {
           </div>
 
           <div>
-            <label for="ot-estado" class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Estado</label>
+            <label for="ot-severity" class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Severidad</label>
             <select
-              [formField]="otForm.estado"
-              id="ot-estado"
+              [formField]="otForm.severity"
+              id="ot-severity"
               class="w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option value="pending">Abierta</option>
-              <option value="assigned">Asignada</option>
-              <option value="in_progress">En Progreso</option>
-              <option value="completed">Completada</option>
-              <option value="cancelled">Cancelada</option>
+              <option value="">Sin clasificar</option>
+              <option value="low">Baja</option>
+              <option value="medium">Media</option>
+              <option value="high">Alta</option>
+              <option value="critical">Crítica</option>
             </select>
+            <p class="mt-1 text-xs text-slate-400">Impacto de la falla (independiente de la urgencia).</p>
           </div>
 
           <div class="md:col-span-2">
@@ -235,7 +217,6 @@ export class CreateOtModalComponent {
   readonly closed = output<void>();
   readonly created = output<WorkOrder>();
 
-  readonly disciplines = signal<Discipline[]>([]);
   readonly machines = signal<Machine[]>([]);
   readonly technicians = signal<Technician[]>([]);
   readonly selectedFile = signal<File | null>(null);
@@ -246,7 +227,6 @@ export class CreateOtModalComponent {
     required(f.title, { message: 'Ingresa un título para la OT.' });
     validate(f.title, ({ value }) =>
       value().trim() ? undefined : { kind: 'blank', message: 'Ingresa un título para la OT.' });
-    required(f.disciplineId, { message: 'Selecciona una disciplina.' });
     required(f.machineId, { message: 'Selecciona una máquina.' });
     required(f.technicianId, { message: 'Selecciona un técnico.' });
     required(f.description, { message: 'Describe la falla.' });
@@ -254,36 +234,16 @@ export class CreateOtModalComponent {
       value().trim() ? undefined : { kind: 'blank', message: 'Describe la falla.' });
   });
 
-  readonly filteredMachines = computed(() => {
-    const disciplineId = this.model().disciplineId;
-    if (!disciplineId) return this.machines();
-    return this.machines().filter(m => String(m.discipline_id) === disciplineId);
-  });
-
   constructor() {
     forkJoin({
-      disciplines: this.catalogService.getDisciplines(),
       machines: this.catalogService.getMachines(),
       technicians: this.catalogService.getTechnicians(),
     }).subscribe({
-      next: ({ disciplines, machines, technicians }) => {
-        this.disciplines.set(disciplines ?? []);
+      next: ({ machines, technicians }) => {
         this.machines.set(machines ?? []);
         this.technicians.set(technicians ?? []);
       },
       error: () => this.toastService.error('No se pudieron cargar los catálogos para crear la OT.'),
-    });
-
-    // Si la máquina seleccionada deja de pertenecer a la disciplina elegida, se limpia.
-    effect(() => {
-      const disciplineId = this.model().disciplineId;
-      const machineId = this.model().machineId;
-      if (!machineId) return;
-      const stillValid = this.filteredMachines().some(m => String(m.id) === machineId);
-      if (!stillValid) {
-        this.model.update(current => ({ ...current, machineId: '' }));
-      }
-      void disciplineId;
     });
   }
 
@@ -325,7 +285,7 @@ export class CreateOtModalComponent {
     formData.append('tecnico_id', m.technicianId);
     formData.append('descripcion_problema', `${m.title.trim()}\n\n${m.description.trim()}`.trim());
     formData.append('priority', m.priority);
-    formData.append('estado', m.estado);
+    if (m.severity) formData.append('severity', m.severity);
     if (this.selectedFile()) {
       formData.append('photos', this.selectedFile()!);
     }

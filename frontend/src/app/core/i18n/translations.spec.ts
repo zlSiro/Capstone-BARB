@@ -56,3 +56,34 @@ describe('etiqueta del KPI de cumplimiento (CGBIDA-405)', () => {
     expect(translations.en.financial.efficiency).not.toBe(translations.en.financial.mttrGlobal);
   });
 });
+
+/**
+ * Subtítulo de Topología según la vista (HU-25, CGBIDA-466).
+ *
+ * Topología dejó de ser solo el mapa: también aloja el mantenedor de activos. "Mapa de
+ * equipos por estado" no describe la pantalla cuando se ve la tabla, así que el
+ * componente alterna entre dos claves.
+ */
+describe('subtítulo de Topología según la vista (CGBIDA-466)', () => {
+  it('el subtítulo del mapa se mantiene igual', () => {
+    expect(translations.es.topology.subtitle).toBe('Mapa de equipos por estado');
+    expect(translations.en.topology.subtitle).toBe('Equipment map by status');
+  });
+
+  it('existe un subtítulo propio para el mantenedor, en los dos idiomas', () => {
+    expect(translations.es.topology.subtitleAssets).toBe('Gestión de plantas y máquinas');
+    expect(translations.en.topology.subtitleAssets).toBe('Plants and machines management');
+  });
+
+  it('los dos subtítulos son distintos: si se igualan, la vista no se distingue', () => {
+    expect(translations.es.topology.subtitleAssets).not.toBe(translations.es.topology.subtitle);
+    expect(translations.en.topology.subtitleAssets).not.toBe(translations.en.topology.subtitle);
+  });
+
+  it('la sección topology tiene exactamente las mismas claves en es y en', () => {
+    // Una clave agregada solo en un idioma se renderizaría vacía en el otro.
+    const clavesEs = Object.keys(translations.es.topology).sort();
+    const clavesEn = Object.keys(translations.en.topology).sort();
+    expect(clavesEn).toEqual(clavesEs);
+  });
+});
