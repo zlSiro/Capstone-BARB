@@ -120,6 +120,7 @@ import { ROLE_OPTIONS, UsuarioFormModalComponent } from './usuario-form-modal.co
       <app-usuario-form-modal
         [usuario]="editing()"
         [isSuper]="isSuper()"
+        [soloOperativos]="soloOperativos()"
         [empresas]="empresas()"
         [defaultEmpresaId]="tenant.empresaId()"
         (closed)="modalOpen.set(false)"
@@ -135,6 +136,8 @@ export class UsuariosComponent {
   private readonly toast = inject(ToastService);
 
   protected readonly isSuper = this.tenant.isSuper;
+  /** El administrador de empresa solo gestiona roles operativos (no gerentes ni otros administradores). */
+  protected readonly soloOperativos = computed(() => this.auth.user()?.role === 'admin');
   protected readonly usuarios = signal<UsuarioPerfil[]>([]);
   protected readonly empresas = signal<Empresa[]>([]);
   protected readonly loading = signal(true);

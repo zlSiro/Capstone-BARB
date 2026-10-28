@@ -27,6 +27,8 @@ from barb.services.llm_service import NO_DOCS_ANSWER
 SUPER = ("super@barb.com", "super123")
 ADMIN_E1 = ("admin@barb.com", "admin123")
 ADMIN_E2 = ("admin@mineranorte.cl", "minera123")
+GERENTE_E1 = ("gerente1@planta.com", "gerente123")
+GERENTE_E2 = ("gerente@mineranorte.cl", "minera123")
 TECNICO_E2 = ("pedro@mineranorte.cl", "minera123")
 ENGINEER_E1 = ("engineer1@planta.com", "engineer123")
 OPERADOR_E1 = ("operador1@planta.com", "operador123")
@@ -117,7 +119,7 @@ async def test_ots_solo_de_la_propia_empresa(client):
 
 
 async def test_no_se_puede_ver_ni_modificar_una_ot_de_otra_empresa(client):
-    h1 = await _login(client, ADMIN_E1)
+    h1 = await _login(client, GERENTE_E1)
     r = await client.get("/api/work-orders/OT-2026-101", headers=h1)  # OT de Minera Norte
     assert r.status_code == 404
     r = await client.put("/api/work-orders/OT-2026-101/status", headers=h1, json={"status": "completed"})
@@ -366,10 +368,35 @@ async def test_admin_no_puede_asignar_otra_empresa_al_crear_usuario(client):
 
 
 async def test_no_puede_eliminarse_ni_desactivarse_a_si_mismo(client):
-    h1 = await _login(client, ADMIN_E1)
-    yo = next(u for u in (await client.get("/api/usuarios", headers=h1)).json() if u["email"] == ADMIN_E1[0])
+    h1 = await _login(client, GERENTE_E1)
+    yo = next(u for u in (await client.get("/api/usuarios", headers=h1)).json() if u["email"] == GERENTE_E1[0])
     assert (await client.delete(f"/api/usuarios/{yo['usuario_id']}", headers=h1)).status_code == 409
     assert (await client.put(f"/api/usuarios/{yo['usuario_id']}", headers=h1, json={"activo": False})).status_code == 409
+
+
+async def test_admin_solo_gestiona_usuarios_operativos(client):
+    """El admin gestiona los roles operativos; no a gerentes ni a otros administradores."""
+    h = await _login(client, ADMIN_E1)
+    roles_visibles = {u["rol"] for u in (await client.get("/api/usuarios", headers=h)).json()}
+    assert roles_visibles <= {"operador", "tecnico", "supervisor", "engineer", "visitante"}
+    assert "gerente" not in roles_visibles and "admin" not in roles_visibles
+
+    base = {"nombre": "Intento", "password": "secreto123"}
+    for rol in ("gerente", "admin"):
+        r = await client.post("/api/usuarios", headers=h, json={**base, "email": f"x-{uuid.uuid4().hex[:6]}@x.cl", "rol": rol})
+        assert r.status_code == 403, rol
+
+    # No toca a un gerente existente: 404, como si no existiera.
+    hg = await _login(client, GERENTE_E1)
+    gerente = next(u for u in (await client.get("/api/usuarios", headers=hg)).json() if u["email"] == GERENTE_E1[0])
+    assert (await client.put(f"/api/usuarios/{gerente['usuario_id']}", headers=h, json={"nombre": "X Y"})).status_code == 404
+    assert (await client.delete(f"/api/usuarios/{gerente['usuario_id']}", headers=h)).status_code == 404
+
+
+async def test_gerente_si_ve_y_gestiona_administradores(client):
+    hg = await _login(client, GERENTE_E1)
+    roles = {u["rol"] for u in (await client.get("/api/usuarios", headers=hg)).json()}
+    assert {"admin", "gerente"} <= roles
 
 
 async def test_email_duplicado_devuelve_409(client):

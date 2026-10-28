@@ -108,6 +108,7 @@ export interface WorkOrder {
   photos: WorkOrderPhoto[];
 
   // Técnico y tipo
+  tecnico_id?: number | null;
   tecnico_nombre: string;
   tipo: MaintenanceType;
 
@@ -116,6 +117,10 @@ export interface WorkOrder {
   costo_real: number;
 
   // Referencias
+  /** Reporte de falla (aviso de planta) que originó la OT; null si se creó directamente. */
+  aviso_falla_id?: number | null;
+  /** Número visible de ese reporte, p. ej. `AV-2026-0007`. */
+  numero_aviso?: string | null;
   reporte_id?: number | null;
   diagnostico_id?: number | null;
 

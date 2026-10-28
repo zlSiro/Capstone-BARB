@@ -66,7 +66,11 @@ RUTAS: dict[str, dict[str, bool | str]] = {
     "transacciones": {"operador": False, "tecnico": False, "supervisor": False, "engineer": False, "gerente": False, "admin": False, "visitante": False, "super_usuario": True},
     # transacciones_empresa: lo mismo, acotado a la empresa del usuario (solo lectura), exclusiva del gerente.
     "transacciones_empresa": {"operador": False, "tecnico": False, "supervisor": False, "engineer": False, "gerente": True, "admin": False, "visitante": False, "super_usuario": False},
-    "history":    {"operador": False, "tecnico": False, "supervisor": True, "engineer": False, "gerente": True, "admin": True, "visitante": False, "super_usuario": False},
+    # history: el ingeniero analiza el historial de fallas; el administrador solo lo consulta.
+    "history":    {"operador": False, "tecnico": False, "supervisor": True, "engineer": True, "gerente": True, "admin": "ver", "visitante": False, "super_usuario": False},
+    # avisos: reporte de fallas desde planta. Quienes reportan ven los suyos; supervisor y gerente ven
+    # el repositorio completo de la empresa y deciden si se genera una OT (acción `gestionar_avisos`).
+    "avisos":     {"operador": True, "tecnico": True, "supervisor": True, "engineer": True, "gerente": True, "admin": False, "visitante": False, "super_usuario": False},
 }
 
 # =============================================================================
@@ -77,12 +81,24 @@ RUTAS: dict[str, dict[str, bool | str]] = {
 # =============================================================================
 
 ACCIONES: dict[str, dict[str, bool]] = {
-    "crear_ot":            {"operador": False, "tecnico": False, "supervisor": False, "engineer": False, "gerente": True, "admin": True, "visitante": False, "super_usuario": False},
-    # Técnico y operador NO cambian estados de OT (solo supervisión hacia arriba).
-    "cambiar_estado_ot":   {"operador": False, "tecnico": False, "supervisor": True,  "engineer": True,  "gerente": True, "admin": True, "visitante": False, "super_usuario": False},
+    # Crear una OT directamente (sin pasar por un aviso): supervisor y gerente. El administrador gobierna el
+    # sistema, no opera sobre el mantenimiento.
+    "crear_ot":            {"operador": False, "tecnico": False, "supervisor": True,  "engineer": False, "gerente": True, "admin": False, "visitante": False, "super_usuario": False},
+    # El técnico solo inicia las OT que tiene asignadas (`iniciar_ot_asignada`); cerrar es de supervisión hacia arriba.
+    "cambiar_estado_ot":   {"operador": False, "tecnico": False, "supervisor": True,  "engineer": True,  "gerente": True, "admin": False, "visitante": False, "super_usuario": False},
     # Cancelar una OT (estado final) es más restrictivo que iniciarla/cerrarla: engineer no puede.
-    "cancelar_ot":         {"operador": False, "tecnico": False, "supervisor": True,  "engineer": False, "gerente": True, "admin": True, "visitante": False, "super_usuario": False},
-    "eliminar_ot":         {"operador": False, "tecnico": False, "supervisor": True,  "engineer": True,  "gerente": True, "admin": True, "visitante": False, "super_usuario": False},
+    "cancelar_ot":         {"operador": False, "tecnico": False, "supervisor": True,  "engineer": False, "gerente": True, "admin": False, "visitante": False, "super_usuario": False},
+    # Eliminar borra el historial de la OT: solo el gerente (lo normal es cancelar).
+    "eliminar_ot":         {"operador": False, "tecnico": False, "supervisor": False, "engineer": False, "gerente": True, "admin": False, "visitante": False, "super_usuario": False},
+    # --- Aviso de falla -> OT (Fase 1 de roles y privilegios) ---
+    # Reportar una falla desde planta. Llega al repositorio de avisos del supervisor.
+    "reportar_falla":      {"operador": True,  "tecnico": True,  "supervisor": True,  "engineer": True,  "gerente": True, "admin": False, "visitante": False, "super_usuario": False},
+    # Decidir sobre un aviso: generar una OT o descartarlo (con motivo).
+    "gestionar_avisos":    {"operador": False, "tecnico": False, "supervisor": True,  "engineer": False, "gerente": True, "admin": False, "visitante": False, "super_usuario": False},
+    # Priorizar, asignar y reasignar el técnico de una OT.
+    "asignar_ot":          {"operador": False, "tecnico": False, "supervisor": True,  "engineer": False, "gerente": True, "admin": False, "visitante": False, "super_usuario": False},
+    # Iniciar la OT propia (solo si el usuario es el técnico asignado; se valida en el router).
+    "iniciar_ot_asignada": {"operador": False, "tecnico": True,  "supervisor": False, "engineer": False, "gerente": False, "admin": False, "visitante": False, "super_usuario": False},
     "subir_documentos":    {"operador": False, "tecnico": False, "supervisor": False, "engineer": True,  "gerente": True, "admin": True, "visitante": False, "super_usuario": False},
     # No estaba en la matriz original; gestión de usuarios (crear/editar/eliminar) queda
     # restringida a gerente y admin de la empresa. El super_usuario solo puede operar sobre
@@ -98,6 +114,14 @@ ACCIONES: dict[str, dict[str, bool]] = {
 
 
 ROL_SUPER = "super_usuario"
+
+# Roles que solo ven las OT que les corresponden (asignadas a ellos, o nacidas de un aviso suyo).
+# El resto de los roles de empresa ve todas las OT de su empresa.
+ROLES_VISTA_PROPIA = frozenset({"operador", "tecnico"})
+
+# Roles que un administrador de empresa puede crear y gestionar. Gerente y administrador solo los
+# gestiona el gerente: evita que un perfil operativo se otorgue privilegios de decisión.
+ROLES_GESTIONABLES_POR_ADMIN = frozenset({"operador", "tecnico", "supervisor", "engineer", "visitante"})
 ESTADOS_EMPRESA_BLOQUEADOS = ("suspended", "cancelled")
 
 
@@ -225,6 +249,22 @@ def require_action(accion: str):
         rol_actual = await get_rol_actual(authorization)
         if not puede_ejecutar_accion(rol_actual, accion):
             raise HTTPException(status_code=403, detail=f"El rol '{rol_actual}' no puede ejecutar '{accion}'.")
+        return rol_actual
+
+    return _dep
+
+
+def require_any_action(*acciones: str):
+    """Como `require_action`, pero basta con que el rol pueda ejecutar CUALQUIERA de las acciones.
+
+    Para endpoints donde el permiso final depende del contexto (p. ej. el técnico solo inicia SU OT):
+    esta dependencia deja pasar y el router valida el contexto.
+    """
+
+    async def _dep(authorization: str = Header(..., alias="Authorization")):
+        rol_actual = await get_rol_actual(authorization)
+        if not any(puede_ejecutar_accion(rol_actual, a) for a in acciones):
+            raise HTTPException(status_code=403, detail=f"El rol '{rol_actual}' no puede ejecutar '{acciones[0]}'.")
         return rol_actual
 
     return _dep

@@ -29,6 +29,11 @@ export const routes: Routes = [
         loadComponent: () => import('./features/work-orders/pages/work-orders-list/work-orders-list.component').then(m => m.WorkOrdersListComponent)
       },
       {
+        path: 'avisos',
+        canActivate: [roleGuard('avisos')],
+        loadComponent: () => import('./features/avisos/avisos').then(m => m.Avisos)
+      },
+      {
         path: 'topology',
         canActivate: [roleGuard('topology')],
         loadComponent: () => import('./features/topology/topology.component').then(m => m.TopologyComponent)

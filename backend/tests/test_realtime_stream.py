@@ -11,6 +11,7 @@ from barb.core.db import execute, fetch_one
 from barb.services.realtime import EVENT_OT_CREATED, EVENT_OT_DELETED, EVENT_OT_STATUS_CHANGED, broker
 
 ADMIN = {"email": "admin@barb.com", "password": "admin123"}
+GERENTE = {"email": "gerente1@planta.com", "password": "gerente123"}
 SUPERVISOR = {"email": "supervisor1@planta.com", "password": "super123"}
 OTRA_EMPRESA = {"email": "admin@mineranorte.cl", "password": "minera123"}
 
@@ -32,7 +33,7 @@ async def _empresa_de(client, creds: dict) -> int:
 async def ot(client):
     maquina = await fetch_one("SELECT maquina_id FROM maquina ORDER BY maquina_id LIMIT 1")
     tecnico = await fetch_one("SELECT usuario_id FROM usuario WHERE rol = 'tecnico' AND activo ORDER BY usuario_id LIMIT 1")
-    headers = await _auth(client, ADMIN)
+    headers = await _auth(client, GERENTE)
     resp = await client.post(
         "/api/work-orders",
         json={
@@ -125,7 +126,7 @@ async def test_crear_y_eliminar_ot_publican_eventos(client):
     empresa = await _empresa_de(client, ADMIN)
     maquina = await fetch_one("SELECT maquina_id FROM maquina ORDER BY maquina_id LIMIT 1")
     tecnico = await fetch_one("SELECT usuario_id FROM usuario WHERE rol = 'tecnico' AND activo ORDER BY usuario_id LIMIT 1")
-    headers = await _auth(client, ADMIN)
+    headers = await _auth(client, GERENTE)
 
     with broker.subscribe(empresa) as sub:
         resp = await client.post(
@@ -167,3 +168,29 @@ async def test_reconexion_recupera_el_evento_perdido_con_last_event_id(client, o
     with broker.subscribe(empresa, visto.id) as segunda:
         assert [e.type for e in segunda.initial] == [EVENT_OT_STATUS_CHANGED]
         assert segunda.initial[0].data["estado_nuevo"] == "completed"
+
+
+async def test_el_tecnico_solo_recibe_eventos_de_sus_ot_y_el_payload_no_expone_la_lista_interna(client, ot):
+    """`ot` está asignada a carlos (id 4). Otro técnico, suscrito a la misma empresa, no debe enterarse."""
+    empresa = await _empresa_de(client, ADMIN)
+    carlos = await fetch_one("SELECT usuario_id FROM usuario WHERE email = 'carlos@planta.com'")
+    ana = await fetch_one("SELECT usuario_id FROM usuario WHERE email = 'ana@planta.com'")
+
+    with (
+        broker.subscribe(empresa, solo_usuario_id=carlos["usuario_id"]) as de_carlos,
+        broker.subscribe(empresa, solo_usuario_id=ana["usuario_id"]) as de_ana,
+        broker.subscribe(empresa) as supervision,
+    ):
+        resp = await client.patch(
+            f"/api/work-orders/{ot}/status", json={"status": "in_progress"}, headers=await _auth(client, SUPERVISOR)
+        )
+        assert resp.status_code == 200, resp.text
+        assert de_carlos.queue.qsize() == 1 and supervision.queue.qsize() == 1
+        assert de_ana.queue.empty(), "un técnico no debe recibir eventos de OT ajenas"
+
+    # Lo que sale por el canal HTTP no incluye la clave interna (el router la quita al armar el frame).
+    from barb.routers.realtime import _frame
+
+    evento = de_carlos.queue.get_nowait()
+    assert evento.data["visible_a"], "internamente el evento sí lleva a quién concierne"
+    assert "visible_a" not in _frame(evento)["data"]

@@ -1,0 +1,161 @@
+<section class="flex flex-col gap-4" aria-labelledby="avisos-title">
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <h1 id="avisos-title" class="text-2xl font-bold text-gray-800 dark:text-gray-100">
+        {{ puedeGestionar() ? 'Avisos de falla' : 'Mis avisos de falla' }} ({{ conteos().todos }})
+      </h1>
+      <p class="text-sm text-gray-600 dark:text-gray-300">
+        @if (puedeGestionar()) {
+          Fallas reportadas desde planta. Para cada aviso decides si se genera una orden de trabajo o si se descarta con un motivo.
+        } @else {
+          Reporta una falla y sigue en qué quedó: el supervisor decide si se genera una orden de trabajo.
+        }
+      </p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <button type="button" class="btn-secondary" (click)="load()" [disabled]="loading()">Actualizar</button>
+      @if (puedeReportar()) {
+        <button type="button" class="btn-primary" (click)="reportando.set(true)">+ Reportar falla</button>
+      }
+    </div>
+  </div>
+
+  <div class="flex flex-wrap gap-2" role="group" aria-label="Filtrar avisos por estado">
+    @for (f of filtros; track f.value) {
+      <button
+        type="button"
+        class="rounded-full border px-3 py-1.5 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-blue-400"
+        [class]="filtro() === f.value ? 'border-blue-600 bg-blue-600 text-white' : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'"
+        [attr.aria-pressed]="filtro() === f.value"
+        (click)="setFiltro(f.value)">
+        {{ f.label }} ({{ conteos()[f.value] }})
+      </button>
+    }
+  </div>
+
+  @if (loading()) {
+    <div class="py-10 text-center text-gray-600 dark:text-gray-300" role="status">Cargando avisos…</div>
+  } @else if (error()) {
+    <div class="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
+      {{ error() }}
+      <button type="button" class="ml-2 underline" (click)="load()">Reintentar</button>
+    </div>
+  } @else {
+    <div class="overflow-x-auto rounded-lg border border-gray-100 bg-white shadow-sm">
+      <table class="w-full text-sm text-gray-800">
+        <caption class="sr-only">Avisos de falla reportados desde planta</caption>
+        <thead class="bg-gray-50 text-xs uppercase text-gray-600">
+          <tr>
+            <th scope="col" class="px-4 py-2 text-left">Aviso</th>
+            <th scope="col" class="px-4 py-2 text-left">Máquina</th>
+            <th scope="col" class="px-4 py-2 text-left">Descripción</th>
+            <th scope="col" class="px-4 py-2 text-left">Gravedad</th>
+            @if (puedeGestionar()) {
+              <th scope="col" class="px-4 py-2 text-left">Reportado por</th>
+            }
+            <th scope="col" class="px-4 py-2 text-left">Estado</th>
+            @if (puedeGestionar()) {
+              <th scope="col" class="px-4 py-2 text-left">Decisión</th>
+            }
+          </tr>
+        </thead>
+        <tbody>
+          @for (a of visibles(); track a.aviso_id) {
+            <tr class="border-t border-gray-100 align-top hover:bg-gray-50">
+              <td class="whitespace-nowrap px-4 py-2">
+                <p class="font-mono">{{ a.numero_aviso }}</p>
+                <p class="text-xs text-gray-600">{{ a.created_at | date: 'dd/MM/yyyy HH:mm' }}</p>
+              </td>
+              <td class="px-4 py-2">
+                <p>{{ a.machine_name }}</p>
+                <p class="text-xs text-gray-600">{{ a.plant_name }}</p>
+              </td>
+              <td class="max-w-sm px-4 py-2">
+                <p class="line-clamp-3" [title]="a.descripcion">{{ a.descripcion }}</p>
+                @if (a.foto) {
+                  <button
+                    type="button"
+                    class="mt-1 rounded text-xs font-medium text-blue-800 underline focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    [attr.aria-label]="'Ver la foto del aviso ' + a.numero_aviso"
+                    (click)="viendoFoto.set(a)">
+                    <span aria-hidden="true">📎</span> Ver foto
+                  </button>
+                }
+              </td>
+              <td class="px-4 py-2">
+                <span class="rounded-full px-2.5 py-1 text-xs font-medium" [class]="gravedad(a.severidad).badge">
+                  {{ gravedad(a.severidad).label }}
+                </span>
+              </td>
+              @if (puedeGestionar()) {
+                <td class="px-4 py-2">
+                  <p>{{ a.reportado_por.nombre }}</p>
+                  <p class="text-xs text-gray-600">{{ rol(a.reportado_por.rol) }}</p>
+                </td>
+              }
+              <td class="px-4 py-2">
+                <span class="rounded-full px-2.5 py-1 text-xs font-medium" [class]="estado(a.estado).badge">{{ estado(a.estado).label }}</span>
+                @switch (a.estado) {
+                  @case ('con_ot') {
+                    <p class="mt-1 text-xs text-gray-700">
+                      OT <a routerLink="/work-orders" class="font-mono text-blue-800 underline">{{ a.numero_ot }}</a>
+                      @if (a.resuelto_por) { · {{ a.resuelto_por }} }
+                    </p>
+                  }
+                  @case ('descartado') {
+                    <p class="mt-1 max-w-xs text-xs text-gray-700">
+                      Motivo: {{ a.motivo_descarte }}
+                      @if (a.resuelto_por) { · {{ a.resuelto_por }} }
+                    </p>
+                  }
+                  @default {
+                    <p class="mt-1 text-xs text-gray-600">{{ estado(a.estado).detalle }}</p>
+                  }
+                }
+              </td>
+              @if (puedeGestionar()) {
+                <td class="whitespace-nowrap px-4 py-2">
+                  @if (a.estado === 'pendiente') {
+                    <div class="flex flex-wrap gap-1">
+                      <button type="button" class="btn-primary !px-3 !py-1.5 !text-xs" (click)="generando.set(a)" [attr.aria-label]="'Generar OT desde el aviso ' + a.numero_aviso">
+                        Generar OT
+                      </button>
+                      <button type="button" class="btn-danger" (click)="descartando.set(a)" [attr.aria-label]="'Descartar el aviso ' + a.numero_aviso">
+                        Descartar
+                      </button>
+                    </div>
+                  } @else {
+                    <span class="text-xs text-gray-500">—</span>
+                  }
+                </td>
+              }
+            </tr>
+          } @empty {
+            <tr>
+              <td [attr.colspan]="puedeGestionar() ? 7 : 5" class="py-8 text-center text-gray-600">
+                @if (filtro() === 'pendiente') {
+                  No hay avisos pendientes de decisión.
+                } @else {
+                  No hay avisos para este filtro.
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</section>
+
+@if (reportando()) {
+  <app-reportar-falla (closed)="reportando.set(false)" (created)="onReportado($event)" />
+}
+@if (generando(); as aviso) {
+  <app-generar-ot-aviso [aviso]="aviso" (closed)="generando.set(null)" (done)="onOtGenerada($event)" />
+}
+@if (viendoFoto(); as aviso) {
+  <app-ver-foto-aviso [aviso]="aviso" (closed)="viendoFoto.set(null)" />
+}
+@if (descartando(); as aviso) {
+  <app-descartar-aviso [aviso]="aviso" (closed)="descartando.set(null)" (done)="onDescartado($event)" />
+}

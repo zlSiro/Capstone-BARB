@@ -12,7 +12,13 @@ import { OtStatusSelectComponent, StatusChangeRequest } from '../ot-status-selec
   selector: 'app-ot-detail-sheet',
   imports: [DatePipe, ModalComponent, OtStatusBadgeComponent, OtStatusSelectComponent],
   template: `
-    <app-modal size="lg" [title]="order().numero_ot" [subtitle]="order().title" (closed)="closed.emit()">
+    <app-modal
+      size="lg"
+      [title]="order().numero_ot"
+      [subtitle]="order().title"
+      [badge]="order().numero_aviso ?? null"
+      badgeLabel="Reporte de falla de origen"
+      (closed)="closed.emit()">
       <div class="flex flex-col gap-6 text-slate-200" data-testid="sheet-detalle-ot">
         <dl class="grid grid-cols-1 gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
           <div>

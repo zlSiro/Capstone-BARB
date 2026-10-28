@@ -22,6 +22,12 @@ export const ROLE_OPTIONS: { value: Role; label: string }[] = [
 /** El super_usuario (contraparte comercial de BARB) solo crea usuarios con perfil gerente. */
 const SUPER_ROLE_OPTIONS = ROLE_OPTIONS.filter(r => r.value === 'gerente');
 
+/**
+ * El administrador gobierna el sistema pero no se otorga ni otorga privilegios de decisión: solo gestiona
+ * usuarios operativos. Gerentes y administradores los gestiona el gerente (el backend también lo exige).
+ */
+const ADMIN_ROLE_OPTIONS = ROLE_OPTIONS.filter(r => ['operador', 'tecnico', 'supervisor', 'engineer', 'visitante'].includes(r.value));
+
 interface UsuarioFormModel {
   nombre: string;
   email: string;
@@ -120,6 +126,8 @@ export class UsuarioFormModalComponent {
   /** Usuario a editar; null = alta. */
   readonly usuario = input<UsuarioPerfil | null>(null);
   readonly isSuper = input(false);
+  /** El usuario que gestiona es un administrador de empresa: solo puede asignar roles operativos. */
+  readonly soloOperativos = input(false);
   /** Empresas disponibles para el selector (solo super_usuario). */
   readonly empresas = input<Empresa[]>([]);
   /** Empresa preseleccionada (la que el super_usuario tiene activa en la cabecera). */
@@ -135,8 +143,11 @@ export class UsuarioFormModalComponent {
   protected readonly isEdit = computed(() => this.usuario() !== null);
   // El super_usuario solo asigna gerente; el resto de la empresa nunca puede asignar super_usuario
   // (el backend también lo rechaza).
-  protected readonly roles = computed(() =>
-    this.isSuper() ? SUPER_ROLE_OPTIONS : ROLE_OPTIONS.filter(r => r.value !== 'super_usuario'));
+  protected readonly roles = computed(() => {
+    if (this.isSuper()) return SUPER_ROLE_OPTIONS;
+    if (this.soloOperativos()) return ADMIN_ROLE_OPTIONS;
+    return ROLE_OPTIONS.filter(r => r.value !== 'super_usuario');
+  });
 
   protected readonly model = linkedSignal<UsuarioFormModel>(() => {
     const u = this.usuario();

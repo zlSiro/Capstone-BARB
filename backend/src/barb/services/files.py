@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import shutil
 import uuid
 from pathlib import Path
 
@@ -8,7 +10,25 @@ from fastapi import HTTPException, UploadFile
 
 from barb.core.db import fetch_all, transaction
 
+logger = logging.getLogger("barb.files")
+
 ALLOWED_IMAGE_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
+MAX_IMAGE_BYTES = 5 * 1024 * 1024
+
+
+def is_valid_image(content: bytes, content_type: str) -> bool:
+    """
+    La imagen declarada coincide con su contenido (firma del archivo). El `Content-Type` lo manda el cliente: sin esta
+    comprobación se podría subir cualquier cosa etiquetada como imagen.
+    """
+    content_type = (content_type or "").strip().lower()
+    if content_type == "image/jpeg":
+        return content.startswith(b"\xff\xd8\xff")
+    if content_type == "image/png":
+        return content.startswith(b"\x89PNG\r\n\x1a\n")
+    if content_type == "image/webp":
+        return content[:4] == b"RIFF" and content[8:12] == b"WEBP"
+    return False
 
 
 async def store_upload_file(file: UploadFile, destination_dir: Path, prefix: str) -> dict:
@@ -83,6 +103,46 @@ async def save_ot_photos(numero_ot: str, ot_id: int, images: list[UploadFile], u
         raise
 
     return saved_photos
+
+
+async def attach_existing_photo_to_ot(
+    numero_ot: str, ot_id: int, source: Path, original_name: str, content_type: str, upload_dir: Path
+) -> dict | None:
+    """
+    Copia una foto ya guardada (la de un aviso de falla) a la carpeta de la OT y la registra en `ot_foto`, para que la OT
+    nazca con la evidencia que reportó la planta. Devuelve la foto registrada, o None si el archivo de origen ya no existe.
+    """
+    if not source.is_file():
+        logger.warning("La foto del aviso ya no está en disco (%s); la OT %s se crea sin ella.", source, numero_ot)
+        return None
+
+    ot_dir = upload_dir / "work-orders" / numero_ot
+    ot_dir.mkdir(parents=True, exist_ok=True)
+    stored_name = f"ot_{uuid.uuid4().hex}{source.suffix.lower() or '.bin'}"
+    destination = ot_dir / stored_name
+    await anyio.to_thread.run_sync(shutil.copyfile, source, destination)
+
+    try:
+        async with transaction() as cur:
+            await cur.execute(
+                """
+                INSERT INTO ot_foto (ot_id, file_name, original_name, content_type, file_path)
+                VALUES (%(ot_id)s, %(file_name)s, %(original_name)s, %(content_type)s, %(file_path)s)
+                RETURNING ot_foto_id
+                """,
+                {
+                    "ot_id": ot_id,
+                    "file_name": stored_name,
+                    "original_name": original_name,
+                    "content_type": content_type,
+                    "file_path": str(destination),
+                },
+            )
+            row = await cur.fetchone()
+    except Exception:
+        destination.unlink(missing_ok=True)
+        raise
+    return {"id": int(row["ot_foto_id"]), "file_name": stored_name, "file_path": str(destination)}
 
 
 async def delete_ot_files(ot_id: int, upload_dir: Path) -> None:

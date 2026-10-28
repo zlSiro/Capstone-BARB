@@ -56,13 +56,19 @@ def transiciones_posibles(estado_actual: str) -> tuple[str, ...]:
     return TRANSICIONES.get(estado_actual, ())
 
 
-def rol_puede_ir_a(rol: str, destino: str) -> bool:
+def rol_puede_ir_a(rol: str, destino: str, es_responsable: bool = False) -> bool:
+    """¿Puede el rol llevar la OT a `destino`? `es_responsable`: el usuario es el técnico asignado a la OT."""
     accion = ACCION_POR_DESTINO.get(destino)
-    return accion is not None and puede_ejecutar_accion(rol, accion)
+    if accion is None:
+        return False
+    if puede_ejecutar_accion(rol, accion):
+        return True
+    # El técnico responsable puede iniciar su OT; cerrarla o cancelarla sigue siendo de supervisión.
+    return destino == ESTADO_EN_CURSO and es_responsable and puede_ejecutar_accion(rol, "iniciar_ot_asignada")
 
 
-def transiciones_permitidas(estado_actual: str, rol: str | None) -> list[str]:
-    """Destinos válidos que además el rol puede ejecutar."""
+def transiciones_permitidas(estado_actual: str, rol: str | None, es_responsable: bool = False) -> list[str]:
+    """Destinos válidos que además el rol puede ejecutar (según sea o no el técnico asignado)."""
     if rol is None:
         return []
-    return [d for d in transiciones_posibles(estado_actual) if rol_puede_ir_a(rol, d)]
+    return [d for d in transiciones_posibles(estado_actual) if rol_puede_ir_a(rol, d, es_responsable)]

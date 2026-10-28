@@ -75,3 +75,26 @@ def test_destino_manual_no_soportado_se_rechaza():
     for rol in ROLES:
         assert rol_puede_ir_a(rol, "overdue") is False
         assert rol_puede_ir_a(rol, "pending") is False
+
+
+def test_el_tecnico_responsable_puede_iniciar_pero_no_cerrar_ni_cancelar():
+    assert rol_puede_ir_a("tecnico", "in_progress", es_responsable=True) is True
+    assert rol_puede_ir_a("tecnico", "completed", es_responsable=True) is False
+    assert rol_puede_ir_a("tecnico", "cancelled", es_responsable=True) is False
+    assert transiciones_permitidas("pending", "tecnico", es_responsable=True) == ["in_progress"]
+    assert transiciones_permitidas("in_progress", "tecnico", es_responsable=True) == []
+
+
+def test_el_tecnico_que_no_es_responsable_no_puede_iniciar():
+    assert rol_puede_ir_a("tecnico", "in_progress", es_responsable=False) is False
+    assert transiciones_permitidas("pending", "tecnico") == []
+
+
+@pytest.mark.parametrize("rol", ["operador", "visitante", "admin"])
+def test_ser_responsable_no_da_permiso_a_otros_roles(rol):
+    assert transiciones_permitidas("pending", rol, es_responsable=True) == []
+
+
+def test_el_admin_ya_no_cambia_estados():
+    assert transiciones_permitidas("pending", "admin") == []
+    assert transiciones_permitidas("in_progress", "admin") == []

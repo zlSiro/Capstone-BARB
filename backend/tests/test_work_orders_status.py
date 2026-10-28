@@ -10,8 +10,10 @@ SUPERVISOR = {"email": "supervisor1@planta.com", "password": "super123"}
 ENGINEER = {"email": "engineer1@planta.com", "password": "engineer123"}
 TECNICO = {"email": "carlos@planta.com", "password": "tecnico123"}
 OPERADOR = {"email": "operador1@planta.com", "password": "operador123"}
+GERENTE = {"email": "gerente1@planta.com", "password": "gerente123"}
+TECNICO_AJENO = {"email": "ana@planta.com", "password": "tecnico123"}
 VISITANTE = {"email": "visitante@planta.com", "password": "visitante123"}
-OTRA_EMPRESA = {"email": "admin@mineranorte.cl", "password": "minera123"}
+OTRA_EMPRESA = {"email": "gerente@mineranorte.cl", "password": "minera123"}
 
 MARCA = "Test HU-09"
 
@@ -24,10 +26,10 @@ async def _auth(client, creds: dict) -> dict:
 
 @pytest.fixture
 async def ot(client):
-    """Crea una OT pendiente (como admin) y la elimina al terminar."""
+    """Crea una OT pendiente (como gerente) y la elimina al terminar."""
     maquina = await fetch_one("SELECT maquina_id FROM maquina ORDER BY maquina_id LIMIT 1")
     tecnico = await fetch_one("SELECT usuario_id FROM usuario WHERE rol = 'tecnico' AND activo ORDER BY usuario_id LIMIT 1")
-    headers = await _auth(client, ADMIN)
+    headers = await _auth(client, GERENTE)
     resp = await client.post(
         "/api/work-orders",
         json={
@@ -104,7 +106,8 @@ async def test_listado_expone_transiciones_segun_rol(client, ot):
     tec = await client.get("/api/work-orders", headers=await _auth(client, TECNICO))
     pick = lambda r: next(o for o in r.json() if o["numero_ot"] == ot)  # noqa: E731
     assert pick(sup)["allowed_transitions"] == ["in_progress", "cancelled"]
-    assert pick(tec)["allowed_transitions"] == []
+    # El técnico de la fixture es el asignado a la OT: puede iniciarla, nada más.
+    assert pick(tec)["allowed_transitions"] == ["in_progress"]
 
 
 async def test_cancelar_desde_pendiente(client, ot):
@@ -113,12 +116,51 @@ async def test_cancelar_desde_pendiente(client, ot):
     assert resp.json()["estado"] == "cancelled"
 
 
-@pytest.mark.parametrize("creds", [TECNICO, OPERADOR, VISITANTE])
-async def test_tecnico_operador_y_visitante_no_cambian_estado(client, ot, creds):
+@pytest.mark.parametrize("creds", [TECNICO_AJENO, OPERADOR, VISITANTE])
+async def test_tecnico_ajeno_operador_y_visitante_no_cambian_estado(client, ot, creds):
     resp = await _patch(client, creds, ot, "in_progress")
     assert resp.status_code == 403
     estado = await fetch_one("SELECT estado FROM orden_trabajo WHERE numero_ot = %(n)s", {"n": ot})
     assert estado["estado"] == "pending"
+
+
+async def test_el_tecnico_asignado_puede_iniciar_su_ot(client, ot):
+    resp = await _patch(client, TECNICO, ot, "in_progress", comment="Llegué a la máquina")
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["estado"] == "in_progress" and data["fecha_inicio"] is not None
+    assert data["allowed_transitions"] == []  # cerrar o cancelar es de supervisión
+    assert data["status_history"][0]["user_role"] == "tecnico"
+
+
+async def test_el_tecnico_asignado_no_puede_cerrar_ni_cancelar(client, ot):
+    assert (await _patch(client, TECNICO, ot, "in_progress")).status_code == 200
+    assert (await _patch(client, TECNICO, ot, "completed")).status_code == 403
+    assert (await _patch(client, TECNICO, ot, "cancelled")).status_code == 403
+    estado = await fetch_one("SELECT estado FROM orden_trabajo WHERE numero_ot = %(n)s", {"n": ot})
+    assert estado["estado"] == "in_progress"
+
+
+async def test_un_tecnico_que_no_es_el_asignado_no_puede_iniciarla(client, ot):
+    resp = await _patch(client, TECNICO_AJENO, ot, "in_progress")
+    assert resp.status_code == 403
+    assert "técnico asignado" in resp.json()["detail"]
+
+
+async def test_operador_y_tecnico_solo_ven_sus_ot(client, ot):
+    # El técnico asignado la ve; otro técnico y un operador (que no la reportó) no la ven ni por detalle.
+    assert ot in [o["numero_ot"] for o in (await client.get("/api/work-orders", headers=await _auth(client, TECNICO))).json()]
+    for creds in (TECNICO_AJENO, OPERADOR):
+        h = await _auth(client, creds)
+        assert ot not in [o["numero_ot"] for o in (await client.get("/api/work-orders", headers=h)).json()]
+        assert (await client.get(f"/api/work-orders/{ot}", headers=h)).status_code == 404
+    # Supervisión sigue viendo todas.
+    h = await _auth(client, SUPERVISOR)
+    assert ot in [o["numero_ot"] for o in (await client.get("/api/work-orders", headers=h)).json()]
+
+
+async def test_el_admin_ya_no_cambia_estados(client, ot):
+    assert (await _patch(client, ADMIN, ot, "in_progress")).status_code == 403
 
 
 async def test_engineer_puede_iniciar_pero_no_cancelar(client, ot):

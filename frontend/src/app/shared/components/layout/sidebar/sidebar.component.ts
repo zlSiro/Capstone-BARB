@@ -17,6 +17,7 @@ const NAV_ITEMS: NavItem[] = [
   { path: '/transacciones', icon: '📜', label: 'Transacciones', ruta: 'transacciones' },
   { path: '/transacciones-empresa', icon: '📜', label: 'Transacciones', ruta: 'transacciones_empresa' },
   { path: '/dashboard', icon: '📊', label: 'Dashboard', ruta: 'dashboard' },
+  { path: '/avisos', icon: '🚨', label: 'Avisos de falla', ruta: 'avisos' },
   { path: '/work-orders', icon: '🔧', label: 'Órdenes de Trabajo', ruta: 'menu' },
   { path: '/topology', icon: '🌐', label: 'Topología', ruta: 'topology' },
   { path: '/chat', icon: '💬', label: 'DocChat', ruta: 'docchat' },

@@ -11,7 +11,7 @@ from barb.core.db import fetch_all
 from barb.core.permissions import get_sesion_actual, require_route, resolver_empresa
 
 # Se reutiliza el contrato de OTs en vez de inventar uno paralelo (CGBIDA-379).
-from barb.routers.work_orders import _EMPRESA_FILTER, _WORK_ORDER_SELECT, row_to_work_order
+from barb.routers.work_orders import _EMPRESA_FILTER, _WORK_ORDER_SELECT, _alcance_propio, row_to_work_order
 
 logger = logging.getLogger("barb.topology")
 
@@ -216,12 +216,13 @@ async def get_nodo_topologia(
 
         ordenes: list[dict] = []
         if nodo["tipo"] == "Máquina":
+            alcance, alcance_params = _alcance_propio(sesion)
             filas = await fetch_all(
-                f"{_WORK_ORDER_SELECT} WHERE ot.maquina_id = %(maquina_id)s AND {_EMPRESA_FILTER} "
+                f"{_WORK_ORDER_SELECT} WHERE ot.maquina_id = %(maquina_id)s AND {_EMPRESA_FILTER} AND {alcance} "
                 "ORDER BY ot.fecha_creacion DESC, ot.ot_id DESC",
-                {"maquina_id": nodo["maquina_id"], "empresa_id": scope},
+                {"maquina_id": nodo["maquina_id"], "empresa_id": scope, **alcance_params},
             )
-            ordenes = [row_to_work_order(f, rol=sesion["rol"]) for f in filas]
+            ordenes = [row_to_work_order(f, rol=sesion["rol"], usuario_id=sesion["usuario_id"]) for f in filas]
 
         return {"nodo": nodo, "ordenes": ordenes, "hijos": _hijos_de(nodo_id, grafo)}
 

@@ -27,13 +27,25 @@ let nextId = 0;
               <p class="text-sm text-slate-400">{{ subtitle() }}</p>
             }
           </div>
-          <button
-            type="button"
-            (click)="closed.emit()"
-            class="rounded p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            aria-label="Cerrar">
-            <span aria-hidden="true">✕</span>
-          </button>
+          <div class="flex items-start gap-3">
+            @if (badge()) {
+              <div
+                class="rounded-lg border border-blue-500/40 bg-blue-500/10 px-3 py-1.5 text-right"
+                data-testid="modal-badge">
+                @if (badgeLabel()) {
+                  <p class="text-[10px] font-semibold uppercase tracking-wide text-blue-300">{{ badgeLabel() }}</p>
+                }
+                <p class="font-mono text-sm font-semibold text-blue-100">{{ badge() }}</p>
+              </div>
+            }
+            <button
+              type="button"
+              (click)="closed.emit()"
+              class="rounded p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              aria-label="Cerrar">
+              <span aria-hidden="true">✕</span>
+            </button>
+          </div>
         </div>
         <div class="px-6 py-5">
           <ng-content />
@@ -46,6 +58,10 @@ export class ModalComponent {
   readonly title = input.required<string>();
   readonly subtitle = input<string>('');
   readonly size = input<'md' | 'lg'>('md');
+  /** Identificador que se muestra en la esquina superior derecha (p. ej. el reporte de falla que originó la OT). */
+  readonly badge = input<string | null>(null);
+  /** Rótulo pequeño sobre la insignia. */
+  readonly badgeLabel = input<string>('');
   readonly closed = output<void>();
 
   protected readonly titleId = `modal-title-${nextId++}`;

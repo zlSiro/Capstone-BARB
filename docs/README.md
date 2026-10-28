@@ -7,6 +7,7 @@
 |---|---|
 | [`DASHBOARD_KPIS.md`](./DASHBOARD_KPIS.md) | Las 6 fórmulas del dashboard, los 4 gráficos, el selector de rango, los tooltips flotantes, el modo oscuro y la deuda conocida (HU-08 + HU-16) |
 | [`WORK_ORDERS.md`](./WORK_ORDERS.md) | Órdenes de trabajo: modelo, contrato API, validaciones y permisos |
+| [`AVISOS_FALLA.md`](./AVISOS_FALLA.md) | Avisos de falla desde planta, repositorio del supervisor y decisión de generar una OT (roles y privilegios, fase 1) |
 | [`MULTIEMPRESA.md`](./MULTIEMPRESA.md) | Multi-empresa, documentación por empresa y `super_usuario` |
 | [`NOTIFICACIONES.md`](./NOTIFICACIONES.md) | Correo de OTs atrasadas |
 | [`MIGRACIONES.md`](./MIGRACIONES.md) | Migraciones de base de datos |

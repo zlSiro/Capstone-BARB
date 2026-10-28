@@ -43,6 +43,8 @@ import { filterGroup, priorityMeta, statusMeta, tipoLabel } from '../../utils/wo
           <p class="text-sm text-gray-600 dark:text-gray-300">
             @if (canChangeStatus()) {
               Usa la columna «Estado» para actualizar el avance de cada orden. Cada cambio queda registrado con tu usuario y la hora.
+            } @else if (canStartOwn()) {
+              Aquí ves las órdenes que tienes asignadas. Puedes iniciarlas desde la columna «Estado»; cerrarlas lo hace tu supervisor.
             } @else {
               Consulta el estado de las órdenes. Tu rol no permite modificar estados.
             }
@@ -175,6 +177,8 @@ export class WorkOrdersListComponent implements OnInit {
   protected readonly changeError = signal<string | null>(null);
 
   protected readonly canChangeStatus = computed(() => this.permissions.canPerform('cambiar_estado_ot'));
+  /** El técnico no cambia estados en general: solo inicia las OT que tiene asignadas. */
+  protected readonly canStartOwn = computed(() => this.permissions.canPerform('iniciar_ot_asignada'));
 
   protected readonly counts = computed(() => {
     const counts: Record<string, number> = { all: this.orders().length };
