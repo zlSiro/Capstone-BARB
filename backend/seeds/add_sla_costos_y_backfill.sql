@@ -1,10 +1,11 @@
 -- =============================================================================
--- COLUMNAS DE SLA / COSTO POR MAQUINA + BACKFILL DE VENCIMIENTOS DE OTs
+-- BACKFILL DE SLA / COSTO POR MAQUINA Y VENCIMIENTOS DE OTs
 -- =============================================================================
--- Para aplicar en produccion a mano. Ejecuta tres cosas:
+-- PREREQUISITO: `uv run alembic upgrade head` (migracion 0011_sla_costo_maquina crea
+-- las columnas). Para aplicar en produccion a mano. Ejecuta:
 --
---   1. Crea las columnas `maquina.sla_horas` y `maquina.costo_inactividad_minuto`
---      (son las que el backend ya espera; sin ellas responde 503 con este mismo SQL).
+--   1. (Columnas `maquina.sla_horas` y `maquina.costo_inactividad_minuto`: ya las crea
+--      la migracion 0011; este script no toca el esquema.)
 --   2. Les asigna valor a las maquinas segun su criticidad.
 --   3. Calcula `orden_trabajo.fecha_vencimiento` para las OTs historicas, con la misma
 --      formula que usa el alta de OT:
@@ -49,12 +50,8 @@ BEGIN;
 -- -----------------------------------------------------------------------------
 -- 1. Columnas
 -- -----------------------------------------------------------------------------
--- NUMERIC(6,2) y NUMERIC(12,2) son los tipos que ya usan los esquemas de Pydantic y el
--- router de catalogo. No se agregan defaults: NULL significa "usa el SLA general de la
--- empresa", que es una decision de negocio distinta de un 0.
-ALTER TABLE maquina
-    ADD COLUMN IF NOT EXISTS sla_horas NUMERIC(6,2),
-    ADD COLUMN IF NOT EXISTS costo_inactividad_minuto NUMERIC(12,2);
+-- Las columnas las crea la migracion Alembic 0011_sla_costo_maquina. Correr antes
+-- `uv run alembic upgrade head`; si no existen, este script falla (ON_ERROR_STOP).
 
 -- -----------------------------------------------------------------------------
 -- 2. Valores por maquina, segun criticidad
