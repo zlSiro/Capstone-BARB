@@ -5,6 +5,8 @@ import { Aviso } from '../../core/models';
 import { AvisosApi } from '../../core/services/avisos-api';
 import { ToastService } from '../../core/services/toast.service';
 import { apiErrorMessage } from '../../core/utils/http-error';
+import { ModalComponent } from '../../shared/components/ui/modal/modal.component';
+import { MOTIVOS_DESCARTE } from './etiquetas';
 
 interface DescartarModel {
   motivo: string;
@@ -15,61 +17,44 @@ const MOTIVO_MINIMO = 3;
 /** Diálogo con el que el supervisor descarta un aviso. El motivo es obligatorio y lo ve quien reportó la falla. */
 @Component({
   selector: 'app-descartar-aviso',
-  imports: [FormField],
+  imports: [FormField, ModalComponent],
   template: `
-    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" (click)="cerrar()">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="descartar-title"
-        class="max-h-full w-full max-w-lg overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 shadow-2xl"
-        (click)="$event.stopPropagation()">
-        <div class="flex items-start justify-between border-b border-slate-800 px-6 py-4">
-          <div>
-            <h2 id="descartar-title" class="text-xl font-bold text-slate-100">Descartar aviso</h2>
-            <p class="text-sm text-slate-400">No se genera una OT. Quien reportó verá el motivo.</p>
-          </div>
-          <button type="button" (click)="cerrar()" class="rounded p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-100" aria-label="Cerrar">
-            <span aria-hidden="true">✕</span>
-          </button>
+    <app-modal title="Descartar aviso" subtitle="No se genera una OT. Quien reportó verá el motivo." (closed)="cerrar()">
+      <div class="grid gap-4">
+        <div class="rounded-control border border-borde bg-superficie-2 p-3 text-base">
+          <p class="codigo text-lg text-tinta-suave">{{ aviso().numero_aviso }}, {{ aviso().machine_name }}</p>
+          <p class="mt-1">{{ aviso().descripcion }}</p>
         </div>
 
-        <div class="grid gap-4 px-6 py-5">
-          <div class="rounded border border-slate-700 bg-slate-800/60 p-3 text-sm text-slate-200">
-            <p class="font-mono text-xs text-slate-400">{{ aviso().numero_aviso }} · {{ aviso().machine_name }}</p>
-            <p class="mt-1">{{ aviso().descripcion }}</p>
-          </div>
-
-          <div>
-            <label for="descartar-motivo" class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Motivo *</label>
-            <textarea
-              id="descartar-motivo"
-              rows="3"
-              [formField]="descartarForm.motivo"
-              [attr.aria-invalid]="descartarForm.motivo().touched() && descartarForm.motivo().invalid()"
-              [attr.aria-describedby]="descartarForm.motivo().touched() && descartarForm.motivo().invalid() ? 'descartar-motivo-error' : null"
-              placeholder="Ej. Ya está cubierto por la OT-2026-0012."
-              class="w-full resize-none rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
-            @if (descartarForm.motivo().touched() && descartarForm.motivo().invalid()) {
-              <p id="descartar-motivo-error" role="alert" class="mt-1 text-xs text-red-400">{{ descartarForm.motivo().errors()[0]?.message }}</p>
+        <div>
+          <label for="descartar-motivo" class="fld-label">Motivo</label>
+          <div class="mb-2 flex flex-wrap gap-2" role="group" aria-label="Motivos frecuentes">
+            @for (m of motivos; track m) {
+              <button type="button" class="pill" [attr.aria-pressed]="model().motivo === m" (click)="elegirMotivo(m)">{{ m }}</button>
             }
           </div>
-        </div>
-
-        <div class="flex items-center justify-end gap-3 border-t border-slate-800 px-6 py-4">
-          <button type="button" (click)="cerrar()" class="text-sm font-medium text-slate-300 hover:text-white">Cancelar</button>
-          <button
-            type="button"
-            [disabled]="enviando()"
-            (click)="descartar()"
-            class="rounded bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-red-900">
-            {{ enviando() ? 'Descartando…' : 'Descartar aviso' }}
-          </button>
+          <textarea
+            id="descartar-motivo"
+            rows="3"
+            [formField]="descartarForm.motivo"
+            [attr.aria-invalid]="descartarForm.motivo().touched() && descartarForm.motivo().invalid()"
+            [attr.aria-describedby]="descartarForm.motivo().touched() && descartarForm.motivo().invalid() ? 'descartar-motivo-error' : null"
+            placeholder="Ej. Ya está cubierto por la OT-2026-0012."
+            class="fld-input resize-none"></textarea>
+          @if (descartarForm.motivo().touched() && descartarForm.motivo().invalid()) {
+            <p id="descartar-motivo-error" role="alert" class="fld-error">{{ descartarForm.motivo().errors()[0]?.message }}</p>
+          }
         </div>
       </div>
-    </div>
+
+      <div modal-footer class="grid gap-2 sm:flex sm:justify-end">
+        <button type="button" class="btn-ghost order-2 sm:order-1" (click)="cerrar()">Cancelar</button>
+        <button type="button" class="btn-danger order-1 sm:order-2" [disabled]="enviando()" (click)="descartar()">
+          {{ enviando() ? 'Descartando…' : 'Descartar aviso' }}
+        </button>
+      </div>
+    </app-modal>
   `,
-  host: { '(document:keydown.escape)': 'cerrar()' },
 })
 export class DescartarAviso {
   private readonly api = inject(AvisosApi);
@@ -79,6 +64,7 @@ export class DescartarAviso {
   readonly closed = output<void>();
   readonly done = output<Aviso>();
 
+  protected readonly motivos = MOTIVOS_DESCARTE;
   protected readonly enviando = signal(false);
 
   protected readonly model = signal<DescartarModel>({ motivo: '' });
@@ -90,6 +76,10 @@ export class DescartarAviso {
 
   protected cerrar(): void {
     this.closed.emit();
+  }
+
+  protected elegirMotivo(motivo: string): void {
+    this.model.set({ motivo });
   }
 
   protected descartar(): void {

@@ -4,6 +4,7 @@ import { Subject, of, throwError } from 'rxjs';
 import { FinancialStats } from '../../core/models';
 import { StatsService } from '../../core/services/stats.service';
 import { DashboardComponent } from './dashboard.component';
+import { siguelTema } from '../../testing/tema';
 
 /**
  * Tests del dashboard de KPIs (HU-16 / CGBIDA-392).
@@ -115,12 +116,12 @@ describe('DashboardComponent', () => {
       }
     });
 
-    it('cada tarjeta lleva al menos una clase dark:', () => {
+    it('cada tarjeta usa colores del tema (claro y oscuro)', () => {
       const { el } = setup();
       for (const clave of CLAVES) {
         const t = tarjeta(el, clave);
-        expect(t.className).toContain('dark:');
-        const internos = [...t.querySelectorAll('*')].some((n) => n.className.includes('dark:'));
+        expect(siguelTema(t.className)).toBe(true);
+        const internos = [...t.querySelectorAll('*')].some((n) => siguelTema(n.className));
         expect(internos).toBe(true);
       }
     });
@@ -470,7 +471,7 @@ describe('DashboardComponent', () => {
         })
       );
       const valor = tarjeta(el, 'mtbf').querySelectorAll('p')[1];
-      expect(valor.className).toContain('amber');
+      expect(valor.className).toContain('text-media');
     });
 
     it('con impacto_visible=true pero sin valor muestra el aviso de rango', () => {

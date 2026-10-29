@@ -7,10 +7,11 @@ import { SessionListItem, SessionMessage } from '../../../core/models/chat.model
 import { ToastService } from '../../../core/services/toast.service';
 import { I18nService } from '../../../core/i18n/i18n.service';
 import { TranslatePipe } from '../../../core/i18n/translate.pipe';
+import { Icon } from '../../../shared/components/ui/icon/icon';
 
 @Component({
   selector: 'app-chat-history',
-  imports: [RouterLink, TranslatePipe],
+  imports: [RouterLink, TranslatePipe, Icon],
   templateUrl: 'chat-history.component.html',
 })
 export class ChatHistoryComponent {

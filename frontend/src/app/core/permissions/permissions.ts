@@ -143,6 +143,8 @@ export const puedeEjecutarAccion = (
 export const getDefaultRouteForRole = (role: Role | null | undefined): string => {
   // El super_usuario (contraparte comercial de BARB) solo administra empresas: aterriza en su mantenedor.
   if (puedeAccederRuta(role, 'empresas')) return '/empresas';
+  // En planta el día empieza por los avisos: quien reporta ve los suyos y el supervisor, los pendientes de decidir.
+  if ((role === 'operador' || role === 'supervisor') && puedeAccederRuta(role, 'avisos')) return '/avisos';
   if (puedeAccederRuta(role, 'dashboard')) return '/dashboard';
   if (puedeAccederRuta(role, 'menu')) return '/work-orders';
   return '/login';

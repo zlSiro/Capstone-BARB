@@ -19,40 +19,40 @@ import { OtStatusSelectComponent, StatusChangeRequest } from '../ot-status-selec
       [badge]="order().numero_aviso ?? null"
       badgeLabel="Reporte de falla de origen"
       (closed)="closed.emit()">
-      <div class="flex flex-col gap-6 text-slate-200" data-testid="sheet-detalle-ot">
+      <div class="flex flex-col gap-6 text-tinta" data-testid="sheet-detalle-ot">
         <dl class="grid grid-cols-1 gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
           <div>
-            <dt class="text-xs uppercase tracking-wide text-slate-400">Estado</dt>
+            <dt class="text-sm text-tinta-suave">Estado</dt>
             <dd class="mt-1"><app-ot-status-select [order]="order()" (changeRequested)="changeRequested.emit($event)" /></dd>
           </div>
           <div>
-            <dt class="text-xs uppercase tracking-wide text-slate-400">Prioridad</dt>
+            <dt class="text-sm text-tinta-suave">Prioridad</dt>
             <dd class="mt-1">
-              <span class="rounded-full px-2.5 py-1 text-xs font-medium" [class]="priority().badge">{{ priority().label }}</span>
+              <span class="rounded-full px-2.5 py-1 text-sm font-medium" [class]="priority().badge">{{ priority().label }}</span>
             </dd>
           </div>
           <div>
-            <dt class="text-xs uppercase tracking-wide text-slate-400">Máquina</dt>
+            <dt class="text-sm text-tinta-suave">Máquina</dt>
             <dd class="mt-1">{{ order().machine_name }}</dd>
           </div>
           <div>
-            <dt class="text-xs uppercase tracking-wide text-slate-400">Planta · Disciplina</dt>
+            <dt class="text-sm text-tinta-suave">Planta · Disciplina</dt>
             <dd class="mt-1">{{ order().plant_name || '—' }} · {{ order().discipline_name || '—' }}</dd>
           </div>
           <div>
-            <dt class="text-xs uppercase tracking-wide text-slate-400">Técnico asignado</dt>
+            <dt class="text-sm text-tinta-suave">Técnico asignado</dt>
             <dd class="mt-1">{{ order().tecnico_nombre || 'Sin asignar' }}</dd>
           </div>
           <div>
-            <dt class="text-xs uppercase tracking-wide text-slate-400">Tipo de mantenimiento</dt>
+            <dt class="text-sm text-tinta-suave">Tipo de mantenimiento</dt>
             <dd class="mt-1">{{ tipo() }}</dd>
           </div>
           <div>
-            <dt class="text-xs uppercase tracking-wide text-slate-400">Creada</dt>
+            <dt class="text-sm text-tinta-suave">Creada</dt>
             <dd class="mt-1">{{ order().created_at | date: 'dd/MM/yyyy HH:mm' }}</dd>
           </div>
           <div>
-            <dt class="text-xs uppercase tracking-wide text-slate-400">Inicio · Cierre</dt>
+            <dt class="text-sm text-tinta-suave">Inicio · Cierre</dt>
             <dd class="mt-1">
               {{ order().fecha_inicio ? (order().fecha_inicio | date: 'dd/MM/yyyy HH:mm') : 'Aún no inicia' }}
               ·
@@ -60,19 +60,19 @@ import { OtStatusSelectComponent, StatusChangeRequest } from '../ot-status-selec
             </dd>
           </div>
           <div class="sm:col-span-2">
-            <dt class="text-xs uppercase tracking-wide text-slate-400">Descripción del problema</dt>
+            <dt class="text-sm text-tinta-suave">Descripción del problema</dt>
             <dd class="mt-1 whitespace-pre-line">{{ order().description || 'Sin descripción.' }}</dd>
           </div>
         </dl>
 
         <section aria-labelledby="ot-history-title">
-          <h3 id="ot-history-title" class="mb-3 text-sm font-semibold text-slate-100">Historial de estados</h3>
+          <h3 id="ot-history-title" class="mb-3 text-sm font-semibold text-tinta">Historial de estados</h3>
           @if (!order().status_history) {
-            <p class="text-sm text-slate-400" role="status">Cargando historial…</p>
+            <p class="text-sm text-tinta-suave" role="status">Cargando historial…</p>
           } @else if (!order().status_history!.length) {
-            <p class="text-sm text-slate-400">Aún no hay cambios de estado registrados.</p>
+            <p class="text-sm text-tinta-suave">Aún no hay cambios de estado registrados.</p>
           } @else {
-            <ol class="flex flex-col gap-3 border-l border-slate-700 pl-4">
+            <ol class="flex flex-col gap-3 border-l border-borde pl-4">
               @for (h of order().status_history; track h.id) {
                 <li class="text-sm">
                   <p class="flex flex-wrap items-center gap-2">
@@ -81,12 +81,12 @@ import { OtStatusSelectComponent, StatusChangeRequest } from '../ot-status-selec
                     <span class="sr-only">cambió a</span>
                     <app-ot-status-badge [estado]="h.to_status" />
                   </p>
-                  <p class="mt-1 text-xs text-slate-400">
+                  <p class="mt-1 text-sm text-tinta-suave">
                     {{ h.user_name || 'Usuario desconocido' }}@if (h.user_role) { ({{ role(h.user_role) }}) } ·
                     {{ h.changed_at | date: 'dd/MM/yyyy HH:mm' }}
                   </p>
                   @if (h.comment) {
-                    <p class="mt-1 text-slate-200">“{{ h.comment }}”</p>
+                    <p class="mt-1 text-tinta">“{{ h.comment }}”</p>
                   }
                 </li>
               }

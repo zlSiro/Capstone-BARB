@@ -161,7 +161,7 @@ function toModel(e: Empresa | null): EmpresaFormModel {
                 <option [value]="s.value">{{ s.label }}</option>
               }
             </select>
-            <p class="mt-1 text-xs text-slate-400">
+            <p class="mt-1 text-sm text-tinta-suave">
               Una empresa suspendida o cancelada pierde el acceso a la solución (sus sesiones se cierran).
             </p>
           </div>
@@ -173,9 +173,9 @@ function toModel(e: Empresa | null): EmpresaFormModel {
         </div>
 
         @if (!isEdit()) {
-          <fieldset class="md:col-span-2 rounded-lg border border-slate-700 p-4">
-            <legend class="px-2 text-xs font-semibold uppercase tracking-wide text-slate-300">Gerente de la empresa</legend>
-            <label class="mb-3 flex items-center gap-2 text-sm text-slate-200">
+          <fieldset class="md:col-span-2 rounded-control border border-borde p-4">
+            <legend class="px-2 text-sm font-semibold text-tinta-suave">Gerente de la empresa</legend>
+            <label class="mb-3 flex items-center gap-2 text-sm text-tinta">
               <input type="checkbox" [formField]="f.crearAdmin" class="h-4 w-4" />
               Crear el usuario gerente de la empresa (administra a los demás usuarios)
             </label>
@@ -209,7 +209,7 @@ function toModel(e: Empresa | null): EmpresaFormModel {
 
         <div class="md:col-span-2 flex justify-end gap-2 pt-2">
           <button type="button" (click)="closed.emit()"
-                  class="rounded border border-slate-600 px-4 py-2 text-sm text-slate-200 hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  class="rounded-control border border-borde px-4 py-2 text-sm text-tinta hover:bg-superficie focus:outline-none focus:ring-2 focus:ring-accion">
             Cancelar
           </button>
           <button type="submit" class="btn-primary" [disabled]="submitting()">

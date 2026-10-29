@@ -31,10 +31,10 @@ interface UploadModel {
   template: `
     <section class="flex flex-col gap-4" aria-labelledby="docs-title">
       <div>
-        <h1 id="docs-title" class="text-2xl font-bold text-gray-800 dark:text-gray-100">
+        <h1 id="docs-title" class="text-2xl font-bold text-tinta ">
           Documentación ({{ documentos().length }})
         </h1>
-        <p class="text-sm text-gray-600 dark:text-gray-300">
+        <p class="text-sm text-tinta-suave ">
           @if (tenant.isSuper() && !tenant.empresaId()) {
             Documentos de todas las empresas.
           } @else {
@@ -43,14 +43,14 @@ interface UploadModel {
         </p>
       </div>
 
-      <div class="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900" role="note">
+      <div class="rounded-control border border-accion bg-accion-suave px-4 py-3 text-sm text-accion" role="note">
         <strong>Cómo se usa:</strong> el asistente de IA responde <em>únicamente</em> con la información de los documentos
         <strong>activos</strong> de la empresa. Si un tema no está documentado, la IA lo indicará en lugar de inventar.
         Formatos: PDF, DOCX, TXT, MD, CSV, JSON, LOG (máx. 15 MB; los PDF escaneados sin texto no se pueden indexar).
       </div>
 
       @if (permissions.canPerform('subir_documentos')) {
-        <form class="grid gap-3 rounded-lg border border-slate-700 bg-slate-900 p-4 md:grid-cols-2"
+        <form class="grid gap-3 rounded-control border border-borde bg-superficie p-4 md:grid-cols-2"
               (submit)="$event.preventDefault(); upload()" novalidate aria-label="Subir documento">
           @if (tenant.isSuper()) {
             <div class="md:col-span-2">
@@ -69,7 +69,7 @@ interface UploadModel {
           <div>
             <label for="doc-file" class="fld-label">Archivo *</label>
             <input id="doc-file" type="file" [accept]="accept" (change)="onFile($event)"
-                   class="fld-input file:mr-3 file:rounded file:border-0 file:bg-blue-600 file:px-3 file:py-1 file:text-white" />
+                   class="fld-input file:mr-3 file:rounded file:border-0 file:bg-accion file:px-3 file:py-1 file:text-sobre-accion" />
             @if (fileError()) {
               <p role="alert" class="fld-error">{{ fileError() }}</p>
             }
@@ -91,16 +91,16 @@ interface UploadModel {
       }
 
       @if (loading()) {
-        <div class="py-10 text-center text-gray-600" role="status">Cargando documentos…</div>
+        <div class="py-10 text-center text-tinta-suave" role="status">Cargando documentos…</div>
       } @else if (error()) {
-        <div class="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
+        <div class="rounded-control border border-peligro bg-peligro-suave px-4 py-3 text-sm text-peligro" role="alert">
           {{ error() }} <button type="button" class="ml-2 underline" (click)="load()">Reintentar</button>
         </div>
       } @else {
-        <div class="overflow-x-auto rounded-lg border border-gray-100 bg-white shadow-sm">
-          <table class="w-full text-sm text-gray-800">
+        <div class="overflow-x-auto rounded-control border border-borde bg-superficie ">
+          <table class="tabla-apilada w-full text-sm text-tinta">
             <caption class="sr-only">Documentos disponibles para la IA</caption>
-            <thead class="bg-gray-50 text-xs uppercase text-gray-600">
+            <thead class="bg-superficie-2 text-sm text-tinta-suave">
               <tr>
                 <th scope="col" class="px-4 py-2 text-left">Documento</th>
                 @if (tenant.isSuper()) {
@@ -116,25 +116,25 @@ interface UploadModel {
             </thead>
             <tbody>
               @for (d of documentos(); track d.id) {
-                <tr class="border-t border-gray-100 hover:bg-gray-50" [class.opacity-70]="!d.activo">
-                  <td class="px-4 py-2">
+                <tr class="border-t border-borde hover:bg-superficie-2" [class.opacity-70]="!d.activo">
+                  <td class="px-4 py-2" data-label="Documento">
                     <div class="font-medium">{{ d.title }}</div>
-                    <div class="text-xs text-gray-600">{{ d.original_name }}@if (d.notes) { · {{ d.notes }} }</div>
+                    <div class="text-sm text-tinta-suave">{{ d.original_name }}@if (d.notes) { · {{ d.notes }} }</div>
                   </td>
                   @if (tenant.isSuper()) {
-                    <td class="px-4 py-2">{{ d.empresa_nombre }}</td>
+                    <td class="px-4 py-2" data-label="Empresa">{{ d.empresa_nombre }}</td>
                   }
-                  <td class="px-4 py-2">{{ d.subido_por ?? '—' }}</td>
-                  <td class="px-4 py-2 text-right">{{ size(d.size_bytes) }}</td>
-                  <td class="px-4 py-2 text-right">{{ d.chunks_indexed }}</td>
-                  <td class="px-4 py-2">{{ d.created_at ? (d.created_at | date: 'dd-MM-yyyy') : '—' }}</td>
-                  <td class="px-4 py-2">
-                    <span class="rounded px-2 py-1 text-xs font-medium"
-                          [class]="d.activo ? 'bg-green-100 text-green-800' : 'bg-gray-200 text-gray-700'">
+                  <td class="px-4 py-2" data-label="Subido por">{{ d.subido_por ?? '—' }}</td>
+                  <td class="px-4 py-2 text-right" data-label="Tamaño">{{ size(d.size_bytes) }}</td>
+                  <td class="px-4 py-2 text-right" data-label="Fragmentos">{{ d.chunks_indexed }}</td>
+                  <td class="px-4 py-2" data-label="Fecha">{{ d.created_at ? (d.created_at | date: 'dd-MM-yyyy') : '—' }}</td>
+                  <td class="px-4 py-2" data-label="Uso por la IA">
+                    <span class="rounded-control px-2 py-1 text-sm font-medium"
+                          [class]="d.activo ? 'bg-ok-suave text-ok' : 'bg-borde text-tinta'">
                       {{ d.activo ? 'Activo' : 'Excluido' }}
                     </span>
                   </td>
-                  <td class="px-4 py-2">
+                  <td class="px-4 py-2" data-label="Acciones">
                     <div class="flex flex-wrap gap-1">
                       @if (permissions.canPerform('subir_documentos')) {
                         <button type="button" class="btn-secondary" (click)="toggle(d)"
@@ -150,7 +150,7 @@ interface UploadModel {
                 </tr>
               } @empty {
                 <tr>
-                  <td [attr.colspan]="tenant.isSuper() ? 8 : 7" class="py-6 text-center text-gray-600">
+                  <td [attr.colspan]="tenant.isSuper() ? 8 : 7" class="py-6 text-center text-tinta-suave">
                     Aún no hay documentos. La IA no podrá responder hasta que se suba documentación.
                   </td>
                 </tr>

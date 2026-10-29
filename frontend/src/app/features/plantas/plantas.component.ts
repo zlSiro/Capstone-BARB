@@ -33,10 +33,10 @@ interface PlantaFila {
     <section class="flex flex-col gap-4" aria-labelledby="plantas-title">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 id="plantas-title" class="text-xl font-bold text-gray-800 dark:text-gray-100">
+          <h2 id="plantas-title" class="text-xl font-bold text-tinta ">
             Plantas ({{ plantas().length }})
           </h2>
-          <p class="text-sm text-gray-600 dark:text-gray-300">
+          <p class="text-sm text-tinta-suave ">
             Plantas de tu empresa con sus máquinas. El alta crea la planta, sus disciplinas y sus máquinas de una vez.
           </p>
         </div>
@@ -51,25 +51,25 @@ interface PlantaFila {
           id="planta-filtro"
           type="search"
           placeholder="Buscar por nombre o ubicación…"
-          class="w-full max-w-sm rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+          class="w-full max-w-sm rounded-control border border-borde-control bg-superficie px-3 py-2 text-sm text-tinta focus:outline-none focus:ring-2 focus:ring-accion "
           [value]="filtro()"
           (input)="filtro.set($any($event.target).value)" />
       </div>
 
       @if (loading()) {
-        <div class="py-10 text-center text-gray-600 dark:text-gray-300" role="status" data-testid="cargando">
+        <div class="py-10 text-center text-tinta-suave " role="status" data-testid="cargando">
           Cargando plantas…
         </div>
       } @else if (error()) {
-        <div class="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert" data-testid="error">
+        <div class="rounded-control border border-peligro bg-peligro-suave px-4 py-3 text-sm text-peligro" role="alert" data-testid="error">
           {{ error() }}
           <button type="button" class="ml-2 underline" (click)="load()">Reintentar</button>
         </div>
       } @else {
-        <div class="overflow-x-auto rounded-lg border border-gray-100 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
-          <table class="w-full text-sm text-gray-800 dark:text-gray-100">
+        <div class="overflow-x-auto rounded-control border border-borde bg-superficie ">
+          <table class="tabla-apilada w-full text-sm text-tinta ">
             <caption class="sr-only">Listado de plantas</caption>
-            <thead class="bg-gray-50 text-xs uppercase text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+            <thead class="bg-superficie-2 text-sm text-tinta-suave ">
               <tr>
                 <th scope="col" class="px-4 py-2 text-left">Planta</th>
                 <th scope="col" class="px-4 py-2 text-left">Ubicación</th>
@@ -80,12 +80,12 @@ interface PlantaFila {
             </thead>
             <tbody>
               @for (fila of filtradas(); track fila.planta.id) {
-                <tr class="border-t border-gray-100 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800" data-testid="fila-planta">
-                  <td class="px-4 py-2">
+                <tr class="border-t border-borde hover:bg-superficie-2 " data-testid="fila-planta">
+                  <td class="px-4 py-2" data-label="Planta">
                     <div class="flex items-center gap-1">
                       <button
                         type="button"
-                        class="rounded px-1 text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-100"
+                        class="rounded-control px-1 text-tinta-suave hover:bg-superficie-2 hover:text-tinta "
                         data-testid="expandir-planta"
                         (click)="togglePlanta(fila.planta.id)"
                         [attr.aria-expanded]="expandida(fila.planta.id)"
@@ -97,25 +97,25 @@ interface PlantaFila {
                       <span class="font-medium" data-testid="planta-celda-nombre">{{ fila.planta.name }}</span>
                     </div>
                     @if (fila.maquinas.length === 0) {
-                      <div class="text-xs text-gray-500 dark:text-gray-400">Sin máquinas</div>
+                      <div class="text-sm text-tinta-suave ">Sin máquinas</div>
                     }
                   </td>
-                  <td class="px-4 py-2" data-testid="planta-celda-ubicacion">{{ fila.planta.ubicacion || '—' }}</td>
-                  <td class="px-4 py-2 text-right font-medium" data-testid="planta-celda-maquinas">
+                  <td class="px-4 py-2" data-label="Ubicación" data-testid="planta-celda-ubicacion">{{ fila.planta.ubicacion || '—' }}</td>
+                  <td class="px-4 py-2 text-right font-medium" data-label="Máquinas" data-testid="planta-celda-maquinas">
                     {{ fila.maquinas.length }}
                   </td>
-                  <td class="px-4 py-2">
+                  <td class="px-4 py-2" data-label="Disciplinas">
                     @if (disciplinasDe(fila).length) {
                       <div class="flex flex-wrap gap-1">
                         @for (d of disciplinasDe(fila); track d) {
-                          <span class="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-700 dark:bg-gray-800 dark:text-gray-200">{{ d }}</span>
+                          <span class="rounded-control bg-superficie-2 px-2 py-0.5 text-sm text-tinta ">{{ d }}</span>
                         }
                       </div>
                     } @else {
-                      <span class="text-gray-400">—</span>
+                      <span class="text-tinta-suave">—</span>
                     }
                   </td>
-                  <td class="px-4 py-2">
+                  <td class="px-4 py-2" data-label="Acciones">
                     <div class="flex justify-end gap-1">
                       <button
                         type="button"
@@ -136,16 +136,16 @@ interface PlantaFila {
                 </tr>
 
                 @if (expandida(fila.planta.id)) {
-                  <tr class="bg-gray-50/60 dark:bg-gray-800/40" data-testid="fila-maquinas">
+                  <tr class="bg-superficie-2 " data-testid="fila-maquinas">
                     <td colspan="5" class="px-4 py-3">
                       @if (fila.maquinas.length === 0) {
-                        <p class="text-sm text-gray-600 dark:text-gray-300" data-testid="sin-maquinas-planta">
+                        <p class="text-sm text-tinta-suave " data-testid="sin-maquinas-planta">
                           Esta planta no tiene máquinas. Agrégalas con «+ Máquina».
                         </p>
                       } @else {
                         <table class="w-full text-sm">
                           <caption class="sr-only">Máquinas de {{ fila.planta.name }}</caption>
-                          <thead class="text-xs uppercase text-gray-500 dark:text-gray-400">
+                          <thead class="text-sm text-tinta-suave ">
                             <tr>
                               <th scope="col" class="py-1 pr-3 text-left">Máquina</th>
                               <th scope="col" class="py-1 pr-3 text-left">Código</th>
@@ -157,7 +157,7 @@ interface PlantaFila {
                           </thead>
                           <tbody>
                             @for (maquina of fila.maquinas; track maquina.id) {
-                              <tr class="border-t border-gray-200 dark:border-gray-700" data-testid="fila-maquina">
+                              <tr class="border-t border-borde " data-testid="fila-maquina">
                                 <td class="py-1 pr-3" data-testid="maquina-nombre">{{ maquina.name }}</td>
                                 <td class="py-1 pr-3" data-testid="maquina-codigo">{{ maquina.codigo || '—' }}</td>
                                 <td class="py-1 pr-3" data-testid="maquina-disciplina">
@@ -184,7 +184,7 @@ interface PlantaFila {
                 }
               } @empty {
                 <tr>
-                  <td colspan="5" class="py-6 text-center text-gray-600 dark:text-gray-300" data-testid="vacio">
+                  <td colspan="5" class="py-6 text-center text-tinta-suave " data-testid="vacio">
                     No hay plantas todavía. Crea la primera con «Nueva planta».
                   </td>
                 </tr>

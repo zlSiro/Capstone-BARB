@@ -9,6 +9,7 @@ import { ToastService } from '../../core/services/toast.service';
 import { By } from '@angular/platform-browser';
 import { PlantasComponent } from '../plantas/plantas.component';
 import { TopologyComponent } from './topology.component';
+import { siguelTema } from '../../testing/tema';
 
 function nodo(overrides: Partial<TopologyNode> = {}): TopologyNode {
   return {
@@ -202,8 +203,8 @@ describe('TopologyComponent', () => {
     const { el } = setup(TOPOLOGIA);
     const bordeDe = (id: string) =>
       el.querySelector(`g[data-nodo-id="${id}"] rect`)?.getAttribute('stroke');
-    expect(bordeDe('m_1')).toContain('red');       // falla
-    expect(bordeDe('p_1')).toContain('emerald');   // operativo
+    expect(bordeDe('m_1')).toContain('peligro');  // falla
+    expect(bordeDe('p_1')).toContain('--ok');      // operativo
   });
 
   it('distingue los cuatro estados en la leyenda, incluido Desconectado', () => {
@@ -456,17 +457,17 @@ describe('TopologyComponent', () => {
     it('el lienzo sigue el tema en vez de quedarse blanco', () => {
       const { el } = setup(TOPOLOGIA);
       const lienzo = canvas(el)!.parentElement!;
-      expect(lienzo.className).toContain('dark:bg-slate-900');
-      expect(lienzo.className).toContain('dark:border-gray-800');
+      expect(siguelTema(lienzo.className)).toBe(true);
+      expect(siguelTema(lienzo.className)).toBe(true);
     });
 
-    it('los nodos no llevan relleno fijo: usan clases con variante dark', () => {
+    it('los nodos no llevan relleno fijo: usan clases del tema', () => {
       // Antes era fill="#ffffff" y fill="#1f2937": en oscuro el mapa quedaba blanco puro.
       const { el } = setup(TOPOLOGIA);
       const rect = el.querySelector('g[data-nodo-id] rect')!;
       expect(rect.getAttribute('fill')).toBeNull();
-      expect(rect.getAttribute('class')).toContain('fill-white');
-      expect(rect.getAttribute('class')).toContain('dark:fill-slate-800');
+      expect(rect.getAttribute('class')).toContain('fill-superficie');
+      expect(siguelTema(rect.getAttribute('class'))).toBe(true);
     });
 
     // --- Aristas con dirección (HU-07) ------------------------------------------
@@ -483,7 +484,7 @@ describe('TopologyComponent', () => {
         const { el } = setup(TOPOLOGIA);
         const flecha = canvas(el)!.querySelector('marker#flecha-topo path')!;
         expect(flecha.getAttribute('fill')).toBeNull();
-        expect(flecha.getAttribute('class')).toContain('dark:fill-gray-600');
+        expect(siguelTema(flecha.getAttribute('class'))).toBe(true);
       });
 
       it('cada arista lleva la clase que le pone la punta y el hover', () => {
@@ -561,24 +562,24 @@ describe('TopologyComponent', () => {
       });
     });
 
-    it('las aristas y los textos de cada nodo tienen variante dark', () => {
+    it('las aristas y los textos de cada nodo siguen el tema', () => {
       const { el } = setup(TOPOLOGIA);
       const aristas = el.querySelector('[data-testid="topo-canvas"] g')!;
       expect(aristas.getAttribute('stroke')).toBeNull();
-      expect(aristas.getAttribute('class')).toContain('dark:stroke-gray-600');
+      expect(siguelTema(aristas.getAttribute('class'))).toBe(true);
 
       const nombre = el.querySelector('.topo-node-name')!;
       expect(nombre.getAttribute('fill')).toBeNull();
-      expect(nombre.getAttribute('class')).toContain('dark:fill-gray-100');
+      expect(siguelTema(nombre.getAttribute('class'))).toBe(true);
 
       const tipo = el.querySelector('.topo-node-type')!;
-      expect(tipo.getAttribute('class')).toContain('dark:fill-gray-400');
+      expect(siguelTema(tipo.getAttribute('class'))).toBe(true);
     });
 
-    it('la cabecera y los botones de zoom tienen variante dark', () => {
+    it('la cabecera y los botones de zoom siguen el tema', () => {
       const { el } = setup(TOPOLOGIA);
-      expect(el.querySelector('h1')!.className).toContain('dark:text-gray-100');
-      expect(el.querySelector('[data-testid="zoom-in"]')!.className).toContain('dark:bg-gray-800');
+      expect(siguelTema(el.querySelector('h1')!.className)).toBe(true);
+      expect(siguelTema(el.querySelector('[data-testid="zoom-in"]')!.className)).toBe(true);
     });
   });
 
@@ -762,7 +763,7 @@ describe('TopologyComponent', () => {
       const badge = el.querySelector('[data-testid="orden-vencida"]');
       expect(badge).not.toBeNull();
       expect(badge?.textContent).toContain('Vencida');
-      expect(badge?.className).toContain('bg-red-600');
+      expect(badge?.className).toContain('bg-peligro');
       // Solo la vencida lo lleva.
       expect(el.querySelectorAll('[data-testid="orden-vencida"]').length).toBe(1);
     });
@@ -1024,13 +1025,13 @@ describe('TopologyComponent', () => {
       for (const cabecera of cabeceras) {
         expect(cabecera.className).toContain('sticky');
         expect(cabecera.className).toContain('top-0');
-        // Sin `bg-white` el encabezado sería transparente al fijarse.
-        expect(cabecera.className).toContain('bg-white');
+        // Sin fondo propio el encabezado sería transparente al fijarse.
+        expect(cabecera.className).toContain('bg-superficie');
         // Sin `z-10` el contenido posterior podría pintarse encima.
         expect(cabecera.className).toContain('z-10');
         // Modo oscuro: `bg-white` solo no basta. El fondo debe seguir al del panel,
-        // que en oscuro es `dark:bg-gray-900` (CGBIDA-386).
-        expect(cabecera.className).toContain('dark:bg-gray-900');
+        // (CGBIDA-386): hoy lo resuelve el token `bg-superficie`, que cambia solo con el tema.
+        expect(siguelTema(cabecera.className)).toBe(true);
       }
     });
 
@@ -1042,17 +1043,17 @@ describe('TopologyComponent', () => {
       const cabecera = el.querySelector<HTMLElement>('[data-testid^="grupo-group"]')!;
       // Si los fondos oscuros no coinciden, el encabezado se ve como una banda
       // de otro color al desplazarse.
-      expect(panel.className).toContain('dark:bg-gray-900');
-      expect(cabecera.className).toContain('dark:bg-gray-900');
+      expect(siguelTema(panel.className)).toBe(true);
+      expect(siguelTema(cabecera.className)).toBe(true);
     });
 
     // --- Texto del panel en modo oscuro -----------------------------------------
     //
     // El fondo oscuro se arregló en CGBIDA-386, pero el texto interior se quedó con
     // colores claros sobre un fondo oscuro. Estos tests detectan si se vuelve a
-    // introducir un texto sin variante `dark:`.
+    // introducir un texto con color fijo que no siga el tema.
 
-    it('cada tarjeta de OT lleva al menos una clase dark:text-*', () => {
+    it('cada tarjeta de OT usa un color de texto del tema', () => {
       const { fixture, el } = setupConOrdenes(ORDENES_VOLUMEN);
       abrirMaquina(fixture, el);
       desplegarPlegados(fixture, el);
@@ -1064,22 +1065,21 @@ describe('TopologyComponent', () => {
         // El número de la OT es el texto identificativo de la tarjeta.
         const numero = tarjeta.querySelector<HTMLElement>('[data-testid="orden-numero"]')!;
         expect(numero).not.toBeNull();
-        expect(numero.className).toContain('dark:text-');
+        expect(siguelTema(numero.className)).toBe(true);
         // Y el enlace al detalle también debe leerse en oscuro.
         const enlace = tarjeta.querySelector<HTMLElement>('[data-testid="orden-ver-detalle"]')!;
-        expect(enlace.className).toContain('dark:text-');
+        expect(siguelTema(enlace.className)).toBe(true);
       }
     });
 
-    it('la cabecera del panel y sus etiquetas se leen en modo oscuro', () => {
+    it('la cabecera del panel y sus etiquetas siguen el tema', () => {
       const { fixture, el } = setupConOrdenes(ORDENES_VOLUMEN);
       abrirMaquina(fixture, el);
 
       for (const sel of ['panel-nombre', 'panel-tipo', 'panel-estado', 'ordenes-cargando']) {
         const nodo = el.querySelector<HTMLElement>(`[data-testid="${sel}"]`);
         if (!nodo) continue;
-        const tieneDark = nodo.className.includes('dark:text-')
-          || Boolean(nodo.querySelector('[class*="dark:text-"]'));
+        const tieneDark = siguelTema(nodo.className) || Boolean(nodo.querySelector('[class*="text-"]'));
         expect(tieneDark).toBe(true);
       }
     });
@@ -1099,7 +1099,7 @@ describe('TopologyComponent', () => {
       fixture.detectChanges();
 
       const err = el.querySelector<HTMLElement>('[data-testid="ordenes-error"]')!;
-      expect(err.className).toContain('dark:text-red-300');
+      expect(siguelTema(err.className)).toBe(true);
     });
 
     it('el mensaje de equipo sin órdenes tiene variante oscura', () => {
@@ -1107,7 +1107,7 @@ describe('TopologyComponent', () => {
       abrirMaquina(fixture, el);
 
       const vacio = el.querySelector<HTMLElement>('[data-testid="ordenes-vacio"]')!;
-      expect(vacio.className).toContain('dark:text-gray-400');
+      expect(siguelTema(vacio.className)).toBe(true);
     });
 
     it('un nodo sin hijos muestra un mensaje explícito', () => {

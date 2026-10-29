@@ -26,15 +26,15 @@ import { CurrencyService } from '../../../../core/services/currency.service';
   imports: [CommonModule],
   template: `
     <figure
-      class="relative rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-900"
+      class="relative rounded-control border border-borde bg-superficie p-5 "
       data-testid="impacto-escenarios"
     >
       <figcaption class="mb-2 flex items-start justify-between gap-2">
         <div>
-          <h3 class="text-sm font-extrabold text-gray-800 dark:text-gray-100">
+          <h2 class="text-sm font-extrabold text-tinta ">
             {{ t().impactChartTitle }}
-          </h3>
-          <p class="text-xs text-gray-500 dark:text-gray-400">{{ subtitulo() }}</p>
+          </h2>
+          <p class="text-sm text-tinta-suave ">{{ subtitulo() }}</p>
         </div>
 
         <!--
@@ -45,10 +45,10 @@ import { CurrencyService } from '../../../../core/services/currency.service';
           <button
             type="button"
             class="flex h-4 w-4 items-center justify-center rounded-full border
-                   border-gray-300 text-[9px] font-bold leading-none text-gray-500
-                   transition-colors hover:border-blue-500 hover:text-blue-600
-                   focus:border-blue-500 focus:text-blue-600 focus:outline-none
-                   dark:border-gray-600 dark:text-gray-400"
+                   border-borde-control text-sm font-bold leading-none text-tinta-suave
+                   transition-colors hover:border-accion hover:text-accion
+                   focus:border-accion focus:text-accion focus:outline-none
+                    "
             aria-describedby="tip-impacto"
             [attr.aria-label]="t().impactChartTitle"
             data-testid="info-impacto"
@@ -58,9 +58,9 @@ import { CurrencyService } from '../../../../core/services/currency.service';
             role="tooltip"
             data-testid="tooltip-impacto"
             class="pointer-events-none invisible absolute right-0 top-full z-50 mt-2 w-64
-                   rounded-lg border border-gray-200 bg-white p-3 text-xs leading-relaxed
-                   text-gray-600 shadow-lg group-hover:visible group-focus-within:visible
-                   dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                   rounded-control border border-borde bg-superficie p-3 text-sm leading-relaxed
+                   text-tinta-suave shadow-lg group-hover:visible group-focus-within:visible
+                     "
           >{{ tooltipTexto() }}</div>
         </div>
       </figcaption>
@@ -76,7 +76,7 @@ import { CurrencyService } from '../../../../core/services/currency.service';
           <text
             [attr.x]="PAD_IZQ - 10" [attr.y]="Y_SIN + ALTURA_BARRA / 2 + 4"
             text-anchor="end" font-size="11"
-            class="fill-gray-600 dark:fill-gray-300"
+            class="fill-tinta-suave "
           >{{ t().withoutBarb }}</text>
           <rect
             [attr.x]="PAD_IZQ" [attr.y]="Y_SIN"
@@ -102,7 +102,7 @@ import { CurrencyService } from '../../../../core/services/currency.service';
           <text
             [attr.x]="PAD_IZQ - 10" [attr.y]="Y_CON + ALTURA_BARRA / 2 + 4"
             text-anchor="end" font-size="11"
-            class="fill-gray-600 dark:fill-gray-300"
+            class="fill-tinta-suave "
           >{{ t().withBarb }}</text>
           <rect
             [attr.x]="PAD_IZQ" [attr.y]="Y_CON"
@@ -120,12 +120,12 @@ import { CurrencyService } from '../../../../core/services/currency.service';
           <text
             [attr.x]="PAD_IZQ + anchoUtil" [attr.y]="ALTO - 8"
             text-anchor="end" font-size="11" font-weight="700"
-            class="fill-emerald-600 dark:fill-emerald-400"
+            class="fill-ok "
             data-testid="valor-ahorro"
           >{{ t().impactSavingsLabel }}: {{ valorAhorro() }}</text>
         </svg>
       } @else {
-        <p class="text-sm text-amber-600 dark:text-amber-400" data-testid="impacto-vacio">
+        <p class="text-sm text-media " data-testid="impacto-vacio">
           {{ t().impactNoHistory }}
         </p>
       }

@@ -29,12 +29,12 @@ import { I18nService } from '../../../../core/i18n/i18n.service';
   template: `
     @if (segmentos().length > 0) {
       <figure
-        class="relative rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-900"
+        class="relative rounded-control border border-borde bg-superficie p-5 "
         data-testid="tipo-donut"
       >
         <figcaption class="mb-2">
-          <h3 class="text-sm font-extrabold text-gray-800 dark:text-gray-100">{{ t().strategyTitle }}</h3>
-          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t().strategySubtitle }}</p>
+          <h2 class="text-sm font-extrabold text-tinta ">{{ t().strategyTitle }}</h2>
+          <p class="text-sm text-tinta-suave ">{{ t().strategySubtitle }}</p>
         </figcaption>
 
         <!--
@@ -67,13 +67,13 @@ import { I18nService } from '../../../../core/i18n/i18n.service';
             <text
               [attr.x]="CENTRO" [attr.y]="CENTRO - 2"
               text-anchor="middle" font-size="20" font-weight="700"
-              class="fill-gray-800 dark:fill-gray-100"
+              class="fill-tinta "
               data-testid="dona-total"
             >{{ total() }}</text>
             <text
               [attr.x]="CENTRO" [attr.y]="CENTRO + 14"
               text-anchor="middle" font-size="9"
-              class="fill-gray-500 dark:fill-gray-400"
+              class="fill-tinta-suave "
             >{{ t().totalOts }}</text>
           </svg>
 
@@ -97,13 +97,13 @@ import { I18nService } from '../../../../core/i18n/i18n.service';
           <ul class="flex w-fit flex-col gap-1.5">
             @for (s of segmentos(); track s.tipo; let i = $index) {
               <li
-                class="flex items-center gap-2 text-xs"
+                class="flex items-center gap-2 text-sm"
                 [attr.data-testid]="'leyenda-' + s.tipo"
               >
                 <span class="inline-block h-2.5 w-2.5 shrink-0 rounded-sm" [style.background]="s.color"></span>
-                <span class="w-26 truncate text-gray-700 dark:text-gray-200">{{ s.etiqueta }}</span>
-                <span class="w-10 text-right font-medium tabular-nums text-gray-800 dark:text-gray-100">{{ s.total }}</span>
-                <span class="w-9 text-right tabular-nums text-gray-500 dark:text-gray-400">{{ s.porcentaje }}%</span>
+                <span class="w-26 truncate text-tinta ">{{ s.etiqueta }}</span>
+                <span class="w-10 text-right font-medium tabular-nums text-tinta ">{{ s.total }}</span>
+                <span class="w-9 text-right tabular-nums text-tinta-suave ">{{ s.porcentaje }}%</span>
               </li>
             }
           </ul>
@@ -119,19 +119,19 @@ import { I18nService } from '../../../../core/i18n/i18n.service';
         @if (segmentoActivo(); as s) {
           @if (puntero(); as p) {
             <div
-              class="pointer-events-none absolute z-50 rounded-lg border border-gray-200 bg-white
-                     px-3 py-2 text-xs shadow-lg dark:border-gray-700 dark:bg-gray-800"
+              class="pointer-events-none absolute z-50 rounded-control border border-borde bg-superficie
+                     px-3 py-2 text-sm shadow-lg "
               [style.left.px]="p.x + (p.derecha ? -14 : 14)"
               [style.top.px]="p.y + (p.abajo ? -14 : 14)"
               [class.-translate-x-full]="p.derecha"
               [class.-translate-y-full]="p.abajo"
               data-testid="dona-tooltip"
             >
-              <p class="flex items-center gap-2 font-semibold text-gray-800 dark:text-gray-100">
+              <p class="flex items-center gap-2 font-semibold text-tinta ">
                 <span class="inline-block h-2 w-2 rounded-full" [style.background]="s.color"></span>
                 {{ s.etiqueta }}
               </p>
-              <p class="text-gray-600 dark:text-gray-300">
+              <p class="text-tinta-suave ">
                 {{ t().totalOts }}: <strong>{{ s.total }}</strong> ({{ s.porcentaje }}%)
               </p>
             </div>
@@ -139,7 +139,7 @@ import { I18nService } from '../../../../core/i18n/i18n.service';
         }
       </figure>
     } @else {
-      <p class="text-sm text-gray-500 dark:text-gray-400" data-testid="dona-vacia">
+      <p class="text-sm text-tinta-suave " data-testid="dona-vacia">
         {{ t().noData }}
       </p>
     }

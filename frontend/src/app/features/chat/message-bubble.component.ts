@@ -16,14 +16,12 @@ import { ChatMessage } from '../../core/models/chat.model';
       [class.justify-start]="message.role === 'assistant'"
     >
       <div
-        class="max-w-[75%] px-4 py-2 rounded-2xl text-sm leading-relaxed prose prose-sm max-w-none dark:prose-invert"
-        [class.bg-blue-600]="message.role === 'user'"
-        [class.text-white]="message.role === 'user'"
+        class="max-w-[75%] px-4 py-2 rounded-control text-sm leading-relaxed prose prose-sm max-w-none dark:prose-invert"
+        [class.bg-accion]="message.role === 'user'"
+        [class.text-sobre-accion]="message.role === 'user'"
         [class.rounded-br-sm]="message.role === 'user'"
-        [class.bg-gray-100]="message.role === 'assistant'"
-        [class.dark:bg-gray-800]="message.role === 'assistant'"
-        [class.text-gray-900]="message.role === 'assistant'"
-        [class.dark:text-gray-100]="message.role === 'assistant'"
+        [class.bg-superficie-2]="message.role === 'assistant'"
+        [class.text-tinta]="message.role === 'assistant'"
         [class.rounded-bl-sm]="message.role === 'assistant'"
       >
         @if (message.role === 'assistant') {
@@ -33,7 +31,7 @@ import { ChatMessage } from '../../core/models/chat.model';
             <img
               [src]="message.imageUrl"
               [alt]="message.content"
-              class="mb-2 max-h-40 rounded-lg"
+              class="mb-2 max-h-40 rounded-control"
             />
           }
           <span class="whitespace-pre-wrap break-words">{{ message.content }}</span>

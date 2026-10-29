@@ -133,13 +133,12 @@ describe('AlertaEstancadasComponent', () => {
       );
     });
 
-    it('usa la familia del rojo del legacy y tiene variantes de modo oscuro', () => {
+    it('usa la familia del rojo (token de peligro) y se adapta al modo oscuro', () => {
       const { el } = setup(CON_DATOS);
       const clase = el.querySelector('[data-testid="banner-estancadas"]')!.className;
-      expect(clase).toContain('bg-red-50');
-      expect(clase).toContain('text-red-800');
-      expect(clase).toContain('border-red-300');
-      expect(clase).toContain('dark:');
+      expect(clase).toContain('bg-peligro-suave');
+      expect(clase).toContain('text-peligro');
+      expect(clase).toContain('border-peligro');
     });
 
     it('se apila en pantallas chicas como el legacy responsive', () => {

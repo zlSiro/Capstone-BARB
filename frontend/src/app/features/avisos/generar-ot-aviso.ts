@@ -6,7 +6,10 @@ import { AvisosApi } from '../../core/services/avisos-api';
 import { CatalogService } from '../../core/services/catalog.service';
 import { ToastService } from '../../core/services/toast.service';
 import { apiErrorMessage } from '../../core/utils/http-error';
-import { PRIORIDADES, gravedadMeta, prioridadSugerida } from './etiquetas';
+import { Icon } from '../../shared/components/ui/icon/icon';
+import { ModalComponent } from '../../shared/components/ui/modal/modal.component';
+import { PRIORIDADES, prioridadSugerida } from './etiquetas';
+import { GravedadMedidor } from './gravedad-medidor';
 
 interface GenerarOtModel {
   technicianId: string;
@@ -18,94 +21,68 @@ interface GenerarOtModel {
 /** Diálogo con el que el supervisor atiende un aviso: elige técnico y prioridad, y se genera la OT enlazada. */
 @Component({
   selector: 'app-generar-ot-aviso',
-  imports: [FormField],
+  imports: [FormField, ModalComponent, GravedadMedidor, Icon],
   template: `
-    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" (click)="cerrar()">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="generar-ot-title"
-        class="max-h-full w-full max-w-xl overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 shadow-2xl"
-        (click)="$event.stopPropagation()">
-        <div class="flex items-start justify-between border-b border-slate-800 px-6 py-4">
-          <div>
-            <h2 id="generar-ot-title" class="text-xl font-bold text-slate-100">Generar OT desde el aviso</h2>
-            <p class="text-sm text-slate-400">Se crea una orden de trabajo asignada y el aviso queda «Con OT».</p>
-          </div>
-          <button type="button" (click)="cerrar()" class="rounded p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-100" aria-label="Cerrar">
-            <span aria-hidden="true">✕</span>
-          </button>
+    <app-modal title="Generar OT desde el aviso" subtitle="Se crea una orden de trabajo asignada y el aviso queda «Con OT»." (closed)="cerrar()">
+      <div class="grid gap-4">
+        <div class="rounded-control border border-borde bg-superficie-2 p-3 text-base">
+          <p class="codigo text-lg text-tinta-suave">{{ aviso().numero_aviso }}, {{ aviso().machine_name }}, {{ aviso().plant_name }}</p>
+          <p class="mt-1">{{ aviso().descripcion }}</p>
+          <p class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-tinta-suave">
+            <span>Reportado por {{ aviso().reportado_por.nombre }}</span>
+            <app-gravedad [severidad]="aviso().severidad" />
+          </p>
+          @if (aviso().foto) {
+            <p class="mt-1 flex items-center gap-1.5 text-sm text-tinta">
+              <app-icon name="imagen" [size]="18" /> La foto del aviso se adjuntará a la OT.
+            </p>
+          }
         </div>
 
-        <div class="grid gap-4 px-6 py-5">
-          <div class="rounded border border-slate-700 bg-slate-800/60 p-3 text-sm text-slate-200">
-            <p class="font-mono text-xs text-slate-400">{{ aviso().numero_aviso }} · {{ aviso().machine_name }} · {{ aviso().plant_name }}</p>
-            <p class="mt-1">{{ aviso().descripcion }}</p>
-            <p class="mt-2 text-xs text-slate-400">
-              Reportado por {{ aviso().reportado_por.nombre }} · gravedad percibida: {{ gravedad().label }}
-            </p>
-            @if (aviso().foto) {
-              <p class="mt-1 text-xs text-slate-300"><span aria-hidden="true">📎</span> La foto del aviso se adjuntará a la OT.</p>
+        <div>
+          <label for="gen-tecnico" class="fld-label">Técnico responsable</label>
+          <select
+            id="gen-tecnico"
+            [formField]="otForm.technicianId"
+            [attr.aria-invalid]="otForm.technicianId().touched() && otForm.technicianId().invalid()"
+            [attr.aria-describedby]="otForm.technicianId().touched() && otForm.technicianId().invalid() ? 'gen-tecnico-error' : null"
+            class="fld-input">
+            <option value="">Selecciona un técnico</option>
+            @for (t of technicians(); track t.id) {
+              <option [value]="t.id">{{ t.name }}</option>
             }
-          </div>
+          </select>
+          @if (otForm.technicianId().touched() && otForm.technicianId().invalid()) {
+            <p id="gen-tecnico-error" role="alert" class="fld-error">{{ otForm.technicianId().errors()[0]?.message }}</p>
+          }
+        </div>
 
+        <div class="grid gap-4 sm:grid-cols-2">
           <div>
-            <label for="gen-tecnico" class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Técnico responsable *</label>
-            <select
-              id="gen-tecnico"
-              [formField]="otForm.technicianId"
-              [attr.aria-invalid]="otForm.technicianId().touched() && otForm.technicianId().invalid()"
-              [attr.aria-describedby]="otForm.technicianId().touched() && otForm.technicianId().invalid() ? 'gen-tecnico-error' : null"
-              class="w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option value="">Selecciona un técnico</option>
-              @for (t of technicians(); track t.id) {
-                <option [value]="t.id">{{ t.name }}</option>
+            <label for="gen-prioridad" class="fld-label">Prioridad</label>
+            <select id="gen-prioridad" [formField]="otForm.priority" class="fld-input">
+              @for (p of prioridades; track p.value) {
+                <option [value]="p.value">{{ p.label }}</option>
               }
             </select>
-            @if (otForm.technicianId().touched() && otForm.technicianId().invalid()) {
-              <p id="gen-tecnico-error" role="alert" class="mt-1 text-xs text-red-400">{{ otForm.technicianId().errors()[0]?.message }}</p>
-            }
+            <p class="fld-ayuda">Sugerida según la gravedad del aviso.</p>
           </div>
-
-          <div class="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label for="gen-prioridad" class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Prioridad</label>
-              <select
-                id="gen-prioridad"
-                [formField]="otForm.priority"
-                class="w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                @for (p of prioridades; track p.value) {
-                  <option [value]="p.value">{{ p.label }}</option>
-                }
-              </select>
-              <p class="mt-1 text-xs text-slate-400">Sugerida según la gravedad del aviso.</p>
-            </div>
-            <div>
-              <label for="gen-vencimiento" class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Vencimiento (opcional)</label>
-              <input
-                id="gen-vencimiento"
-                type="datetime-local"
-                [formField]="otForm.vencimiento"
-                class="w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              <p class="mt-1 text-xs text-slate-400">Si lo dejas vacío se calcula con el SLA de la máquina.</p>
-            </div>
+          <div>
+            <label for="gen-vencimiento" class="fld-label">Vencimiento (opcional)</label>
+            <input id="gen-vencimiento" type="datetime-local" [formField]="otForm.vencimiento" class="fld-input" />
+            <p class="fld-ayuda">Si lo dejas vacío se calcula con el SLA de la máquina.</p>
           </div>
-        </div>
-
-        <div class="flex items-center justify-end gap-3 border-t border-slate-800 px-6 py-4">
-          <button type="button" (click)="cerrar()" class="text-sm font-medium text-slate-300 hover:text-white">Cancelar</button>
-          <button
-            type="button"
-            [disabled]="enviando()"
-            (click)="generar()"
-            class="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-800">
-            {{ enviando() ? 'Generando…' : 'Generar OT' }}
-          </button>
         </div>
       </div>
-    </div>
+
+      <div modal-footer class="grid gap-2 sm:flex sm:justify-end">
+        <button type="button" class="btn-ghost order-2 sm:order-1" (click)="cerrar()">Cancelar</button>
+        <button type="button" class="btn-primary order-1 sm:order-2" [disabled]="enviando()" (click)="generar()">
+          {{ enviando() ? 'Generando…' : 'Generar OT' }}
+        </button>
+      </div>
+    </app-modal>
   `,
-  host: { '(document:keydown.escape)': 'cerrar()' },
 })
 export class GenerarOtAviso implements OnInit {
   private readonly api = inject(AvisosApi);
@@ -124,10 +101,6 @@ export class GenerarOtAviso implements OnInit {
   protected readonly otForm = form(this.model, (f) => {
     required(f.technicianId, { message: 'Selecciona un técnico.' });
   });
-
-  protected gravedad() {
-    return gravedadMeta(this.aviso().severidad);
-  }
 
   constructor() {
     this.catalog.getTechnicians().subscribe({

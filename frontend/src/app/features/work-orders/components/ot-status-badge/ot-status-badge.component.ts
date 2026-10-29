@@ -7,7 +7,7 @@ import { statusMeta } from '../../utils/work-order-labels';
 @Component({
   selector: 'app-ot-status-badge',
   template: `
-    <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium" [class]="meta().badge">
+    <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-sm font-medium" [class]="meta().badge">
       <span class="size-2 rounded-full" [class]="meta().dot" aria-hidden="true"></span>
       {{ meta().label }}
     </span>

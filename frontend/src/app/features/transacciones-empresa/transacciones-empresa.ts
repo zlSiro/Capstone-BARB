@@ -25,7 +25,6 @@ import {
   selector: 'app-transacciones-empresa',
   imports: [DatePipe],
   templateUrl: './transacciones-empresa.html',
-  styleUrl: './transacciones-empresa.css',
 })
 export class TransaccionesEmpresa {
   private readonly api = inject(TransaccionesEmpresaApi);

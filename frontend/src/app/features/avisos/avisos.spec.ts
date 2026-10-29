@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Avisos } from './avisos';
 import { Aviso } from '../../core/models';
 import { AuthService } from '../../core/services/auth.service';
+import { ReportarFallaUi } from '../../core/services/reportar-falla-ui';
 
 function aviso(parcial: Partial<Aviso> & { aviso_id: number }): Aviso {
   return {
@@ -37,10 +38,10 @@ const LISTA: Aviso[] = [
   aviso({ aviso_id: 4, estado: 'descartado', status: 'Descartado', motivo_descarte: 'Ya está en la OT-2026-0012', resuelto_por: 'Supervisor Turno A' }),
 ];
 
-describe('Avisos de falla', () => {
+describe('Avisos de falla (bandeja)', () => {
   let http: HttpTestingController;
 
-  function setup(role: string) {
+  function setup(role: string, lista: Aviso[] = LISTA) {
     TestBed.configureTestingModule({
       providers: [
         provideHttpClient(),
@@ -52,17 +53,22 @@ describe('Avisos de falla', () => {
     http = TestBed.inject(HttpTestingController);
     const fixture = TestBed.createComponent(Avisos);
     fixture.detectChanges();
-    http.expectOne((r) => r.url.endsWith('/avisos') && r.method === 'GET').flush(LISTA);
+    http.expectOne((r) => r.url.endsWith('/avisos') && r.method === 'GET').flush(lista);
     fixture.detectChanges();
     return fixture;
   }
 
-  const texto = (f: ReturnType<typeof setup>) => (f.nativeElement as HTMLElement).textContent ?? '';
-  const botones = (f: ReturnType<typeof setup>, etiqueta: string) =>
-    Array.from((f.nativeElement as HTMLElement).querySelectorAll('button')).filter((b) => b.textContent?.trim().startsWith(etiqueta));
+  type Fixture = ReturnType<typeof setup>;
+  const raiz = (f: Fixture) => f.nativeElement as HTMLElement;
+  const texto = (f: Fixture) => raiz(f).textContent ?? '';
+  const tarjetas = (f: Fixture) => Array.from(raiz(f).querySelectorAll('article'));
+  const botonesEn = (ambito: ParentNode, etiqueta: string) =>
+    Array.from(ambito.querySelectorAll('button')).filter((b) => b.textContent?.trim().startsWith(etiqueta));
+  const botones = (f: Fixture, etiqueta: string) => botonesEn(raiz(f), etiqueta);
+  const dialogo = (f: Fixture) => raiz(f).querySelector('[role="dialog"]') as HTMLElement;
 
-  function escribir(f: ReturnType<typeof setup>, id: string, valor: string) {
-    const el = (f.nativeElement as HTMLElement).querySelector(`#${id}`) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+  function escribir(f: Fixture, id: string, valor: string) {
+    const el = raiz(f).querySelector(`#${id}`) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
     el.value = valor;
     el.dispatchEvent(new Event('input'));
     el.dispatchEvent(new Event('change'));
@@ -76,31 +82,32 @@ describe('Avisos de falla', () => {
 
   afterEach(() => http.verify());
 
-  /** Simula que el usuario elige un archivo en el `<input type="file">`. */
-  function elegirArchivo(f: ReturnType<typeof setup>, archivo: File) {
-    const input = (f.nativeElement as HTMLElement).querySelector('#aviso-foto') as HTMLInputElement;
-    Object.defineProperty(input, 'files', { value: [archivo], configurable: true });
-    input.dispatchEvent(new Event('change'));
-    f.detectChanges();
-  }
-
-  /** Abre el formulario de reportar una falla y responde el catálogo de máquinas. */
-  function abrirReportar(f: ReturnType<typeof setup>) {
-    botones(f, '+ Reportar falla')[0].click();
-    f.detectChanges();
-    http.expectOne((r) => r.url.endsWith('/machines')).flush([{ id: 7, name: 'Prensa P-7', discipline_id: 1, plant_id: 1 }]);
-    f.detectChanges();
-  }
-
-  it('el supervisor parte de los pendientes y ve las acciones de decisión', () => {
+  it('el supervisor parte de los pendientes, con las acciones de decisión dentro de cada tarjeta', () => {
     const f = setup('supervisor');
     expect(texto(f)).toContain('Avisos de falla (4)');
+    expect(tarjetas(f)).toHaveLength(2);
     expect(texto(f)).toContain('AV-2026-0001');
     expect(texto(f)).toContain('AV-2026-0002');
     expect(texto(f)).not.toContain('AV-2026-0003'); // con OT: oculto en el filtro «Pendiente»
-    expect(botones(f, 'Generar OT')).toHaveLength(2);
-    expect(botones(f, 'Descartar')).toHaveLength(2);
-    expect(texto(f)).toContain('Reportado por');
+    for (const t of tarjetas(f)) {
+      expect(botonesEn(t, 'Generar OT')).toHaveLength(1);
+      expect(botonesEn(t, 'Descartar')).toHaveLength(1);
+    }
+    expect(texto(f)).toContain('Reportó Operador Molino');
+  });
+
+  it('muestra la gravedad con texto y la ordena: lo pendiente primero, lo más reciente arriba', () => {
+    const f = setup('supervisor', [
+      aviso({ aviso_id: 5, estado: 'con_ot', status: 'Con OT', numero_ot: 'OT-1', created_at: '2026-10-29T10:00:00Z' }),
+      aviso({ aviso_id: 6, created_at: '2026-10-27T10:00:00Z' }),
+      aviso({ aviso_id: 7, created_at: '2026-10-28T10:00:00Z', severidad: 'critical' }),
+    ]);
+    botones(f, 'Todos')[0].click();
+    f.detectChanges();
+    const orden = tarjetas(f).map((t) => t.querySelector('.codigo')!.textContent!.trim());
+    expect(orden).toEqual(['AV-2026-0007', 'AV-2026-0006', 'AV-2026-0005']);
+    expect(tarjetas(f)[0].textContent).toContain('Crítica');
+    expect(tarjetas(f)[0].querySelector('[role="img"]')!.getAttribute('aria-label')).toBe('Gravedad Crítica');
   });
 
   it('los filtros muestran el resultado de cada decisión', () => {
@@ -110,142 +117,125 @@ describe('Avisos de falla', () => {
     expect(texto(f)).toContain('OT-2026-0042');
     botones(f, 'Descartado')[0].click();
     f.detectChanges();
-    expect(texto(f)).toContain('Motivo: Ya está en la OT-2026-0012');
+    expect(texto(f)).toContain('Motivo del descarte: Ya está en la OT-2026-0012');
   });
 
   it('quien solo reporta ve «Mis avisos», todo lo suyo y ninguna acción de decisión', () => {
     const f = setup('operador');
     expect(texto(f)).toContain('Mis avisos de falla (4)');
     expect(texto(f)).toContain('AV-2026-0003');
-    expect(texto(f)).toContain('Motivo: Ya está en la OT-2026-0012');
-    expect(texto(f)).not.toContain('Reportado por');
+    expect(texto(f)).toContain('Motivo del descarte: Ya está en la OT-2026-0012');
+    expect(texto(f)).not.toContain('Reportó Operador Molino');
     expect(botones(f, 'Generar OT')).toHaveLength(0);
     expect(botones(f, 'Descartar')).toHaveLength(0);
-    expect(botones(f, '+ Reportar falla')).toHaveLength(1);
+    expect(raiz(f).querySelector('[data-testid="aviso-detalle"]')).toBeNull();
+  });
+
+  it('sin avisos, quien puede reportar ve un llamado a hacerlo que abre el diálogo global', () => {
+    const f = setup('operador', []);
+    expect(texto(f)).toContain('Todavía no hay avisos.');
+    botones(f, 'Reportar una falla')[0].click();
+    expect(TestBed.inject(ReportarFallaUi).abierto()).toBe(true);
+  });
+
+  it('el supervisor sin pendientes ve un estado vacío claro', () => {
+    const f = setup('supervisor', [aviso({ aviso_id: 3, estado: 'con_ot', status: 'Con OT', numero_ot: 'OT-1' })]);
+    expect(texto(f)).toContain('No hay avisos pendientes de decisión.');
+  });
+
+  it('un aviso enviado desde el diálogo global aparece en la lista de quien lo reportó', () => {
+    const f = setup('operador');
+    TestBed.inject(ReportarFallaUi).notificarCreado(aviso({ aviso_id: 9, machine_name: 'Prensa P-7' }));
+    f.detectChanges();
+    expect(texto(f)).toContain('AV-2026-0009');
+    expect(texto(f)).toContain('Mis avisos de falla (5)');
+  });
+
+  it('si no se pudo cargar, informa y permite reintentar', () => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideRouter([]),
+        { provide: AuthService, useValue: { user: () => ({ role: 'supervisor', name: 'T' }) } },
+      ],
+    });
+    http = TestBed.inject(HttpTestingController);
+    const f = TestBed.createComponent(Avisos);
+    f.detectChanges();
+    http.expectOne((r) => r.url.endsWith('/avisos')).flush({ detail: 'caído' }, { status: 500, statusText: 'Error' });
+    f.detectChanges();
+    expect(raiz(f).querySelector('[role="alert"]')).not.toBeNull();
+    botones(f, 'Reintentar')[0].click();
+    http.expectOne((r) => r.url.endsWith('/avisos')).flush(LISTA);
   });
 
   it('generar la OT envía el técnico y la prioridad sugerida por la gravedad, y el aviso pasa a «Con OT»', () => {
     const f = setup('supervisor');
-    botones(f, 'Generar OT')[0].click();
+    botonesEn(tarjetas(f)[0], 'Generar OT')[0].click();
     f.detectChanges();
     http.expectOne((r) => r.url.endsWith('/technicians')).flush([{ id: 4, name: 'Carlos Mendoza', email: 'c@x.cl', role: 'tecnico' }]);
     f.detectChanges();
 
     // Sin técnico no se envía nada.
-    botones(f, 'Generar OT').find((b) => b.closest('[role="dialog"]'))!.click();
+    botonesEn(dialogo(f), 'Generar OT')[0].click();
     f.detectChanges();
     http.expectNone((r) => r.url.includes('/generar-ot'));
 
     escribir(f, 'gen-tecnico', '4');
-    botones(f, 'Generar OT').find((b) => b.closest('[role="dialog"]'))!.click();
+    botonesEn(dialogo(f), 'Generar OT')[0].click();
     const req = http.expectOne((r) => r.url.endsWith('/avisos/1/generar-ot'));
     expect(req.request.method).toBe('POST');
     expect(req.request.body).toEqual({ tecnico_id: 4, priority: 'high' }); // gravedad «alta» -> prioridad alta
     req.flush({ aviso: aviso({ aviso_id: 1, estado: 'con_ot', status: 'Con OT', numero_ot: 'OT-2026-0050', resuelto_por: 'Supervisor Turno A' }), ot: {} });
     f.detectChanges();
 
+    // El panel de detalle pasa al siguiente aviso (el 2, que tiene foto) y la pide.
+    http.expectOne((r) => r.url.endsWith('/avisos/2/foto')).flush(new Blob(['x'], { type: 'image/jpeg' }));
     expect(texto(f)).not.toContain('AV-2026-0001'); // ya no está en «Pendiente»
     expect(texto(f)).toContain('Avisos de falla (4)');
   });
 
-  it('descartar exige el motivo y lo envía', () => {
+  it('descartar exige el motivo, ofrece motivos rápidos y lo envía', () => {
     const f = setup('supervisor');
-    botones(f, 'Descartar')[0].click();
+    botonesEn(tarjetas(f)[0], 'Descartar')[0].click();
     f.detectChanges();
 
-    botones(f, 'Descartar aviso')[0].click(); // sin motivo
+    botonesEn(dialogo(f), 'Descartar aviso')[0].click(); // sin motivo
     f.detectChanges();
     http.expectNone((r) => r.url.includes('/descartar'));
     expect(texto(f)).toContain('Indica el motivo del descarte.');
 
-    escribir(f, 'descartar-motivo', 'Falsa alarma');
-    botones(f, 'Descartar aviso')[0].click();
+    botonesEn(dialogo(f), 'Falsa alarma')[0].click(); // motivo rápido
+    f.detectChanges();
+    expect((raiz(f).querySelector('#descartar-motivo') as HTMLTextAreaElement).value).toBe('Falsa alarma');
+    botonesEn(dialogo(f), 'Descartar aviso')[0].click();
     const req = http.expectOne((r) => r.url.endsWith('/avisos/1/descartar'));
     expect(req.request.body).toEqual({ motivo: 'Falsa alarma' });
     req.flush(aviso({ aviso_id: 1, estado: 'descartado', status: 'Descartado', motivo_descarte: 'Falsa alarma' }));
     f.detectChanges();
+    http.expectOne((r) => r.url.endsWith('/avisos/2/foto')).flush(new Blob(['x'], { type: 'image/jpeg' }));
     expect(texto(f)).not.toContain('AV-2026-0001');
   });
 
-  it('reportar una falla envía máquina, descripción y gravedad (sin foto), y el aviso aparece en la lista', () => {
-    const f = setup('operador');
-    abrirReportar(f);
-
-    botones(f, 'Enviar aviso')[0].click(); // vacío: no envía
-    http.expectNone((r) => r.url.endsWith('/avisos') && r.method === 'POST');
-
-    escribir(f, 'aviso-machine', '7');
-    escribir(f, 'aviso-severidad', 'critical');
-    escribir(f, 'aviso-descripcion', '  Ruido metálico al arrancar  ');
-    botones(f, 'Enviar aviso')[0].click();
-    const req = http.expectOne((r) => r.url.endsWith('/avisos') && r.method === 'POST');
-    const body = req.request.body as FormData;
-    expect(body).toBeInstanceOf(FormData);
-    expect(body.get('maquina_id')).toBe('7');
-    expect(body.get('descripcion')).toBe('Ruido metálico al arrancar');
-    expect(body.get('severidad')).toBe('critical');
-    expect(body.has('foto')).toBe(false);
-    req.flush(aviso({ aviso_id: 9, machine_name: 'Prensa P-7', descripcion: 'Ruido metálico al arrancar', severidad: 'critical' }));
+  it('el motivo también se puede escribir a mano', () => {
+    const f = setup('supervisor');
+    botonesEn(tarjetas(f)[0], 'Descartar')[0].click();
     f.detectChanges();
-
-    expect(texto(f)).toContain('AV-2026-0009');
-    expect(texto(f)).toContain('Mis avisos de falla (5)');
-  });
-
-  it('el formulario permite adjuntar una imagen, la previsualiza y la envía con el aviso', () => {
-    const f = setup('operador');
-    abrirReportar(f);
-
-    expect(texto(f)).toContain('Foto de la falla (opcional)');
-    expect(texto(f)).toContain('Sin foto');
-    elegirArchivo(f, new File([new Uint8Array([137, 80, 78, 71])], 'falla.png', { type: 'image/png' }));
-    expect(texto(f)).toContain('falla.png');
-    expect((f.nativeElement as HTMLElement).querySelector('img[alt="Vista previa de la foto adjunta"]')).not.toBeNull();
-
-    escribir(f, 'aviso-machine', '7');
-    escribir(f, 'aviso-descripcion', 'Fuga de aceite');
-    botones(f, 'Enviar aviso')[0].click();
-    const req = http.expectOne((r) => r.url.endsWith('/avisos') && r.method === 'POST');
-    const enviado = (req.request.body as FormData).get('foto') as File;
-    expect(enviado).toBeInstanceOf(File);
-    expect(enviado.name).toBe('falla.png');
-    req.flush(aviso({ aviso_id: 9, foto: { original_name: 'falla.png', content_type: 'image/png' } }));
+    escribir(f, 'descartar-motivo', 'Ya lo revisó mantención');
+    botonesEn(dialogo(f), 'Descartar aviso')[0].click();
+    const req = http.expectOne((r) => r.url.endsWith('/avisos/1/descartar'));
+    expect(req.request.body).toEqual({ motivo: 'Ya lo revisó mantención' });
+    req.flush(aviso({ aviso_id: 1, estado: 'descartado', status: 'Descartado', motivo_descarte: 'Ya lo revisó mantención' }));
     f.detectChanges();
-    expect(texto(f)).toContain('Ver foto');
-  });
-
-  it('se puede quitar la foto adjunta antes de enviar', () => {
-    const f = setup('operador');
-    abrirReportar(f);
-    elegirArchivo(f, new File([new Uint8Array([255, 216, 255])], 'a.jpg', { type: 'image/jpeg' }));
-    botones(f, 'Quitar')[0].click();
-    f.detectChanges();
-
-    expect(texto(f)).toContain('Sin foto');
-    escribir(f, 'aviso-machine', '7');
-    escribir(f, 'aviso-descripcion', 'Falla sin foto');
-    botones(f, 'Enviar aviso')[0].click();
-    const req = http.expectOne((r) => r.url.endsWith('/avisos') && r.method === 'POST');
-    expect((req.request.body as FormData).has('foto')).toBe(false);
-    req.flush(aviso({ aviso_id: 9 }));
-  });
-
-  it('rechaza un archivo que no es imagen o que supera los 5 MB, sin adjuntarlo', () => {
-    const f = setup('operador');
-    abrirReportar(f);
-
-    elegirArchivo(f, new File(['hola'], 'nota.txt', { type: 'text/plain' }));
-    expect(texto(f)).toContain('Sin foto');
-
-    elegirArchivo(f, new File([new Uint8Array(5 * 1024 * 1024 + 1)], 'grande.png', { type: 'image/png' }));
-    expect(texto(f)).toContain('Sin foto');
-    expect((f.nativeElement as HTMLElement).querySelector('img[alt="Vista previa de la foto adjunta"]')).toBeNull();
+    http.expectOne((r) => r.url.endsWith('/avisos/2/foto')).flush(new Blob(['x'], { type: 'image/jpeg' }));
   });
 
   it('el supervisor abre la foto del aviso con «Ver foto» (se descarga con su sesión)', () => {
     const f = setup('supervisor');
-    expect(botones(f, '📎 Ver foto')).toHaveLength(1); // solo el aviso 2 tiene foto
-    botones(f, '📎 Ver foto')[0].click();
+    const verFoto = tarjetas(f).flatMap((t) => botonesEn(t, 'Ver foto'));
+    expect(verFoto).toHaveLength(1); // solo el aviso 2 tiene foto
+    verFoto[0].click();
     f.detectChanges();
 
     const req = http.expectOne((r) => r.url.endsWith('/avisos/2/foto'));
@@ -253,15 +243,31 @@ describe('Avisos de falla', () => {
     req.flush(new Blob(['x'], { type: 'image/jpeg' }));
     f.detectChanges();
 
-    expect((f.nativeElement as HTMLElement).querySelector('img[alt^="Foto de la falla del aviso"]')).not.toBeNull();
+    expect(dialogo(f).querySelector('img[alt^="Foto de la falla del aviso"]')).not.toBeNull();
   });
 
   it('si la foto ya no está disponible lo informa', () => {
     const f = setup('supervisor');
-    botones(f, '📎 Ver foto')[0].click();
+    tarjetas(f).flatMap((t) => botonesEn(t, 'Ver foto'))[0].click();
     f.detectChanges();
     http.expectOne((r) => r.url.endsWith('/avisos/2/foto')).flush(new Blob(['no']), { status: 404, statusText: 'Not Found' });
     f.detectChanges();
     expect(texto(f)).toContain('La foto ya no está disponible.');
+  });
+
+  it('en pantalla ancha el panel de detalle muestra el aviso elegido con su foto y la decisión a la vista', () => {
+    const f = setup('supervisor');
+    const detalle = () => raiz(f).querySelector('[data-testid="aviso-detalle"]') as HTMLElement;
+    expect(detalle().textContent).toContain('AV-2026-0001'); // por defecto, el primero
+    expect(detalle().textContent).toContain('Este aviso no tiene foto.');
+    expect(botonesEn(detalle(), 'Generar OT')).toHaveLength(1);
+
+    botonesEn(tarjetas(f)[1], 'Ver detalle')[0].click();
+    f.detectChanges();
+    expect(detalle().textContent).toContain('AV-2026-0002');
+    http.expectOne((r) => r.url.endsWith('/avisos/2/foto')).flush(new Blob(['x'], { type: 'image/jpeg' }));
+    f.detectChanges();
+    expect(detalle().querySelector('img')).not.toBeNull();
+    expect(tarjetas(f)[1].getAttribute('aria-current')).toBe('true');
   });
 });

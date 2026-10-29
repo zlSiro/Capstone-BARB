@@ -10,10 +10,11 @@ import { ImageAttachmentComponent } from './image-attachment.component';
 import { ToastService } from '../../core/services/toast.service';
 import { I18nService } from '../../core/i18n/i18n.service';
 import { TranslatePipe } from '../../core/i18n/translate.pipe';
+import { Icon } from '../../shared/components/ui/icon/icon';
 
 @Component({
   selector: 'app-doc-chat',
-  imports: [FormsModule, MessageBubbleComponent, ImageAttachmentComponent, TranslatePipe],
+  imports: [FormsModule, MessageBubbleComponent, ImageAttachmentComponent, TranslatePipe, Icon],
   templateUrl: './doc-chat.component.html',
 })
 export class DocChatComponent {
@@ -30,6 +31,8 @@ export class DocChatComponent {
   readonly isLoading = signal(false);
   readonly errorMessage = signal<string | null>(null);
   readonly sessionId = signal<string | null>(null);
+  /** En móvil el historial y el chat no caben juntos: el historial se abre sobre el chat. */
+  readonly historialAbierto = signal(false);
 
   // ── Imagen adjunta (HU-05) ──
   // Data URL de la imagen lista para analizar; null = sin imagen.
@@ -72,6 +75,7 @@ export class DocChatComponent {
   }
 
   selectSession(s: SessionListItem): void {
+    this.historialAbierto.set(false);
     if (this.sessionId() === s.session_id) return;
     this.loadConversation(s.session_id);
   }
@@ -127,6 +131,7 @@ export class DocChatComponent {
   // ---------------------------------------------------------------------------
 
   newConversation(): void {
+    this.historialAbierto.set(false);
     this.messages.set([]);
     this.sessionId.set(null);
     this.errorMessage.set(null);

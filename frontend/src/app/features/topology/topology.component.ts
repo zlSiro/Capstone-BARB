@@ -70,10 +70,10 @@ type EstadoCarga =
  * se puede enlazar directo en un atributo SVG (a diferencia de las clases del legacy).
  */
 const COLOR_POR_ESTADO: Record<TopologyNodeState, string> = {
-  operativo: 'var(--color-emerald-500)',
-  alerta: 'var(--color-amber-500)',
-  falla: 'var(--color-red-500)',
-  desconectado: 'var(--color-gray-400)',
+  operativo: 'var(--ok)',
+  alerta: 'var(--media)',
+  falla: 'var(--peligro)',
+  desconectado: 'var(--neutro)',
 };
 
 /** Clave de traducción de cada estado. El texto vive en `translations.topology`. */
@@ -126,12 +126,12 @@ const ETIQUETA_OT: Record<string, string> = {
 
 /** Color del badge por estado, coherente con `work-order-labels.ts`. */
 const COLOR_OT: Record<string, string> = {
-  pending: 'bg-amber-100 text-amber-900',
-  assigned: 'bg-indigo-100 text-indigo-900',
-  in_progress: 'bg-blue-100 text-blue-900',
-  overdue: 'bg-red-100 text-red-900',
-  completed: 'bg-green-100 text-green-900',
-  cancelled: 'bg-gray-200 text-gray-800',
+  pending: 'bg-media-suave text-media',
+  assigned: 'bg-accion-suave text-accion',
+  in_progress: 'bg-accion-suave text-accion',
+  overdue: 'bg-peligro-suave text-peligro',
+  completed: 'bg-ok-suave text-ok',
+  cancelled: 'bg-borde text-tinta',
 };
 
 interface OtEnPanel {
@@ -200,8 +200,8 @@ interface GrupoEnPanel {
     <div class="flex flex-col gap-4">
       <div class="flex items-center justify-between">
         <div>
-          <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100">{{ t().title }}</h1>
-          <p class="text-sm text-gray-500 dark:text-gray-400" data-testid="topo-subtitulo">{{ vistaActivos() ? t().subtitleAssets : t().subtitle }}</p>
+          <h1 class="text-2xl font-bold text-tinta ">{{ t().title }}</h1>
+          <p class="text-sm text-tinta-suave " data-testid="topo-subtitulo">{{ vistaActivos() ? t().subtitleAssets : t().subtitle }}</p>
         </div>
         <div class="flex gap-2">
           <!--
@@ -214,7 +214,7 @@ interface GrupoEnPanel {
               type="button"
               data-testid="gestionar-activos"
               (click)="alternarVista()"
-              class="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
+              class="px-3 py-2 text-sm rounded-control border border-borde-control bg-superficie hover:bg-superficie-2 "
             >{{ vistaActivos() ? 'Volver al mapa' : 'Gestionar activos' }}</button>
           }
           <!-- Los controles de cámara solo tienen sentido sobre el mapa. -->
@@ -223,21 +223,21 @@ interface GrupoEnPanel {
               type="button"
               data-testid="zoom-in"
               (click)="zoom(1.2)"
-              class="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
+              class="px-3 py-2 text-sm rounded-control border border-borde-control bg-superficie hover:bg-superficie-2 "
               [attr.aria-label]="t().zoomIn"
             >+</button>
             <button
               type="button"
               data-testid="zoom-out"
               (click)="zoom(0.8)"
-              class="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
+              class="px-3 py-2 text-sm rounded-control border border-borde-control bg-superficie hover:bg-superficie-2 "
               [attr.aria-label]="t().zoomOut"
             >−</button>
             <button
               type="button"
               data-testid="zoom-reset"
               (click)="resetView()"
-              class="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
+              class="px-3 py-2 text-sm rounded-control border border-borde-control bg-superficie hover:bg-superficie-2 "
             >{{ t().resetView }}</button>
           }
         </div>
@@ -245,7 +245,7 @@ interface GrupoEnPanel {
 
       @if (!vistaActivos()) {
       <!-- Leyenda de estados -->
-      <div class="flex flex-wrap gap-4 text-sm text-gray-600 dark:text-gray-300">
+      <div class="flex flex-wrap gap-4 text-sm text-tinta-suave ">
         @for (e of estados; track e) {
           <span class="inline-flex items-center gap-2">
             <span
@@ -257,20 +257,20 @@ interface GrupoEnPanel {
         }
       </div>
 
-      <div class="relative bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden dark:border-gray-800 dark:bg-slate-900">
+      <div class="relative bg-superficie rounded-control border border-borde overflow-hidden ">
         @switch (estado()) {
           @case ('cargando') {
-            <div class="p-10 text-center text-gray-500 dark:text-gray-400" data-testid="estado-cargando">
+            <div class="p-10 text-center text-tinta-suave " data-testid="estado-cargando">
               {{ t().loading }}
             </div>
           }
           @case ('error') {
-            <div class="p-10 text-center text-red-600 dark:text-red-400" data-testid="estado-error" role="alert">
+            <div class="p-10 text-center text-peligro " data-testid="estado-error" role="alert">
               {{ t().loadError }}
             </div>
           }
           @case ('vacio') {
-            <div class="p-10 text-center text-gray-500 dark:text-gray-400" data-testid="estado-vacio">
+            <div class="p-10 text-center text-tinta-suave " data-testid="estado-vacio">
               {{ t().empty }}
             </div>
           }
@@ -304,7 +304,7 @@ interface GrupoEnPanel {
                   markerUnits="userSpaceOnUse"
                   orient="auto"
                 >
-                  <path d="M0,0 L8,4 L0,8 z" class="fill-gray-300 dark:fill-gray-600" />
+                  <path d="M0,0 L8,4 L0,8 z" class="fill-borde-control " />
                 </marker>
                 <marker
                   id="flecha-topo-activa"
@@ -316,12 +316,12 @@ interface GrupoEnPanel {
                   markerUnits="userSpaceOnUse"
                   orient="auto"
                 >
-                  <path d="M0,0 L8,4 L0,8 z" class="fill-blue-600 dark:fill-blue-400" />
+                  <path d="M0,0 L8,4 L0,8 z" class="fill-accion " />
                 </marker>
               </defs>
 
               <!-- Conexiones: curvas Bézier con enfoque por nodo -->
-              <g class="stroke-gray-300 dark:stroke-gray-600" fill="none">
+              <g class="stroke-borde-control " fill="none">
                 @for (e of aristas(); track e.conexion_id) {
                   <path
                     class="arista"
@@ -352,7 +352,7 @@ interface GrupoEnPanel {
                     [attr.width]="nodeW"
                     [attr.height]="nodeH"
                     rx="12"
-                    class="fill-white dark:fill-slate-800"
+                    class="fill-superficie "
                     [attr.stroke]="colorDe(n.estado_actual)"
                     stroke-width="2"
                   />
@@ -363,7 +363,7 @@ interface GrupoEnPanel {
                     text-anchor="middle"
                     font-size="11"
                     font-weight="600"
-                    class="topo-node-name fill-gray-800 dark:fill-gray-100"
+                    class="topo-node-name fill-tinta "
                     [attr.textLength]="anchoNombre(n.nombre_visual)"
                     lengthAdjust="spacingAndGlyphs"
                   >{{ n.nombre_visual }}</text>
@@ -372,7 +372,7 @@ interface GrupoEnPanel {
                     y="65"
                     text-anchor="middle"
                     font-size="10"
-                    class="topo-node-type fill-gray-500 dark:fill-gray-400"
+                    class="topo-node-type fill-tinta-suave "
                   >{{ n.tipo }}</text>
                   <circle
                     [attr.cx]="nodeW - 14"
@@ -388,14 +388,14 @@ interface GrupoEnPanel {
             @if (seleccionado(); as n) {
               <div
                 data-testid="panel-detalle"
-                class="absolute top-3 right-3 w-72 max-h-[90%] overflow-y-auto rounded-lg border border-gray-200 bg-white p-4 shadow-lg dark:border-gray-700 dark:bg-gray-900"
+                class="absolute top-3 right-3 w-72 max-h-[90%] overflow-y-auto rounded-control border border-borde bg-superficie p-4 shadow-lg "
               >
                 <div class="flex items-start justify-between gap-2">
                   <div class="min-w-0">
-                    <p class="font-semibold text-gray-800 truncate dark:text-gray-100" data-testid="panel-nombre">
+                    <p class="font-semibold text-tinta truncate " data-testid="panel-nombre">
                       {{ n.nombre_visual }}
                     </p>
-                    <p class="text-xs text-gray-500 dark:text-gray-400" data-testid="panel-tipo">{{ n.tipo }}</p>
+                    <p class="text-sm text-tinta-suave " data-testid="panel-tipo">{{ n.tipo }}</p>
                   </div>
                   <span class="text-xl" aria-hidden="true">{{ n.icono }}</span>
                 </div>
@@ -405,7 +405,7 @@ interface GrupoEnPanel {
                     class="inline-block w-3 h-3 rounded-full"
                     [style.background-color]="colorDe(n.estado_actual)"
                   ></span>
-                  <span class="text-sm text-gray-700 dark:text-gray-200">{{ etiquetaDe(n.estado_actual) }}</span>
+                  <span class="text-sm text-tinta ">{{ etiquetaDe(n.estado_actual) }}</span>
                 </div>
 
                 @if (esBotonVolver()) {
@@ -413,25 +413,25 @@ interface GrupoEnPanel {
                     type="button"
                     data-testid="panel-volver"
                     (click)="volver()"
-                    class="mt-3 text-xs text-blue-700 underline hover:text-blue-900 dark:text-blue-200 dark:hover:text-white"
+                    class="mt-3 text-sm text-accion underline hover:text-accion "
                   >&larr; {{ t().detailBack }}</button>
                 }
 
                 <!-- CGBIDA-383: órdenes de trabajo, solo en nodos Máquina -->
                 @if (n.tipo === 'Máquina') {
-                  <div class="mt-3 border-t border-gray-100 pt-2 dark:border-gray-700">
-                    <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  <div class="mt-3 border-t border-borde pt-2 ">
+                    <p class="text-sm font-semibold text-tinta-suave ">
                       {{ t().ordersTitle }}
                     </p>
 
                     @switch (estadoDetalle()) {
                       @case ('cargando') {
-                        <p class="mt-2 text-sm text-gray-500 dark:text-gray-400" data-testid="ordenes-cargando">
+                        <p class="mt-2 text-sm text-tinta-suave " data-testid="ordenes-cargando">
                           {{ t().ordersLoading }}
                         </p>
                       }
                       @case ('error') {
-                        <p class="mt-2 text-sm text-red-700 dark:text-red-300" data-testid="ordenes-error">
+                        <p class="mt-2 text-sm text-peligro " data-testid="ordenes-error">
                           {{ t().ordersError }}
                         </p>
                       }
@@ -444,8 +444,8 @@ interface GrupoEnPanel {
                           -->
                           <div class="mt-1.5 flex items-center gap-1.5" data-testid="ordenes-controles">
                             <select
-                              class="min-w-0 flex-1 rounded border border-gray-300 bg-white px-1.5 py-1 text-xs
-                                     text-gray-800 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                              class="min-w-0 flex-1 rounded-control border border-borde-control bg-superficie px-1.5 py-1 text-sm
+                                     text-tinta "
                               [value]="filtroEstado()"
                               (change)="cambiarFiltro($any($event.target).value)"
                               data-testid="filtro-estado"
@@ -460,9 +460,9 @@ interface GrupoEnPanel {
                             <button
                               type="button"
                               (click)="alternarOrden()"
-                              class="shrink-0 rounded border border-gray-300 bg-white px-1.5 py-1 text-xs
-                                     text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800
-                                     dark:text-gray-100 dark:hover:bg-gray-700"
+                              class="shrink-0 rounded-control border border-borde-control bg-superficie px-1.5 py-1 text-sm
+                                     text-tinta hover:bg-superficie-2  
+                                      "
                               [attr.aria-label]="t().sortAz + ' / ' + t().sortRecent"
                               [attr.title]="etiquetaOrden()"
                               data-testid="orden-ot"
@@ -479,8 +479,8 @@ interface GrupoEnPanel {
                             <button
                               type="button"
                               class="sticky top-0 z-10 -mx-1 mt-1 flex w-full cursor-pointer items-center gap-1
-                                     bg-white px-1 py-0.5 text-left text-xs font-medium text-gray-700
-                                     hover:text-gray-900 dark:bg-gray-900 dark:text-gray-200 dark:hover:text-white"
+                                     bg-superficie px-1 py-0.5 text-left text-sm font-medium text-tinta
+                                     hover:text-tinta "
                               [attr.data-testid]="'grupo-' + grupo.nombre"
                               [attr.aria-expanded]="!estaPlegado(grupo.nombre)"
                               (click)="alternarGrupo(grupo.nombre)"
@@ -497,16 +497,16 @@ interface GrupoEnPanel {
                               <ul class="mt-0.5 flex flex-col gap-1" data-testid="grupo-lista">
                                 @for (item of grupo.ordenes; track item.orden.numero_ot) {
                                   <li
-                                    class="rounded border border-gray-200 px-2 py-1 dark:border-gray-700"
+                                    class="rounded-control border border-borde px-2 py-1 "
                                     data-testid="orden-item"
                                   >
                                     <div class="flex items-center gap-1">
                                       <span
-                                        class="truncate text-xs font-medium text-gray-800 dark:text-gray-100"
+                                        class="truncate text-sm font-medium text-tinta "
                                         data-testid="orden-numero"
                                       >{{ item.orden.numero_ot }}</span>
                                       <span
-                                        class="ml-auto shrink-0 rounded px-1 text-[10px]"
+                                        class="ml-auto shrink-0 rounded-control px-1 text-sm"
                                         [class]="item.color"
                                         data-testid="orden-estado"
                                       >{{ item.etiqueta }}</span>
@@ -514,7 +514,7 @@ interface GrupoEnPanel {
                                     <!-- Badge rojo de vencida (CGBIDA-378) -->
                                     @if (item.vencida) {
                                       <span
-                                        class="mt-1 inline-block rounded bg-red-600 px-1 text-[10px] font-semibold text-white"
+                                        class="mt-1 inline-block rounded-control bg-peligro px-1 text-sm font-semibold text-sobre-accion"
                                         data-testid="orden-vencida"
                                       >{{ t().overdueBadge }}</span>
                                     }
@@ -522,7 +522,7 @@ interface GrupoEnPanel {
                                       type="button"
                                       data-testid="orden-ver-detalle"
                                       (click)="abrirDetalleOt(item.orden)"
-                                      class="mt-1 block text-[11px] text-blue-700 underline hover:text-blue-900 dark:text-blue-200 dark:hover:text-white"
+                                      class="mt-1 block text-sm text-accion underline hover:text-accion "
                                     >{{ t().viewOrderDetail }}</button>
                                   </li>
                                 }
@@ -530,7 +530,7 @@ interface GrupoEnPanel {
                             }
                           }
                         } @else {
-                          <p class="mt-2 text-sm text-gray-500 dark:text-gray-400" data-testid="ordenes-vacio">
+                          <p class="mt-2 text-sm text-tinta-suave " data-testid="ordenes-vacio">
                             {{ t().ordersEmpty }}
                           </p>
                         }
@@ -541,19 +541,19 @@ interface GrupoEnPanel {
 
                 <!-- CGBIDA-384: hijos del nodo, para Planta y Disciplina -->
                 @if (n.tipo !== 'Máquina') {
-                  <div class="mt-3 border-t border-gray-100 pt-2 dark:border-gray-700">
-                    <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  <div class="mt-3 border-t border-borde pt-2 ">
+                    <p class="text-sm font-semibold text-tinta-suave ">
                       {{ t().childrenTitle }}
                     </p>
 
                     @switch (estadoDetalle()) {
                       @case ('cargando') {
-                        <p class="mt-2 text-sm text-gray-500 dark:text-gray-400" data-testid="hijos-cargando">
+                        <p class="mt-2 text-sm text-tinta-suave " data-testid="hijos-cargando">
                           {{ t().childrenLoading }}
                         </p>
                       }
                       @case ('error') {
-                        <p class="mt-2 text-sm text-red-700 dark:text-red-300" data-testid="hijos-error">
+                        <p class="mt-2 text-sm text-peligro " data-testid="hijos-error">
                           {{ t().childrenError }}
                         </p>
                       }
@@ -567,20 +567,20 @@ interface GrupoEnPanel {
                                   data-testid="hijo-item"
                                   [attr.data-nodo-id]="hijo.nodo_id"
                                   (click)="seleccionarHijo(hijo)"
-                                  class="flex w-full items-center gap-2 rounded border border-gray-200 px-2 py-1 text-left hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800"
+                                  class="flex w-full items-center gap-2 rounded-control border border-borde px-2 py-1 text-left hover:bg-superficie-2 "
                                 >
                                   <span
                                     class="inline-block w-2 h-2 shrink-0 rounded-full"
                                     [style.background-color]="colorDe(hijo.estado_actual)"
                                   ></span>
-                                  <span class="truncate text-xs text-gray-800 dark:text-gray-100">{{ hijo.nombre_visual }}</span>
-                                  <span class="ml-auto shrink-0 text-[10px] text-gray-500 dark:text-gray-400">{{ hijo.tipo }}</span>
+                                  <span class="truncate text-sm text-tinta ">{{ hijo.nombre_visual }}</span>
+                                  <span class="ml-auto shrink-0 text-sm text-tinta-suave ">{{ hijo.tipo }}</span>
                                 </button>
                               </li>
                             }
                           </ul>
                         } @else {
-                          <p class="mt-2 text-sm text-gray-500 dark:text-gray-400" data-testid="hijos-vacio">
+                          <p class="mt-2 text-sm text-tinta-suave " data-testid="hijos-vacio">
                             {{ t().childrenEmpty }}
                           </p>
                         }
@@ -593,7 +593,7 @@ interface GrupoEnPanel {
                   type="button"
                   data-testid="panel-cerrar"
                   (click)="cerrarPanel()"
-                  class="mt-4 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50 dark:border-gray-600 dark:text-gray-100 dark:hover:bg-gray-800"
+                  class="mt-4 w-full rounded-control border border-borde-control px-3 py-2 text-sm hover:bg-superficie-2 "
                 >{{ t().closePanel }}</button>
               </div>
             }

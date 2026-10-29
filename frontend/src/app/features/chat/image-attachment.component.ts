@@ -5,6 +5,7 @@
 
 import { Component, computed, inject, input, output } from '@angular/core';
 import { I18nService } from '../../core/i18n/i18n.service';
+import { Icon } from '../../shared/components/ui/icon/icon';
 
 /** Formatos permitidos por el contrato del backend (docs/contrato_api_chat_multimedia.md). */
 const ALLOWED_IMAGE_TYPES: readonly string[] = ['image/jpeg', 'image/png', 'image/webp'];
@@ -14,6 +15,7 @@ const MAX_IMAGE_MB = 5;
 
 @Component({
   selector: 'app-image-attachment',
+  imports: [Icon],
   template: `
     <button
       type="button"
@@ -21,12 +23,12 @@ const MAX_IMAGE_MB = 5;
       [disabled]="disabled()"
       [attr.aria-label]="attachLabel()"
       [attr.title]="attachLabel()"
-      class="p-2.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400
-             hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-blue-600 dark:hover:text-blue-400
-             focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors text-lg
+      class="p-2.5 rounded-control border border-borde-control text-tinta-suave 
+             hover:bg-superficie-2 hover:text-accion 
+             focus:outline-none focus:ring-2 focus:ring-accion transition-colors text-lg
              disabled:opacity-50 disabled:cursor-not-allowed"
     >
-      📎
+      <app-icon name="clip" [size]="22" />
     </button>
     <!-- Input oculto: lo dispara el botón (patrón accesible estándar, no interactuable por teclado). -->
     <input

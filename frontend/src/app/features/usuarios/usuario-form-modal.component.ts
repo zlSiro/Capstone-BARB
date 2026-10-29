@@ -100,14 +100,14 @@ interface UsuarioFormModel {
           </select>
         </div>
 
-        <label class="flex items-center gap-2 text-sm text-slate-200">
+        <label class="flex items-center gap-2 text-sm text-tinta">
           <input type="checkbox" class="h-4 w-4" [formField]="f.activo" />
           Usuario activo (puede iniciar sesión)
         </label>
 
         <div class="flex justify-end gap-2 pt-2">
           <button type="button" (click)="closed.emit()"
-                  class="rounded border border-slate-600 px-4 py-2 text-sm text-slate-200 hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  class="rounded-control border border-borde px-4 py-2 text-sm text-tinta hover:bg-superficie focus:outline-none focus:ring-2 focus:ring-accion">
             Cancelar
           </button>
           <button type="submit" class="btn-primary" [disabled]="submitting()">

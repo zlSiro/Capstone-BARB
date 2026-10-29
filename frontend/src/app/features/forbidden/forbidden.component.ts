@@ -8,24 +8,24 @@ import { TranslatePipe } from '../../core/i18n/translate.pipe';
   standalone: true,
   imports: [TranslatePipe],
   template: `
-    <div class="min-h-screen flex items-center justify-center bg-gray-100">
-      <div class="bg-white p-10 rounded-lg shadow-lg text-center max-w-md">
+    <div class="min-h-screen flex items-center justify-center bg-superficie-2">
+      <div class="bg-superficie p-10 rounded-control shadow-lg text-center max-w-md">
         <div class="text-6xl mb-4">🚫</div>
-        <h1 class="text-2xl font-bold text-gray-800 mb-2">
+        <h1 class="text-2xl font-bold text-tinta mb-2">
           {{ 'common.forbiddenTitle' | translate }}
         </h1>
-        <p class="text-sm text-gray-500 mb-6">
+        <p class="text-sm text-tinta-suave mb-6">
           {{ 'common.forbiddenMessage' | translate }}
         </p>
         <div class="flex gap-3 justify-center">
           <button
             (click)="goBack()"
-            class="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded text-sm font-medium">
+            class="px-4 py-2 bg-borde hover:bg-borde text-tinta rounded-control text-sm font-medium">
             {{ 'common.back' | translate }}
           </button>
           <button
             (click)="goToMenu()"
-            class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm font-medium">
+            class="px-4 py-2 bg-accion hover:bg-accion-hover text-sobre-accion rounded-control text-sm font-medium">
             {{ 'common.backToMenu' | translate }}
           </button>
         </div>

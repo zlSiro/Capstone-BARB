@@ -19,9 +19,9 @@ export const OPERACION_LABEL: Record<OperacionTransaccion, string> = {
 };
 
 export const OPERACION_STYLE: Record<OperacionTransaccion, string> = {
-  INSERT: 'bg-green-100 text-green-800',
-  UPDATE: 'bg-blue-100 text-blue-800',
-  DELETE: 'bg-red-100 text-red-800',
+  INSERT: 'bg-ok-suave text-ok',
+  UPDATE: 'bg-accion-suave text-accion',
+  DELETE: 'bg-peligro-suave text-peligro',
 };
 
 const TABLA_LABEL: Record<string, string> = {

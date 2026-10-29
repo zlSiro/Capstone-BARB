@@ -69,21 +69,22 @@ const MIL = new Intl.NumberFormat('es-CL');
   template: `
     @if (maquinas().length > 0) {
       <figure
-        class="relative rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-900"
+        class="relative rounded-control border border-borde bg-superficie p-5 "
         data-testid="machine-ranking"
       >
         <figcaption class="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h3 class="text-sm font-extrabold text-gray-800 dark:text-gray-100">{{ t().topMachinesTitle }}</h3>
-            <p class="text-xs text-gray-500 dark:text-gray-400">{{ t().topMachinesSubtitle }}</p>
+            <h2 class="text-sm font-extrabold text-tinta ">{{ t().topMachinesTitle }}</h2>
+            <p class="text-sm text-tinta-suave ">{{ t().topMachinesSubtitle }}</p>
           </div>
 
           <!-- Selector de metrica: replica del filter-select del legacy. -->
           <select
-            class="rounded-lg border border-gray-300 bg-white px-3 py-[7px] text-xs text-gray-800
-                   outline-none transition-colors focus:border-blue-600
-                   dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:focus:border-blue-400"
+            class="rounded-control border border-borde-control bg-superficie px-3 py-[7px] text-sm text-tinta
+                   outline-none transition-colors focus:border-accion
+                      "
             data-testid="selector-metrica"
+            aria-label="Métrica del ranking"
             [value]="metrica()"
             (change)="cambiarMetrica($event)"
           >
@@ -112,7 +113,7 @@ const MIL = new Intl.NumberFormat('es-CL');
             <line
               [attr.x1]="g.x" [attr.y1]="PAD_SUP"
               [attr.x2]="g.x" [attr.y2]="ALTO - PAD_ABAJO"
-              class="stroke-gray-200 dark:stroke-gray-700"
+              class="stroke-borde "
               stroke-dasharray="3 3"
             />
           }
@@ -122,7 +123,7 @@ const MIL = new Intl.NumberFormat('es-CL');
             <text
               [attr.x]="PAD_IZQ - 8" [attr.y]="fila.y + 4"
               text-anchor="end" font-size="10"
-              class="fill-gray-800 dark:fill-gray-200"
+              class="fill-tinta "
               [attr.data-testid]="'nombre-' + fila.id"
             >
               {{ fila.nombreVisible }}
@@ -162,39 +163,39 @@ const MIL = new Intl.NumberFormat('es-CL');
         @if (seleccionada(); as m) {
           @if (puntero(); as p) {
             <div
-              class="pointer-events-none absolute z-50 w-56 rounded-lg border border-gray-200 bg-white
-                     px-3 py-2 text-xs shadow-lg dark:border-gray-700 dark:bg-gray-800"
+              class="pointer-events-none absolute z-50 w-56 rounded-control border border-borde bg-superficie
+                     px-3 py-2 text-sm shadow-lg "
               [style.left.px]="p.x + (p.derecha ? -14 : 14)"
               [style.top.px]="p.y + (p.abajo ? -14 : 14)"
               [class.-translate-x-full]="p.derecha"
               [class.-translate-y-full]="p.abajo"
               data-testid="ranking-tooltip"
             >
-              <p class="mb-1.5 flex items-center gap-2 font-semibold text-gray-800 dark:text-gray-100">
+              <p class="mb-1.5 flex items-center gap-2 font-semibold text-tinta ">
                 <span class="inline-block h-2 w-2 shrink-0 rounded-full" [style.background]="m.color"></span>
                 <span data-testid="ranking-tooltip-nombre">{{ m.name }}</span>
               </p>
 
-              <dl class="flex flex-col gap-0.5 text-gray-600 dark:text-gray-300">
+              <dl class="flex flex-col gap-0.5 text-tinta-suave ">
                 <div class="flex justify-between gap-3">
                   <dt>{{ t().rankingMetricOts }}</dt>
-                  <dd class="font-medium tabular-nums text-gray-800 dark:text-gray-100">{{ m.ots }}</dd>
+                  <dd class="font-medium tabular-nums text-tinta ">{{ m.ots }}</dd>
                 </div>
                 <div class="flex justify-between gap-3">
                   <dt>{{ t().rankingMetricMttr }}</dt>
-                  <dd class="font-medium tabular-nums text-gray-800 dark:text-gray-100">{{ m.mttr }}</dd>
+                  <dd class="font-medium tabular-nums text-tinta ">{{ m.mttr }}</dd>
                 </div>
                 <div class="flex justify-between gap-3">
                   <dt>{{ t().rankingMetricAhorro }}</dt>
-                  <dd class="font-medium tabular-nums text-gray-800 dark:text-gray-100">{{ m.ahorro }}</dd>
+                  <dd class="font-medium tabular-nums text-tinta ">{{ m.ahorro }}</dd>
                 </div>
                 <div class="flex justify-between gap-3">
                   <dt>{{ t().rankingCostoReal }}</dt>
-                  <dd class="font-medium tabular-nums text-gray-800 dark:text-gray-100">{{ m.costo }}</dd>
+                  <dd class="font-medium tabular-nums text-tinta ">{{ m.costo }}</dd>
                 </div>
                 <div class="flex justify-between gap-3">
                   <dt>{{ t().efficiency }}</dt>
-                  <dd class="font-medium tabular-nums text-gray-800 dark:text-gray-100">{{ m.sla }}</dd>
+                  <dd class="font-medium tabular-nums text-tinta ">{{ m.sla }}</dd>
                 </div>
               </dl>
             </div>
@@ -202,7 +203,7 @@ const MIL = new Intl.NumberFormat('es-CL');
         }
       </figure>
     } @else {
-      <p class="text-sm text-gray-500 dark:text-gray-400" data-testid="ranking-vacio">
+      <p class="text-sm text-tinta-suave " data-testid="ranking-vacio">
         {{ t().rankingEmpty }}
       </p>
     }

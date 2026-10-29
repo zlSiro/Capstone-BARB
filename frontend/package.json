@@ -16,6 +16,8 @@
     "@angular/forms": "^22.1.0",
     "@angular/platform-browser": "^22.1.0",
     "@angular/router": "^22.1.0",
+    "@fontsource/barlow": "^5.3.0",
+    "@fontsource/barlow-condensed": "^5.3.0",
     "katex": "^0.16.47",
     "marked": "^18.0.14",
     "marked-gfm-heading-id": "^4.1.4",

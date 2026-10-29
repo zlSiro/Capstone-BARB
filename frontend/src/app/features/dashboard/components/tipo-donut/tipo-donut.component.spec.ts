@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 
 import { PorTipoData } from '../../../../core/models';
 import { TipoDonutComponent } from './tipo-donut.component';
+import { siguelTema } from '../../../../testing/tema';
 
 /**
  * Tests de la dona por tipo de intervencion (HU-16 / CGBIDA-395).
@@ -285,13 +286,13 @@ describe('TipoDonutComponent', () => {
       expect(en).toContain('Inspection');
     });
 
-    it('la tarjeta y la leyenda tienen variantes de modo oscuro', () => {
+    it('la tarjeta y la leyenda usan colores del tema (claro y oscuro)', () => {
       const { el } = setup(REAL);
-      expect(el.querySelector('[data-testid="tipo-donut"]')!.className).toContain('dark:');
+      expect(siguelTema(el.querySelector('[data-testid="tipo-donut"]')!.className)).toBe(true);
       const conDark = [...el.querySelectorAll('*')].some((n) => {
         const c = n.className;
         const texto = typeof c === 'string' ? c : (c as SVGAnimatedString).baseVal;
-        return typeof texto === 'string' && texto.includes('dark:');
+        return typeof texto === 'string' && siguelTema(texto);
       });
       expect(conDark).toBe(true);
     });

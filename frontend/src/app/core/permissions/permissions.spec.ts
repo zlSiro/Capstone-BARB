@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ACCIONES, AccionKey, RUTAS, ROLES, puedeAccederRuta, puedeEjecutarAccion } from './permissions';
+import { ACCIONES, AccionKey, RUTAS, ROLES, getDefaultRouteForRole, puedeAccederRuta, puedeEjecutarAccion } from './permissions';
 
 /**
  * Espejo de `backend/tests/test_permissions.py`: si cambia la matriz en uno de los dos lados, estas pruebas
@@ -53,5 +53,24 @@ describe('permisos: pantallas', () => {
     expect(puedeAccederRuta('engineer', 'history')).toBe(true);
     expect(puedeAccederRuta('admin', 'history')).toBe(true); // lectura
     expect(puedeAccederRuta('admin', 'history', false)).toBe(false); // no escritura
+  });
+});
+
+describe('permisos: pantalla de inicio por rol (HU-24)', () => {
+  it.each([
+    ['operador', '/avisos'],
+    ['supervisor', '/avisos'],
+    ['tecnico', '/work-orders'],
+    ['engineer', '/dashboard'],
+    ['gerente', '/dashboard'],
+    ['admin', '/dashboard'],
+    ['super_usuario', '/empresas'],
+  ])('%s empieza en %s', (rol, ruta) => {
+    expect(getDefaultRouteForRole(rol as never)).toBe(ruta);
+  });
+
+  it('sin sesión o sin rol va al login', () => {
+    expect(getDefaultRouteForRole(null)).toBe('/login');
+    expect(getDefaultRouteForRole(undefined)).toBe('/login');
   });
 });

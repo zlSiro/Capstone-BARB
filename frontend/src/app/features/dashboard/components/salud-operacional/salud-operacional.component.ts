@@ -27,15 +27,15 @@ import { MtbfUnitService } from '../../../../core/services/mtbf-unit.service';
   imports: [CommonModule],
   template: `
     <figure
-      class="relative flex h-full flex-col justify-center rounded-2xl border border-gray-200
-             bg-white p-5 dark:border-gray-700 dark:bg-gray-900"
+      class="relative flex h-full flex-col justify-center rounded-control border border-borde
+             bg-superficie p-5 "
       data-testid="salud-operacional"
     >
       <figcaption class="mb-1">
-        <h3 class="text-sm font-extrabold text-gray-800 dark:text-gray-100">
+        <h2 class="text-sm font-extrabold text-tinta ">
           {{ t().healthCardTitle }}
-        </h3>
-        <p class="text-xs text-gray-500 dark:text-gray-400">{{ t().healthCardSub }}</p>
+        </h2>
+        <p class="text-sm text-tinta-suave ">{{ t().healthCardSub }}</p>
       </figcaption>
 
       <!--
@@ -53,7 +53,7 @@ import { MtbfUnitService } from '../../../../core/services/mtbf-unit.service';
           <circle
             [attr.cx]="CENTRO" [attr.cy]="CENTRO" [attr.r]="RADIO"
             fill="none" [attr.stroke-width]="TRAZO"
-            class="stroke-gray-200 dark:stroke-gray-700"
+            class="stroke-borde "
           />
           <circle
             [attr.cx]="CENTRO" [attr.cy]="CENTRO" [attr.r]="RADIO"
@@ -77,7 +77,7 @@ import { MtbfUnitService } from '../../../../core/services/mtbf-unit.service';
           <text
             [attr.x]="CENTRO" [attr.y]="CENTRO + 24" text-anchor="middle"
             font-size="12" font-weight="600"
-            class="fill-gray-500 dark:fill-gray-400"
+            class="fill-tinta-suave "
             data-testid="estado-salud"
           >{{ etiquetaEstado() }}</text>
         </svg>
@@ -87,29 +87,29 @@ import { MtbfUnitService } from '../../../../core/services/mtbf-unit.service';
       <ul class="mt-2 grid grid-cols-3 gap-2" data-testid="componentes-salud">
         @for (c of componentes(); track c.clave) {
           <li
-            class="rounded-lg border border-gray-100 px-2 py-1.5 text-center
-                   dark:border-gray-700"
+            class="rounded-control border border-borde px-2 py-1.5 text-center
+                   "
             [attr.data-testid]="'componente-' + c.clave"
           >
-            <p class="flex items-center justify-center gap-1 text-[10px] uppercase text-gray-500 dark:text-gray-400">
+            <p class="flex items-center justify-center gap-1 text-sm text-tinta-suave ">
               <span
                 class="inline-block h-2 w-2 shrink-0 rounded-full"
                 [style.background]="c.color"
               ></span>
               {{ c.etiqueta }}
             </p>
-            <p class="mt-1 text-sm font-bold tabular-nums text-gray-800 dark:text-gray-100">
+            <p class="mt-1 text-sm font-bold tabular-nums text-tinta ">
               {{ c.valor }}
             </p>
-            <p class="text-[10px] font-medium" [style.color]="c.color">{{ c.estadoTexto }}</p>
+            <p class="text-sm font-medium" [style.color]="c.color">{{ c.estadoTexto }}</p>
           </li>
         }
       </ul>
 
       @if (insuficiente()) {
         <p
-          class="mt-2 rounded-lg bg-amber-50 px-3 py-1.5 text-xs text-amber-700
-                 dark:bg-amber-950 dark:text-amber-300"
+          class="mt-2 rounded-control bg-media-suave px-3 py-1.5 text-sm text-media
+                  "
           data-testid="salud-aviso"
         >{{ t().healthInsufficient }}</p>
       }
@@ -230,7 +230,7 @@ export class SaludOperacionalComponent {
 }
 
 function colorDe(componente: ComponenteSalud | undefined): string {
-  if (!componente) return '#9ca3af';
+  if (!componente) return 'var(--neutro)';
   return COLOR_POR_ESTADO[componente.estado];
 }
 
@@ -243,10 +243,10 @@ function formatear(
 }
 
 const COLOR_POR_ESTADO: Record<EstadoSalud, string> = {
-  verde: '#059669',
-  amarillo: '#d97706',
-  rojo: '#c0281e',
-  insuficiente: '#9ca3af',
+  verde: 'var(--ok)',
+  amarillo: 'var(--alerta)',
+  rojo: 'var(--peligro)',
+  insuficiente: 'var(--neutro)',
 };
 
 

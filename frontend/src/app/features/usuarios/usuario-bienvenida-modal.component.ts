@@ -35,9 +35,9 @@ export interface BienvenidaUsuario {
         data-testid="bienvenida-texto"
         readonly
         rows="9"
-        class="fld-input w-full font-mono text-sm"
+        class="fld-input w-full codigo text-sm"
         [value]="mensaje()"></textarea>
-      <p class="mt-2 text-xs text-slate-400">
+      <p class="mt-2 text-sm text-tinta-suave">
         La contraseña no se vuelve a mostrar una vez que cierres esta ventana.
       </p>
       <div class="flex justify-end gap-2 pt-4">
