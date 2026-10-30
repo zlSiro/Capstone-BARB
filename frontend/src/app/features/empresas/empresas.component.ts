@@ -17,10 +17,10 @@ const ESTADO_LABEL: Record<EstadoEmpresa, string> = {
 };
 
 const ESTADO_STYLE: Record<EstadoEmpresa, string> = {
-  active: 'bg-green-100 text-green-800',
-  demo: 'bg-blue-100 text-blue-800',
-  suspended: 'bg-amber-100 text-amber-900',
-  cancelled: 'bg-red-100 text-red-800',
+  active: 'bg-ok-suave text-ok',
+  demo: 'bg-accion-suave text-accion',
+  suspended: 'bg-media-suave text-media',
+  cancelled: 'bg-peligro-suave text-peligro',
 };
 
 /** Mantenedor de empresas (solo super_usuario): alta, edición, suspensión/reactivación y acceso a sus gerentes. Por auditoría no se eliminan. */
@@ -31,10 +31,10 @@ const ESTADO_STYLE: Record<EstadoEmpresa, string> = {
     <section class="flex flex-col gap-4" aria-labelledby="empresas-title">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 id="empresas-title" class="text-2xl font-bold text-gray-800 dark:text-gray-100">
+          <h1 id="empresas-title" class="text-2xl font-bold text-tinta ">
             Empresas ({{ empresas().length }})
           </h1>
-          <p class="text-sm text-gray-600 dark:text-gray-300">
+          <p class="text-sm text-tinta-suave ">
             Clientes de la plataforma. Aquí se crean, suspenden y habilitan; cada empresa administra a sus propios usuarios.
           </p>
         </div>
@@ -47,23 +47,23 @@ const ESTADO_STYLE: Record<EstadoEmpresa, string> = {
           id="empresa-filtro"
           type="search"
           placeholder="Buscar por nombre, RUT o industria…"
-          class="w-full max-w-sm rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          class="w-full max-w-sm rounded-control border border-borde-control bg-superficie px-3 py-2 text-sm text-tinta focus:outline-none focus:ring-2 focus:ring-accion"
           [value]="filtro()"
           (input)="filtro.set($any($event.target).value)" />
       </div>
 
       @if (loading()) {
-        <div class="py-10 text-center text-gray-600" role="status">Cargando empresas…</div>
+        <div class="py-10 text-center text-tinta-suave" role="status">Cargando empresas…</div>
       } @else if (error()) {
-        <div class="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
+        <div class="rounded-control border border-peligro bg-peligro-suave px-4 py-3 text-sm text-peligro" role="alert">
           {{ error() }}
           <button type="button" class="ml-2 underline" (click)="load()">Reintentar</button>
         </div>
       } @else {
-        <div class="overflow-x-auto rounded-lg border border-gray-100 bg-white shadow-sm">
-          <table class="w-full text-sm text-gray-800">
+        <div class="overflow-x-auto rounded-control border border-borde bg-superficie ">
+          <table class="tabla-apilada w-full text-sm text-tinta">
             <caption class="sr-only">Listado de empresas</caption>
-            <thead class="bg-gray-50 text-xs uppercase text-gray-600">
+            <thead class="bg-superficie-2 text-sm text-tinta-suave">
               <tr>
                 <th scope="col" class="px-4 py-2 text-left">Empresa</th>
                 <th scope="col" class="px-4 py-2 text-left">Plan</th>
@@ -77,24 +77,24 @@ const ESTADO_STYLE: Record<EstadoEmpresa, string> = {
             </thead>
             <tbody>
               @for (e of filtradas(); track e.empresa_id) {
-                <tr class="border-t border-gray-100 hover:bg-gray-50">
-                  <td class="px-4 py-2">
+                <tr class="border-t border-borde hover:bg-superficie-2">
+                  <td class="px-4 py-2" data-label="Empresa">
                     <div class="font-medium">{{ e.nombre }}</div>
-                    <div class="text-xs text-gray-600">{{ e.rut || 'Sin RUT' }} · {{ e.industria || 'Sin industria' }}</div>
+                    <div class="text-sm text-tinta-suave">{{ e.rut || 'Sin RUT' }} · {{ e.industria || 'Sin industria' }}</div>
                   </td>
-                  <td class="px-4 py-2 capitalize">{{ e.plan }}</td>
-                  <td class="px-4 py-2">
-                    <span class="rounded px-2 py-1 text-xs font-medium" [class]="estadoStyle(e.estado)">
+                  <td class="px-4 py-2 capitalize" data-label="Plan">{{ e.plan }}</td>
+                  <td class="px-4 py-2" data-label="Estado">
+                    <span class="rounded-control px-2 py-1 text-sm font-medium" [class]="estadoStyle(e.estado)">
                       {{ estadoLabel(e.estado) }}
                     </span>
                   </td>
-                  <td class="px-4 py-2 text-right" [class.text-red-700]="e.usuarios_activos >= e.max_usuarios">
+                  <td class="px-4 py-2 text-right" [class.text-peligro]="e.usuarios_activos >= e.max_usuarios" data-label="Usuarios">
                     {{ e.usuarios_activos }} / {{ e.max_usuarios }}
                   </td>
-                  <td class="px-4 py-2 text-right">{{ e.documentos }}</td>
-                  <td class="px-4 py-2 text-right">{{ e.ordenes_trabajo }}</td>
-                  <td class="px-4 py-2">{{ e.licencia_fin ? (e.licencia_fin | date: 'dd-MM-yyyy') : '—' }}</td>
-                  <td class="px-4 py-2">
+                  <td class="px-4 py-2 text-right" data-label="Docs">{{ e.documentos }}</td>
+                  <td class="px-4 py-2 text-right" data-label="OTs">{{ e.ordenes_trabajo }}</td>
+                  <td class="px-4 py-2" data-label="Licencia hasta">{{ e.licencia_fin ? (e.licencia_fin | date: 'dd-MM-yyyy') : '—' }}</td>
+                  <td class="px-4 py-2" data-label="Acciones">
                     <div class="flex flex-wrap gap-1">
                       <button type="button" class="btn-secondary" (click)="openEdit(e)" [attr.aria-label]="'Editar ' + e.nombre">Editar</button>
                       <button type="button" class="btn-secondary" (click)="goToUsuarios(e)" [attr.aria-label]="'Gerentes de ' + e.nombre">Gerentes</button>
@@ -108,7 +108,7 @@ const ESTADO_STYLE: Record<EstadoEmpresa, string> = {
                 </tr>
               } @empty {
                 <tr>
-                  <td colspan="8" class="py-6 text-center text-gray-600">No hay empresas que coincidan.</td>
+                  <td colspan="8" class="py-6 text-center text-tinta-suave">No hay empresas que coincidan.</td>
                 </tr>
               }
             </tbody>

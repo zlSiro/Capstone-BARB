@@ -113,7 +113,7 @@ interface MaquinaModel {
                 <option [value]="d"></option>
               }
             </datalist>
-            <p class="mt-1 text-xs text-slate-400">
+            <p class="mt-1 text-sm text-tinta-suave">
               Si no existe en tu empresa, se crea.
             </p>
           }
@@ -131,7 +131,7 @@ interface MaquinaModel {
               data-testid="maquina-sla-horas"
               [formField]="f.slaHoras"
             />
-            <p class="mt-1 text-xs text-slate-400">
+            <p class="mt-1 text-sm text-tinta-suave">
               Tiempo máximo para atender una OT de este equipo. Vacío = SLA general de la empresa.
             </p>
           </div>
@@ -147,7 +147,7 @@ interface MaquinaModel {
               data-testid="maquina-costo-inactividad"
               [formField]="f.costoInactividad"
             />
-            <p class="mt-1 text-xs text-slate-400">
+            <p class="mt-1 text-sm text-tinta-suave">
               Cuánto cuesta cada minuto de esta máquina detenida. Vacío = sin valorización por equipo.
             </p>
           </div>
@@ -160,7 +160,7 @@ interface MaquinaModel {
         <div class="flex justify-end gap-2 pt-2">
           <button
             type="button"
-            class="rounded border border-slate-600 px-4 py-2 text-sm text-slate-200 hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            class="rounded-control border border-borde px-4 py-2 text-sm text-tinta hover:bg-superficie focus:outline-none focus:ring-2 focus:ring-accion"
             (click)="closed.emit()"
             [disabled]="submitting()"
           >

@@ -74,6 +74,8 @@ Response `200` (respuesta real del servidor; la misma forma que `GET /api/work-o
   "costo_real": 0.0,
   "downtime_minutes": null,
   "reporte_id": null,
+  "aviso_falla_id": null,
+  "numero_aviso": null,
   "diagnostico_id": null
 }
 ```
@@ -99,7 +101,8 @@ Notas sobre la respuesta:
 ## 3. Permisos
 
 Acción `crear_ot` (`backend/src/barb/core/permissions.py`, espejo en `frontend/src/app/core/permissions/permissions.ts`):
-solo **gerente** y **admin**. Los demás roles reciben `403` y no ven el botón «Crear OT».
+solo **supervisor** y **gerente** (el administrador gobierna el sistema y ya no crea OT). Los demás roles reciben `403` y no ven el botón «Crear OT».
+Lo que reportan los usuarios de planta entra como **aviso de falla** y el supervisor decide si genera la OT: ver `AVISOS_FALLA.md`.
 
 ## 4. Flujo completo
 
@@ -168,10 +171,17 @@ Dos acciones en `ACCIONES` (`permissions.py`, espejo en `permissions.ts`):
 
 | Acción | Se exige para ir a | Roles |
 |---|---|---|
-| `cambiar_estado_ot` | `in_progress`, `completed` | supervisor, engineer, gerente, admin, super_usuario |
-| `cancelar_ot` | `cancelled` | supervisor, gerente, admin, super_usuario (**engineer no**) |
+| `cambiar_estado_ot` | `in_progress`, `completed` | supervisor, engineer, gerente |
+| `iniciar_ot_asignada` | `in_progress` (solo) | técnico, **y solo si es el técnico asignado a esa OT** |
+| `cancelar_ot` | `cancelled` | supervisor, gerente (**engineer no**) |
+| `eliminar_ot` | — (borra la OT) | gerente |
 
-**Técnico, operador y visitante no pueden cambiar el estado** (403). Antes de esta HU el técnico sí podía; se le quitó. Cancelar es más restrictivo porque es irreversible.
+**Operador, visitante y administrador no pueden cambiar el estado** (403). El técnico solo puede **iniciar** la OT que tiene asignada (un técnico
+que no es el asignado recibe 403 «Solo el técnico asignado a la OT puede iniciarla.»); cerrarla y cancelarla es de supervisión.
+Cancelar es más restrictivo porque es irreversible. *Revisión de roles y privilegios: el administrador ya no cambia estados ni elimina OT, y eliminar es solo del gerente.*
+
+**Visibilidad por rol:** `operador` y `tecnico` solo ven las OT que tienen asignadas, que crearon o que nacieron de un aviso suyo (listado, detalle,
+topología y canal en tiempo real); el resto de los roles de empresa ve todas. Una OT que no les corresponde responde `404`.
 El aislamiento multi-empresa se mantiene: una OT de otra empresa responde `404`.
 
 ## 9. Contrato API: `PATCH /api/work-orders/{numero_ot}/status`

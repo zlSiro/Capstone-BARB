@@ -1,3 +1,11 @@
+/* Fuentes alojadas con la app (sin internet en terreno): Barlow para la interfaz y Barlow Condensed para códigos y números. */
+@import "@fontsource/barlow/latin-400.css";
+@import "@fontsource/barlow/latin-500.css";
+@import "@fontsource/barlow/latin-600.css";
+@import "@fontsource/barlow/latin-700.css";
+@import "@fontsource/barlow-condensed/latin-500.css";
+@import "@fontsource/barlow-condensed/latin-600.css";
+@import "@fontsource/barlow-condensed/latin-700.css";
 @import "tailwindcss";
 
 /*
@@ -13,41 +21,366 @@
  */
 @custom-variant dark (&:where(.dark, .dark *));
 
-html {
-  color-scheme: light;
+/*
+ * SISTEMA VISUAL (HU-24)
+ *
+ * Los colores salen de la señalética de seguridad ISO 3864 (azul de «acción obligatoria», amarillo de
+ * «advertencia», rojo de «peligro», verde de «condición segura») y están elegidos para verse a pleno sol:
+ * todos los textos cumplen WCAG AA sobre sus fondos. El modo claro es el de terreno; el oscuro, el de turno noche.
+ *
+ * Cada token tiene valor claro (en :root) y oscuro (en .dark). Las vistas usan las clases (bg-superficie,
+ * text-tinta, border-borde…) y cambian de tema solas, sin escribir `dark:` en cada una.
+ */
+:root {
+  --fondo: #ecefee;
+  --superficie: #ffffff;
+  --superficie-2: #f4f6f6;
+  --tinta: #1b2733;
+  --tinta-suave: #4a5865;
+  --borde: #d3dadf;
+  --borde-control: #7c8a95;
+
+  --accion: #005387;
+  --accion-hover: #003f69;
+  --sobre-accion: #ffffff;
+  --accion-suave: #dceaf4;
+
+  --senal: #f9a800;
+  --sobre-senal: #1b2733;
+  --senal-suave: #fff1cc;
+
+  --peligro: #9b2423;
+  --peligro-suave: #f8e1e0;
+  --media: #8a6100;
+  --media-suave: #fbeec6;
+  --alerta: #b14a00;
+  --alerta-suave: #fce8d6;
+  --ok: #1d6a44;
+  --ok-suave: #ddf1e6;
+  --neutro: #55616c;
+  --neutro-suave: #e2e7ea;
+
+  --velo: rgb(16 23 28 / 0.6);
 }
 
-/* `color-scheme` hace que las barras de scroll y los controles nativos sigan al tema. */
-html.dark {
-  color-scheme: dark;
-  background-color: #030712; /* gray-950 */
+.dark {
+  --fondo: #10171c;
+  --superficie: #18222a;
+  --superficie-2: #1e2a33;
+  --tinta: #e8edf0;
+  --tinta-suave: #9fb0bd;
+  --borde: #2c3b46;
+  --borde-control: #6a7f8f;
+
+  --accion: #6db6f0;
+  --accion-hover: #8cc6f4;
+  --sobre-accion: #10171c;
+  --accion-suave: #17303f;
+
+  --senal: #f9b800;
+  --sobre-senal: #10171c;
+  --senal-suave: #3a2f0a;
+
+  --peligro: #ff8a7d;
+  --peligro-suave: #3a1b19;
+  --media: #f9b800;
+  --media-suave: #3a2f0a;
+  --alerta: #ff9b4d;
+  --alerta-suave: #3a2412;
+  --ok: #4cc38a;
+  --ok-suave: #13301f;
+  --neutro: #a9b6c1;
+  --neutro-suave: #25323b;
+
+  --velo: rgb(0 0 0 / 0.65);
 }
 
+@theme inline {
+  --font-sans: "Barlow", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-condensed: "Barlow Condensed", "Barlow", ui-sans-serif, system-ui, sans-serif;
 
-html, body {
-  height: 100%;
-  margin: 0;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --color-fondo: var(--fondo);
+  --color-superficie: var(--superficie);
+  --color-superficie-2: var(--superficie-2);
+  --color-tinta: var(--tinta);
+  --color-tinta-suave: var(--tinta-suave);
+  --color-borde: var(--borde);
+  --color-borde-control: var(--borde-control);
+
+  --color-accion: var(--accion);
+  --color-accion-hover: var(--accion-hover);
+  --color-sobre-accion: var(--sobre-accion);
+  --color-accion-suave: var(--accion-suave);
+
+  --color-senal: var(--senal);
+  --color-sobre-senal: var(--sobre-senal);
+  --color-senal-suave: var(--senal-suave);
+
+  --color-peligro: var(--peligro);
+  --color-peligro-suave: var(--peligro-suave);
+  --color-media: var(--media);
+  --color-media-suave: var(--media-suave);
+  --color-alerta: var(--alerta);
+  --color-alerta-suave: var(--alerta-suave);
+  --color-ok: var(--ok);
+  --color-ok-suave: var(--ok-suave);
+  --color-neutro: var(--neutro);
+  --color-neutro-suave: var(--neutro-suave);
+
+  --color-velo: var(--velo);
+
+  /* Radios con intención: controles pequeños, hojas y diálogos grandes. Las tarjetas-etiqueta tienen esquinas cortadas. */
+  --radius-control: 0.375rem;
+  --radius-hoja: 1.25rem;
 }
 
-/* Controles de formulario compartidos por los mantenedores (empresas, usuarios, documentos). */
+@layer base {
+  html {
+    color-scheme: light;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  /* `color-scheme` hace que las barras de scroll y los controles nativos sigan al tema. */
+  html.dark {
+    color-scheme: dark;
+    background-color: #10171c;
+  }
+
+  html,
+  body {
+    height: 100%;
+    margin: 0;
+  }
+
+  body {
+    background-color: var(--fondo);
+    color: var(--tinta);
+    font-family: var(--font-sans);
+    font-size: 1rem;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Foco siempre visible por teclado, en ambos temas. Los controles con su propio anillo lo sobrescriben. */
+  :focus-visible {
+    outline: 3px solid var(--accion);
+    outline-offset: 2px;
+  }
+
+  /* El único movimiento de la app (hoja que sube, avisos que entran) se apaga si el usuario lo pide. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
 @layer components {
+  /* --- Formularios (mantenedores y diálogos): 16 px y 48 px de alto en móvil para no ampliar la pantalla y poder tocar con guantes --- */
   .fld-label {
-    @apply mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400;
+    @apply mb-1.5 block text-sm font-semibold text-tinta;
   }
   .fld-input {
-    @apply w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60;
+    @apply min-h-12 w-full rounded-control border border-borde-control bg-superficie px-3 py-2 text-base text-tinta placeholder:text-tinta-suave md:min-h-10 md:text-sm;
+    @apply focus-visible:outline-accion disabled:cursor-not-allowed disabled:opacity-60;
   }
   .fld-error {
-    @apply mt-1 text-xs text-red-400;
+    @apply mt-1.5 text-sm font-medium text-peligro;
   }
+  .fld-ayuda {
+    @apply mt-1.5 text-sm text-tinta-suave;
+  }
+
+  /* --- Botones --- */
   .btn-primary {
-    @apply rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:cursor-not-allowed disabled:bg-blue-300;
+    @apply inline-flex min-h-12 items-center justify-center gap-2 rounded-control bg-accion px-5 py-2 text-base font-semibold text-sobre-accion transition-colors hover:bg-accion-hover md:min-h-10 md:text-sm;
+    @apply disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-secondary {
-    @apply rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex min-h-12 items-center justify-center gap-2 rounded-control border border-borde-control bg-superficie px-4 py-2 text-base font-medium text-tinta transition-colors hover:bg-superficie-2 md:min-h-9 md:text-sm;
+    @apply disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-danger {
-    @apply rounded border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 transition hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-400 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex min-h-12 items-center justify-center gap-2 rounded-control border border-peligro bg-superficie px-4 py-2 text-base font-medium text-peligro transition-colors hover:bg-peligro-suave md:min-h-9 md:text-sm;
+    @apply disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  /* Reservado a «Reportar falla»: el amarillo de advertencia solo se usa para esa acción. */
+  .btn-senal {
+    @apply inline-flex min-h-12 items-center justify-center gap-2 rounded-control bg-senal px-5 py-2 text-base font-bold text-sobre-senal transition-[filter] hover:brightness-95 md:min-h-10 md:text-sm;
+    @apply disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-ghost {
+    @apply inline-flex min-h-12 items-center justify-center gap-2 rounded-control px-3 py-2 text-base font-medium text-tinta-suave transition-colors hover:bg-superficie-2 hover:text-tinta md:min-h-9 md:text-sm;
+  }
+
+  /* --- Etiquetas de estado y gravedad (siempre llevan texto e ícono: no dependen del color) --- */
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-control px-2 py-1 text-sm font-semibold;
+  }
+  .chip-neutro {
+    @apply bg-neutro-suave text-neutro;
+  }
+  .chip-accion {
+    @apply bg-accion-suave text-accion;
+  }
+  .chip-ok {
+    @apply bg-ok-suave text-ok;
+  }
+  .chip-alerta {
+    @apply bg-alerta-suave text-alerta;
+  }
+  .chip-peligro {
+    @apply bg-peligro-suave text-peligro;
+  }
+  .chip-media {
+    @apply bg-media-suave text-tinta;
+  }
+  .chip-senal {
+    @apply bg-senal-suave text-tinta;
+  }
+
+  /* --- Filtros y atajos que se tocan con el dedo --- */
+  .pill {
+    @apply inline-flex min-h-12 items-center gap-2 rounded-full border border-borde-control bg-superficie px-4 py-2 text-base font-medium text-tinta transition-colors hover:bg-superficie-2 md:min-h-9 md:text-sm;
+  }
+  .pill[aria-pressed='true'],
+  .pill[aria-checked='true'] {
+    @apply border-accion bg-accion text-sobre-accion;
+  }
+
+  /* --- Superficies --- */
+  .panel {
+    @apply rounded-control border border-borde bg-superficie;
+  }
+
+  /*
+   * Tarjeta-etiqueta: la forma de la «tarjeta de anomalía» que el personal cuelga de una máquina con falla
+   * (esquinas cortadas y orificio de cuelgue). El marco toma el color de la gravedad.
+   */
+  .tag-card {
+    --corte: 16px;
+    --marco: var(--borde-control);
+    position: relative;
+    padding: 2px;
+    background: var(--marco);
+    clip-path: polygon(
+      var(--corte) 0,
+      calc(100% - var(--corte)) 0,
+      100% var(--corte),
+      100% 100%,
+      0 100%,
+      0 var(--corte)
+    );
+  }
+  .tag-card > .tag-card-cuerpo {
+    background: var(--superficie);
+    clip-path: polygon(
+      calc(var(--corte) - 1px) 0,
+      calc(100% - var(--corte) + 1px) 0,
+      100% calc(var(--corte) - 1px),
+      100% 100%,
+      0 100%,
+      0 calc(var(--corte) - 1px)
+    );
+  }
+  .tag-card::after {
+    content: '';
+    position: absolute;
+    top: 13px;
+    left: 18px;
+    width: 12px;
+    height: 12px;
+    border-radius: 9999px;
+    background: var(--fondo);
+    box-shadow: inset 0 0 0 2px var(--marco);
+  }
+  .tag-card[aria-current='true'] {
+    --marco: var(--accion);
+    padding: 3px;
+  }
+
+  /* Códigos y números (AV-2026-0121, OT-2026-0042, contadores): condensada con cifras tabulares. */
+  .codigo {
+    font-family: var(--font-condensed);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+  }
+
+  /* Margen inferior para no quedar tapado por la barra del sistema (iPhone) ni por la navegación inferior. */
+  .pb-seguro {
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+}
+
+/*
+ * Tablas que en móvil se apilan como tarjetas: cada fila pasa a ser una tarjeta y cada celda lleva su encabezado
+ * (`data-label`) a la izquierda. Así no hay que desplazarse de lado para ver una fila. Desde `md` es una tabla normal.
+ */
+@media (max-width: 47.99rem) {
+  .tabla-apilada,
+  .tabla-apilada > tbody {
+    display: block;
+  }
+  .tabla-apilada > thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .tabla-apilada > tbody > tr {
+    display: block;
+    margin: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--borde);
+    border-radius: var(--radius-control);
+    background: var(--superficie);
+  }
+  .tabla-apilada > tbody > tr > td {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.375rem 0;
+    border: 0;
+    text-align: right;
+  }
+  .tabla-apilada > tbody > tr > td[data-label]::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    font-weight: 600;
+    color: var(--tinta-suave);
+    text-align: left;
+  }
+  .tabla-apilada > tbody > tr > td[colspan] {
+    display: block;
+    text-align: center;
+  }
+}
+
+/* Movimiento propio de la app: una hoja que sube y un velo que aparece. Responde a una acción del usuario. */
+@keyframes hoja-sube {
+  from {
+    transform: translateY(2rem);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+@keyframes velo-aparece {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }

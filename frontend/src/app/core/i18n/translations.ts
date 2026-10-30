@@ -51,6 +51,22 @@ export const translations = {
       mainMenu: 'Menú principal', maintenance: 'Mantenimiento de planta',
       logout: 'Salir', logoutConfirm: '¿Seguro que quieres salir del sistema?', settings: 'Configuración', helpGuide: 'Guía de esta pantalla'
     },
+    nav: {
+      avisos: 'Avisos de falla', avisosCorto: 'Avisos',
+      workOrders: 'Órdenes de trabajo', workOrdersCorto: 'Órdenes',
+      dashboard: 'Dashboard', dashboardCorto: 'Panel',
+      topology: 'Topología', topologyCorto: 'Topología',
+      chat: 'DocChat', chatCorto: 'DocChat',
+      documentos: 'Documentos', documentosCorto: 'Documentos',
+      usuarios: 'Usuarios', usuariosCorto: 'Usuarios',
+      empresas: 'Empresas', empresasCorto: 'Empresas',
+      transacciones: 'Transacciones', transaccionesCorto: 'Registro',
+      reportarFalla: 'Reportar falla', reportarCorto: 'Reportar',
+      more: 'Más', menuTitle: 'Menú', mainNav: 'Navegación principal', bottomNav: 'Navegación inferior',
+      pendingAria: 'avisos pendientes', theme: 'Tema', themeLight: 'Pasar a modo claro', themeDark: 'Pasar a modo oscuro',
+      language: 'Idioma', skipToContent: 'Ir al contenido', account: 'Cuenta',
+      offline: 'Sin conexión. Lo que hagas se enviará cuando vuelva la señal.', backToHome: 'Volver al inicio'
+    },
     menu: {
       title: 'Menú principal',
       documentChatTitle: 'Asistente Documental',
@@ -313,6 +329,22 @@ export const translations = {
       machineMemory: 'Machine Memory', debugReport: 'Session Report',
       mainMenu: 'Main Menu', maintenance: 'Plant Maintenance',
       logout: 'Log out', logoutConfirm: 'Are you sure you want to log out?', settings: 'Settings', helpGuide: 'Guide for this screen'
+    },
+    nav: {
+      avisos: 'Fault reports', avisosCorto: 'Reports',
+      workOrders: 'Work orders', workOrdersCorto: 'Orders',
+      dashboard: 'Dashboard', dashboardCorto: 'Panel',
+      topology: 'Topology', topologyCorto: 'Topology',
+      chat: 'DocChat', chatCorto: 'DocChat',
+      documentos: 'Documents', documentosCorto: 'Documents',
+      usuarios: 'Users', usuariosCorto: 'Users',
+      empresas: 'Companies', empresasCorto: 'Companies',
+      transacciones: 'Transactions', transaccionesCorto: 'Log',
+      reportarFalla: 'Report a fault', reportarCorto: 'Report',
+      more: 'More', menuTitle: 'Menu', mainNav: 'Main navigation', bottomNav: 'Bottom navigation',
+      pendingAria: 'pending fault reports', theme: 'Theme', themeLight: 'Switch to light mode', themeDark: 'Switch to dark mode',
+      language: 'Language', skipToContent: 'Skip to content', account: 'Account',
+      offline: 'You are offline. What you do will be sent when the signal returns.', backToHome: 'Back to start'
     },
     menu: {
       title: 'Main Menu',

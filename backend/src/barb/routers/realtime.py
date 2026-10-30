@@ -11,8 +11,15 @@ from fastapi import APIRouter, Header, HTTPException, Query, Request
 from sse_starlette.sse import EventSourceResponse
 
 from barb.core.db import fetch_one
-from barb.core.permissions import ROL_SUPER, get_sesion_actual, resolver_empresa
-from barb.services.realtime import TICKET_TTL_SECONDS, OtEvent, broker, consume_ticket, issue_ticket
+from barb.core.permissions import ROL_SUPER, ROLES_VISTA_PROPIA, get_sesion_actual, resolver_empresa
+from barb.services.realtime import (
+    TICKET_TTL_SECONDS,
+    VISIBLE_A,
+    OtEvent,
+    broker,
+    consume_ticket,
+    issue_ticket,
+)
 
 logger = logging.getLogger("barb.realtime")
 
@@ -48,7 +55,8 @@ def _exigir_usuario_de_empresa(sesion: dict) -> None:
 
 
 def _frame(event: OtEvent) -> dict:
-    frame = {"event": event.type, "data": json.dumps(event.data)}
+    # `visible_a` es interno (filtro por usuario): el cliente nunca lo recibe.
+    frame = {"event": event.type, "data": json.dumps({k: v for k, v in event.data.items() if k != VISIBLE_A})}
     if event.id:
         frame["id"] = event.id
     return frame
@@ -86,11 +94,13 @@ async def stream_work_orders(
 
     _exigir_usuario_de_empresa(sesion)
     scope = resolver_empresa(sesion, empresa_id)
+    # Operador y técnico solo ven las OT que les conciernen: tampoco reciben los eventos de las ajenas.
+    solo_usuario = sesion["usuario_id"] if sesion["rol"] in ROLES_VISTA_PROPIA else None
 
     async def event_generator():
         yield {"event": "hello", "data": json.dumps({"connected": True, "empresa_id": scope}), "retry": RETRY_MS}
 
-        with broker.subscribe(scope, last_event_id) as sub:
+        with broker.subscribe(scope, last_event_id, solo_usuario) as sub:
             for event in sub.initial:
                 yield _frame(event)
 

@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 
 import { MachineData } from '../../../../core/models';
 import { MachineRankingComponent } from './machine-ranking.component';
+import { siguelTema } from '../../../../testing/tema';
 
 /**
  * Tests del ranking de equipos (HU-16 / CGBIDA-394).
@@ -499,11 +500,10 @@ describe('MachineRankingComponent', () => {
       expect(en).toContain('MTTR (Minutes)');
     });
 
-    it('la tarjeta y el select tienen variantes de modo oscuro', () => {
+    it('la tarjeta y el select usan colores del tema (claro y oscuro)', () => {
       const { el } = setup(CINCO);
-      expect(el.querySelector('[data-testid="machine-ranking"]')!.className).toContain('dark:');
-      expect((el.querySelector('[data-testid="selector-metrica"]') as HTMLElement).className)
-        .toContain('dark:');
+      expect(siguelTema(el.querySelector('[data-testid="machine-ranking"]')!.className)).toBe(true);
+      expect(siguelTema((el.querySelector('[data-testid="selector-metrica"]') as HTMLElement).className)).toBe(true);
     });
 
     it('el svg es accesible', () => {

@@ -1,0 +1,200 @@
+<section class="flex flex-col gap-4" aria-labelledby="avisos-title">
+  <div class="flex flex-wrap items-start justify-between gap-3">
+    <div class="min-w-0">
+      <h1 id="avisos-title" class="text-3xl font-bold leading-tight">
+        {{ puedeGestionar() ? 'Avisos de falla' : 'Mis avisos de falla' }} ({{ conteos().todos }})
+      </h1>
+      <p class="mt-1 max-w-prose text-base text-tinta-suave">
+        @if (puedeGestionar()) {
+          Fallas reportadas desde planta. Para cada aviso decides si se genera una orden de trabajo o si se descarta con un motivo.
+        } @else {
+          Reporta una falla y sigue en qué quedó: el supervisor decide si se genera una orden de trabajo.
+        }
+      </p>
+    </div>
+    <button type="button" class="btn-secondary" (click)="load()" [disabled]="loading()">
+      <app-icon name="refrescar" [size]="20" />
+      Actualizar
+    </button>
+  </div>
+
+  <div class="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:flex-wrap md:overflow-visible md:px-0" role="group" aria-label="Filtrar avisos por estado">
+    @for (f of filtros; track f.value) {
+      <button type="button" class="pill shrink-0" [attr.aria-pressed]="filtro() === f.value" (click)="setFiltro(f.value)">
+        {{ f.label }} ({{ conteos()[f.value] }})
+      </button>
+    }
+  </div>
+
+  @if (loading()) {
+    <div class="grid gap-3" role="status" aria-label="Cargando avisos">
+      @for (n of [1, 2, 3]; track n) {
+        <div class="h-36 animate-pulse rounded-control bg-superficie-2"></div>
+      }
+      <span class="sr-only">Cargando avisos…</span>
+    </div>
+  } @else if (error()) {
+    <div class="flex flex-wrap items-center gap-3 rounded-control border border-peligro bg-peligro-suave px-4 py-3 text-base text-peligro" role="alert">
+      <app-icon name="alerta" [size]="22" />
+      <span class="flex-1">{{ error() }}</span>
+      <button type="button" class="btn-secondary" (click)="load()">Reintentar</button>
+    </div>
+  } @else if (visibles().length === 0) {
+    <div class="grid justify-items-center gap-3 rounded-control border border-dashed border-borde-control px-4 py-12 text-center">
+      <span class="text-tinta-suave"><app-icon name="etiqueta" [size]="48" /></span>
+      @if (filtro() === 'pendiente') {
+        <p class="text-lg font-semibold">No hay avisos pendientes de decisión.</p>
+        <p class="text-tinta-suave">Cuando alguien reporte una falla, aparecerá aquí.</p>
+      } @else if (conteos().todos === 0) {
+        <p class="text-lg font-semibold">Todavía no hay avisos.</p>
+        @if (puedeReportar()) {
+          <p class="max-w-sm text-tinta-suave">Si ves una máquina con una falla, repórtala: el supervisor decide si se genera una orden de trabajo.</p>
+          <button type="button" class="btn-senal" (click)="reportarUi.abrir()">
+            <app-icon name="alerta" [size]="20" />
+            Reportar una falla
+          </button>
+        }
+      } @else {
+        <p class="text-lg font-semibold">No hay avisos para este filtro.</p>
+      }
+    </div>
+  } @else {
+    <div class="grid items-start gap-4 lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)]" [class.lg:grid-cols-1]="!puedeGestionar()">
+      <ul class="grid gap-3" aria-label="Lista de avisos">
+        @for (a of visibles(); track a.aviso_id) {
+          <li>
+            <article
+              class="tag-card"
+              [style.--marco]="gravedad(a.severidad).marco"
+              [attr.aria-current]="puedeGestionar() && detalle()?.aviso_id === a.aviso_id ? 'true' : null">
+              <div class="tag-card-cuerpo grid gap-2 p-4 pt-9">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <app-gravedad [severidad]="a.severidad" />
+                  <app-estado-aviso [estado]="a.estado" />
+                </div>
+
+                <div class="flex flex-wrap items-baseline justify-between gap-x-3">
+                  <p class="codigo text-xl">{{ a.numero_aviso }}</p>
+                  <p class="text-sm text-tinta-suave">{{ a.created_at | date: 'dd/MM/yyyy HH:mm' }}</p>
+                </div>
+
+                <div>
+                  <p class="text-lg font-semibold leading-snug">{{ a.machine_name }}</p>
+                  <p class="text-sm text-tinta-suave">{{ a.plant_name }}</p>
+                </div>
+
+                <p class="line-clamp-3 text-base" [title]="a.descripcion">{{ a.descripcion }}</p>
+
+                @if (puedeGestionar()) {
+                  <p class="text-sm text-tinta-suave">Reportó {{ a.reportado_por.nombre }} ({{ rol(a.reportado_por.rol) }})</p>
+                }
+
+                @switch (a.estado) {
+                  @case ('con_ot') {
+                    <p class="text-base">
+                      Se generó la OT
+                      <a routerLink="/work-orders" class="codigo text-lg text-accion underline">{{ a.numero_ot }}</a>
+                      @if (a.resuelto_por) {
+                        <span class="text-sm text-tinta-suave">, por {{ a.resuelto_por }}</span>
+                      }
+                    </p>
+                  }
+                  @case ('descartado') {
+                    <p class="text-base">
+                      <span class="font-semibold">Motivo del descarte:</span> {{ a.motivo_descarte }}
+                      @if (a.resuelto_por) {
+                        <span class="text-sm text-tinta-suave">, por {{ a.resuelto_por }}</span>
+                      }
+                    </p>
+                  }
+                  @default {
+                    @if (!puedeGestionar()) {
+                      <p class="text-sm text-tinta-suave">{{ estado(a.estado).detalle }}</p>
+                    }
+                  }
+                }
+
+                <div class="flex flex-wrap gap-2 pt-1" [class.lg:hidden]="puedeGestionar()">
+                  @if (a.foto) {
+                    <button type="button" class="btn-secondary" [attr.aria-label]="'Ver foto del aviso ' + a.numero_aviso" (click)="viendoFoto.set(a)">
+                      <app-icon name="imagen" [size]="20" />
+                      Ver foto
+                    </button>
+                  }
+                  @if (puedeGestionar() && a.estado === 'pendiente') {
+                    <button type="button" class="btn-primary" [attr.aria-label]="'Generar OT desde el aviso ' + a.numero_aviso" (click)="generando.set(a)">
+                      <app-icon name="orden" [size]="20" />
+                      Generar OT
+                    </button>
+                    <button type="button" class="btn-danger" [attr.aria-label]="'Descartar aviso ' + a.numero_aviso" (click)="descartando.set(a)">
+                      Descartar
+                    </button>
+                  }
+                </div>
+
+                @if (puedeGestionar()) {
+                  <button type="button" class="btn-ghost hidden justify-start lg:inline-flex" [attr.aria-label]="'Ver detalle del aviso ' + a.numero_aviso" (click)="elegir(a)">
+                    Ver detalle
+                  </button>
+                }
+              </div>
+            </article>
+          </li>
+        }
+      </ul>
+
+      @if (puedeGestionar() && detalle(); as d) {
+        <aside class="panel sticky top-0 hidden gap-4 p-5 lg:grid" aria-label="Detalle del aviso" data-testid="aviso-detalle">
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p class="codigo text-3xl">{{ d.numero_aviso }}</p>
+              <p class="text-sm text-tinta-suave">{{ d.created_at | date: 'dd/MM/yyyy HH:mm' }}, reportó {{ d.reportado_por.nombre }}</p>
+            </div>
+            <div class="grid justify-items-end gap-2">
+              <app-gravedad [severidad]="d.severidad" />
+              <app-estado-aviso [estado]="d.estado" />
+            </div>
+          </div>
+
+          <div>
+            <p class="text-xl font-semibold">{{ d.machine_name }}</p>
+            <p class="text-sm text-tinta-suave">{{ d.plant_name }}</p>
+          </div>
+          <p class="text-lg">{{ d.descripcion }}</p>
+
+          @if (d.estado === 'pendiente') {
+            <div class="flex flex-wrap gap-2 border-b border-borde pb-4">
+              <button type="button" class="btn-primary" (click)="generando.set(d)">
+                <app-icon name="orden" [size]="20" />
+                Generar OT
+              </button>
+              <button type="button" class="btn-danger" (click)="descartando.set(d)">Descartar</button>
+            </div>
+          } @else if (d.estado === 'con_ot') {
+            <p class="border-b border-borde pb-4 text-base">
+              Se generó la OT <a routerLink="/work-orders" class="codigo text-lg text-accion underline">{{ d.numero_ot }}</a>
+            </p>
+          } @else {
+            <p class="border-b border-borde pb-4 text-base"><span class="font-semibold">Motivo del descarte:</span> {{ d.motivo_descarte }}</p>
+          }
+          @if (d.foto) {
+            <app-foto-aviso [aviso]="d" />
+          } @else {
+            <p class="rounded-control bg-superficie-2 px-3 py-6 text-center text-tinta-suave">Este aviso no tiene foto.</p>
+          }
+
+        </aside>
+      }
+    </div>
+  }
+</section>
+
+@if (generando(); as aviso) {
+  <app-generar-ot-aviso [aviso]="aviso" (closed)="generando.set(null)" (done)="onOtGenerada($event)" />
+}
+@if (viendoFoto(); as aviso) {
+  <app-ver-foto-aviso [aviso]="aviso" (closed)="viendoFoto.set(null)" />
+}
+@if (descartando(); as aviso) {
+  <app-descartar-aviso [aviso]="aviso" (closed)="descartando.set(null)" (done)="onDescartado($event)" />
+}

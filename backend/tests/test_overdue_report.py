@@ -13,6 +13,7 @@ from barb.services.overdue_report import debe_enviar, render_reporte
 
 TZ = ZoneInfo("America/Santiago")
 ADMIN = {"email": "admin@barb.com", "password": "admin123"}
+GERENTE = {"email": "gerente1@planta.com", "password": "gerente123"}
 SUPERVISOR = {"email": "supervisor1@planta.com", "password": "super123"}
 TECNICO = {"email": "carlos@planta.com", "password": "tecnico123"}
 OTRA_EMPRESA = {"email": "admin@mineranorte.cl", "password": "minera123"}
@@ -115,7 +116,7 @@ async def _crear_ot_atrasada(client, dias: int, estado: str = "pending") -> str:
         "/api/work-orders",
         json={"maquina_id": maquina["maquina_id"], "tecnico_id": tecnico["usuario_id"],
               "descripcion_problema": f"{MARCA} {dias}d {estado}"},
-        headers=await _auth(client, ADMIN),
+        headers=await _auth(client, GERENTE),
     )
     assert resp.status_code == 200, resp.text
     numero = resp.json()["numero_ot"]

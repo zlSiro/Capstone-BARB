@@ -37,6 +37,7 @@ export type RutaKey =
   | 'transacciones_empresa'
   | 'usuarios'
   | 'plantas'
+  | 'avisos'
   | 'documentos';
 
 export type AccionKey =
@@ -48,7 +49,11 @@ export type AccionKey =
   | 'gestionar_usuarios'
   | 'ver_usuarios'
   | 'eliminar_documentos'
-  | 'gestionar_empresas';
+  | 'gestionar_empresas'
+  | 'reportar_falla'
+  | 'gestionar_avisos'
+  | 'asignar_ot'
+  | 'iniciar_ot_asignada';
 
 // =============================================================================
 // MATRIZ DE RUTAS (idéntica a RUTAS en permissions.py)
@@ -71,7 +76,10 @@ export const RUTAS: Record<RutaKey, Record<string, PermisoValor>> = {
   // plantas: mantenedor masivo de plantas, disciplinas y máquinas (HU-25 / CGBIDA-461).
   // Espejo de `RUTAS["plantas"]` en el backend: sólo gerente y admin.
   plantas:    { operador: false, tecnico: false, supervisor: false, engineer: false, gerente: true, admin: true,  visitante: false, super_usuario: false },
-  history:   { operador: false, tecnico: false, supervisor: true,  engineer: false, gerente: true,  admin: true, visitante: false , super_usuario: false },
+  // history: el ingeniero analiza el historial de fallas; el administrador solo lo consulta.
+  history:   { operador: false, tecnico: false, supervisor: true,  engineer: true,  gerente: true,  admin: 'ver', visitante: false , super_usuario: false },
+  // avisos: reporte de fallas desde planta. Quienes reportan ven los suyos; supervisor y gerente ven el repositorio completo.
+  avisos:    { operador: true, tecnico: true,  supervisor: true,  engineer: true,  gerente: true,  admin: false, visitante: false , super_usuario: false },
 };
 
 // =============================================================================
@@ -79,15 +87,23 @@ export const RUTAS: Record<RutaKey, Record<string, PermisoValor>> = {
 // =============================================================================
 
 export const ACCIONES: Record<AccionKey, Record<string, boolean>> = {
-  crear_ot:           { operador: false, tecnico: false, supervisor: false, engineer: false, gerente: true, admin: true, visitante: false , super_usuario: false },
-  cambiar_estado_ot:  { operador: false, tecnico: false, supervisor: true,  engineer: true,  gerente: true, admin: true, visitante: false , super_usuario: false },
-  cancelar_ot:        { operador: false, tecnico: false, supervisor: true,  engineer: false, gerente: true, admin: true, visitante: false , super_usuario: false },
-  eliminar_ot:        { operador: false, tecnico: false, supervisor: true,  engineer: true,  gerente: true, admin: true, visitante: false , super_usuario: false },
+  // El administrador gobierna el sistema, no opera el mantenimiento: no crea, cambia, cancela ni elimina OT.
+  crear_ot:           { operador: false, tecnico: false, supervisor: true,  engineer: false, gerente: true, admin: false, visitante: false , super_usuario: false },
+  cambiar_estado_ot:  { operador: false, tecnico: false, supervisor: true,  engineer: true,  gerente: true, admin: false, visitante: false , super_usuario: false },
+  cancelar_ot:        { operador: false, tecnico: false, supervisor: true,  engineer: false, gerente: true, admin: false, visitante: false , super_usuario: false },
+  // Eliminar borra el historial de la OT: solo el gerente (lo normal es cancelar).
+  eliminar_ot:        { operador: false, tecnico: false, supervisor: false, engineer: false, gerente: true, admin: false, visitante: false , super_usuario: false },
   subir_documentos:   { operador: false, tecnico: false, supervisor: false, engineer: true,  gerente: true, admin: true, visitante: false , super_usuario: false },
   gestionar_usuarios: { operador: false, tecnico: false, supervisor: false, engineer: false, gerente: true, admin: true, visitante: false , super_usuario: true },
   eliminar_documentos: { operador: false, tecnico: false, supervisor: false, engineer: true,  gerente: true, admin: true, visitante: false, super_usuario: false },
   gestionar_empresas: { operador: false, tecnico: false, supervisor: false, engineer: false, gerente: false, admin: false, visitante: false, super_usuario: true },
   ver_usuarios:       { operador: false, tecnico: false, supervisor: false, engineer: false, gerente: true, admin: true, visitante: false , super_usuario: true },
+  // Aviso de falla -> OT: reportar desde planta, y decidir (generar OT o descartar) en el repositorio del supervisor.
+  reportar_falla:      { operador: true,  tecnico: true,  supervisor: true,  engineer: true,  gerente: true,  admin: false, visitante: false, super_usuario: false },
+  gestionar_avisos:    { operador: false, tecnico: false, supervisor: true,  engineer: false, gerente: true,  admin: false, visitante: false, super_usuario: false },
+  asignar_ot:          { operador: false, tecnico: false, supervisor: true,  engineer: false, gerente: true,  admin: false, visitante: false, super_usuario: false },
+  // Solo sobre la OT que tiene asignada (el backend lo valida).
+  iniciar_ot_asignada: { operador: false, tecnico: true,  supervisor: false, engineer: false, gerente: false, admin: false, visitante: false, super_usuario: false },
 };
 
 // =============================================================================
@@ -127,6 +143,8 @@ export const puedeEjecutarAccion = (
 export const getDefaultRouteForRole = (role: Role | null | undefined): string => {
   // El super_usuario (contraparte comercial de BARB) solo administra empresas: aterriza en su mantenedor.
   if (puedeAccederRuta(role, 'empresas')) return '/empresas';
+  // En planta el día empieza por los avisos: quien reporta ve los suyos y el supervisor, los pendientes de decidir.
+  if ((role === 'operador' || role === 'supervisor') && puedeAccederRuta(role, 'avisos')) return '/avisos';
   if (puedeAccederRuta(role, 'dashboard')) return '/dashboard';
   if (puedeAccederRuta(role, 'menu')) return '/work-orders';
   return '/login';

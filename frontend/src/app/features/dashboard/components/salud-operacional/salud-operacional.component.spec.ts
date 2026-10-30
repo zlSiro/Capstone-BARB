@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 
 import { SaludOperacionalData } from '../../../../core/models';
 import { SaludOperacionalComponent } from './salud-operacional.component';
+import { siguelTema } from '../../../../testing/tema';
 
 /**
  * CGBIDA-435: tarjeta de Salud Operacional.
@@ -108,25 +109,25 @@ describe('SaludOperacionalComponent', () => {
   describe('los colores', () => {
     it('verde usa el verde de la paleta', () => {
       const { el } = setup(VERDE);
-      expect(el.querySelector('[data-testid="arco-salud"]')!.getAttribute('stroke')).toBe('#059669');
+      expect(el.querySelector('[data-testid="arco-salud"]')!.getAttribute('stroke')).toBe('var(--ok)');
       expect(texto(el, 'estado-salud')).toBe('Saludable');
     });
 
     it('rojo usa el rojo de la paleta', () => {
       const { el } = setup(ROJO);
-      expect(el.querySelector('[data-testid="arco-salud"]')!.getAttribute('stroke')).toBe('#c0281e');
+      expect(el.querySelector('[data-testid="arco-salud"]')!.getAttribute('stroke')).toBe('var(--peligro)');
       expect(texto(el, 'estado-salud')).toBe('Crítico');
     });
 
     it('amarillo tiene su propio color y etiqueta', () => {
       const { el } = setup({ ...VERDE, estado: 'amarillo' });
-      expect(el.querySelector('[data-testid="arco-salud"]')!.getAttribute('stroke')).toBe('#d97706');
+      expect(el.querySelector('[data-testid="arco-salud"]')!.getAttribute('stroke')).toBe('var(--alerta)');
       expect(texto(el, 'estado-salud')).toBe('Atención');
     });
 
     it('insuficiente se pinta en gris, nunca en verde', () => {
       const { el } = setup(INSUFICIENTE);
-      expect(el.querySelector('[data-testid="arco-salud"]')!.getAttribute('stroke')).toBe('#9ca3af');
+      expect(el.querySelector('[data-testid="arco-salud"]')!.getAttribute('stroke')).toBe('var(--neutro)');
       expect(texto(el, 'estado-salud')).toBe('Sin datos');
     });
   });
@@ -158,7 +159,7 @@ describe('SaludOperacionalComponent', () => {
     it('sin salud (null) no rompe y no pinta verde', () => {
       const { el } = setup(null);
       expect(texto(el, 'indice-salud')).toBe('—');
-      expect(el.querySelector('[data-testid="arco-salud"]')!.getAttribute('stroke')).toBe('#9ca3af');
+      expect(el.querySelector('[data-testid="arco-salud"]')!.getAttribute('stroke')).toBe('var(--neutro)');
     });
   });
 
@@ -204,7 +205,7 @@ describe('SaludOperacionalComponent', () => {
 
     it('tiene variantes de modo oscuro', () => {
       const { el } = setup(ROJO);
-      expect(el.querySelector('[data-testid="salud-operacional"]')!.className).toContain('dark:');
+      expect(siguelTema(el.querySelector('[data-testid="salud-operacional"]')!.className)).toBe(true);
     });
   });
 });

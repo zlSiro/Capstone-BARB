@@ -8,6 +8,9 @@ import { I18nService } from '../../../../core/i18n/i18n.service';
 import { ThemeService } from '../../../../core/services/theme.service';
 import { TranslatePipe } from '../../../../core/i18n/translate.pipe';
 import { getDefaultRouteForRole } from '../../../../core/permissions/permissions';
+import { PermissionsService } from '../../../../core/permissions/permissions.service';
+import { ReportarFallaUi } from '../../../../core/services/reportar-falla-ui';
+import { Icon } from '../../ui/icon/icon';
 
 // Vistas que ya ofrecen su propia forma lógica de salir o volver (no llevan el "Volver" global):
 // el detalle de topología navega al nodo padre y el historial de chat tiene "← Volver al chat".
@@ -15,44 +18,52 @@ const RUTAS_CON_SALIDA_PROPIA = ['/topology', '/topologia', '/chat/history'];
 
 @Component({
   selector: 'app-header',
-  imports: [TranslatePipe],
+  imports: [TranslatePipe, Icon],
   template: `
-    <header class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-3 flex items-center justify-between transition-colors">
-      <div class="flex items-center gap-3">
-        <span class="text-2xl" aria-hidden="true">🏭</span>
-        <h1 class="text-lg font-bold text-gray-800 dark:text-gray-100">{{ 'login.title' | translate }}</h1>
-        @if (auth.user()?.empresa_nombre) {
-          <span class="text-sm text-gray-600 dark:text-gray-300 border-l border-gray-300 dark:border-gray-600 pl-3">
-            {{ auth.user()?.empresa_nombre }}
-          </span>
-        }
-      </div>
-      <div class="flex items-center gap-3">
-        <span class="text-sm text-gray-600 dark:text-gray-300">{{ auth.user()?.name }}</span>
-        <span class="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200 px-2 py-1 rounded">
-          {{ auth.user()?.role }}
-        </span>
-        <button
-          (click)="theme.toggle()"
-          class="text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white font-medium"
-          title="Tema">
-          {{ theme.dark() ? '☀️' : '🌙' }}
-        </button>
-        <button
-          (click)="i18n.toggleLang()"
-          class="text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white font-medium">
-          🌐 {{ i18n.lang() === 'es' ? 'ES' : 'EN' }}
-        </button>
+    <header class="flex min-h-14 items-center justify-between gap-3 border-b border-borde bg-superficie px-4 md:px-6">
+      <div class="flex min-w-0 items-center gap-2">
         @if (mostrarVolver()) {
           <button
             type="button"
             data-testid="btn-volver"
             (click)="volver()"
-            class="text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white font-medium">
-            <span aria-hidden="true">←</span> {{ 'common.back' | translate }}
+            class="-ml-2 inline-flex size-12 shrink-0 items-center justify-center rounded-control text-tinta hover:bg-superficie-2 md:size-10"
+            [attr.aria-label]="'common.back' | translate">
+            <app-icon name="atras" [size]="24" />
           </button>
         }
-        <button type="button" data-testid="btn-salir" (click)="salir()" class="text-sm text-red-600 dark:text-red-400 hover:text-red-800">
+        <h1 class="codigo shrink-0 text-2xl font-bold tracking-wide text-accion">{{ 'login.title' | translate }}</h1>
+        @if (auth.user()?.empresa_nombre) {
+          <span class="min-w-0 truncate border-l border-borde pl-3 text-base text-tinta-suave">{{ auth.user()?.empresa_nombre }}</span>
+        }
+      </div>
+
+      <div class="flex items-center gap-1 md:gap-2">
+        @if (puedeReportar()) {
+          <button type="button" class="btn-senal hidden md:inline-flex" data-testid="btn-reportar-header" (click)="reportar()">
+            <app-icon name="alerta" [size]="20" />
+            {{ 'nav.reportarFalla' | translate }}
+          </button>
+        }
+        <span class="hidden text-base text-tinta lg:inline">{{ auth.user()?.name }}</span>
+        <span class="chip chip-accion hidden md:inline-flex">{{ auth.user()?.role }}</span>
+        <button
+          type="button"
+          (click)="theme.toggle()"
+          class="hidden size-10 items-center justify-center rounded-control text-tinta hover:bg-superficie-2 md:inline-flex"
+          [attr.aria-label]="(theme.dark() ? 'nav.themeLight' : 'nav.themeDark') | translate">
+          <app-icon [name]="theme.dark() ? 'sol' : 'luna'" [size]="22" />
+        </button>
+        <button
+          type="button"
+          (click)="i18n.toggleLang()"
+          class="hidden min-h-10 items-center gap-1.5 rounded-control px-2 text-base font-medium text-tinta hover:bg-superficie-2 md:inline-flex"
+          [attr.aria-label]="('nav.language' | translate) + ': ' + (i18n.lang() === 'es' ? 'ES' : 'EN')">
+          <app-icon name="idioma" [size]="20" />
+          {{ i18n.lang() === 'es' ? 'ES' : 'EN' }}
+        </button>
+        <button type="button" data-testid="btn-salir" (click)="salir()" class="btn-danger hidden md:inline-flex">
+          <app-icon name="salir" [size]="20" />
           {{ 'topbar.logout' | translate }}
         </button>
       </div>
@@ -64,6 +75,17 @@ export class HeaderComponent {
   i18n = inject(I18nService);
   theme = inject(ThemeService);
   private readonly router = inject(Router);
+  private readonly permissions = inject(PermissionsService);
+  private readonly reportarUi = inject(ReportarFallaUi);
+
+  protected readonly puedeReportar = computed(() => {
+    this.permissions.role();
+    return this.permissions.canPerform('reportar_falla');
+  });
+
+  protected reportar(): void {
+    this.reportarUi.abrir();
+  }
   private readonly location = inject(Location);
 
   private readonly currentUrl = toSignal(

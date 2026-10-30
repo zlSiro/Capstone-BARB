@@ -10,52 +10,52 @@ import { PermissionsService } from '../../../core/permissions/permissions.servic
   standalone: true,
   imports: [FormsModule],
   template: `
-    <div class="min-h-screen flex items-center justify-center bg-gray-100">
-      <div class="bg-white p-8 rounded-lg shadow-lg w-full max-w-md">
-        <div class="text-center mb-6">
-          <div class="text-5xl mb-2">🏭</div>
-          <h1 class="text-2xl font-bold text-gray-800">BARB</h1>
-          <p class="text-sm text-gray-500">Sistema de mantenimiento de planta</p>
+    <main class="flex min-h-dvh items-center justify-center bg-fondo p-4">
+      <div class="panel w-full max-w-md border-t-8 border-t-senal p-6 md:p-8">
+        <div class="mb-6">
+          <h1 class="codigo text-5xl font-bold text-accion">BARB</h1>
+          <p class="mt-1 text-base text-tinta-suave">Sistema de mantenimiento de planta</p>
         </div>
 
         <form (ngSubmit)="onSubmit()" class="flex flex-col gap-4">
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Usuario</label>
+            <label for="login-email" class="fld-label">Usuario</label>
             <input
+              id="login-email"
               type="email"
               [(ngModel)]="email"
               name="email"
               required
-              class="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+              autocomplete="username"
+              class="fld-input"
               placeholder="admin@barb.com" />
           </div>
 
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
+            <label for="login-password" class="fld-label">Contraseña</label>
             <input
+              id="login-password"
               type="password"
               [(ngModel)]="password"
               name="password"
               required
-              class="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+              autocomplete="current-password"
+              class="fld-input"
               placeholder="••••••••" />
           </div>
 
           @if (error()) {
-            <div class="bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2 rounded">
+            <div class="rounded-control border border-peligro bg-peligro-suave px-3 py-2 text-base text-peligro" role="alert">
               {{ error() }}
             </div>
           }
 
-          <button
-            type="submit"
-            [disabled]="loading()"
-            class="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-medium py-2 rounded transition">
+          <button type="submit" [disabled]="loading()" class="btn-primary min-h-14 text-lg md:min-h-12 md:text-base">
             {{ loading() ? 'Ingresando...' : 'Ingresar' }}
           </button>
         </form>
       </div>
-    </div>
+    </main>
   `
 })
 export class LoginComponent {

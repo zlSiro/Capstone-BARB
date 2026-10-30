@@ -103,7 +103,7 @@ describe('WorkOrdersListComponent — cambio de estado', () => {
 
     expect((el.querySelector('tbody select') as HTMLSelectElement).options[0].textContent).toContain('En curso');
     expect(toast.toasts()[0]).toMatchObject({ type: 'info', message: 'OT-2026-0001: Pendiente → En curso' });
-    expect(el.querySelector('tbody tr')?.classList).toContain('bg-yellow-50');
+    expect(el.querySelector('tbody tr')?.classList).toContain('bg-media-suave');
     http.verify();
   });
 

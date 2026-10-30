@@ -14,43 +14,43 @@ export interface StatusMeta {
 const STATUS_META: Record<string, StatusMeta> = {
   pending: {
     label: 'Pendiente',
-    badge: 'bg-amber-100 text-amber-900',
-    dot: 'bg-amber-600',
+    badge: 'bg-media-suave text-media',
+    dot: 'bg-media',
     effect: 'La OT queda a la espera de iniciarse.',
     final: false,
   },
   assigned: {
     label: 'Asignada',
-    badge: 'bg-indigo-100 text-indigo-900',
-    dot: 'bg-indigo-600',
+    badge: 'bg-accion-suave text-accion',
+    dot: 'bg-accion',
     effect: 'La OT queda asignada a un técnico.',
     final: false,
   },
   in_progress: {
     label: 'En curso',
-    badge: 'bg-blue-100 text-blue-900',
-    dot: 'bg-blue-600',
+    badge: 'bg-accion-suave text-accion',
+    dot: 'bg-accion',
     effect: 'Se registrará la fecha de inicio de los trabajos.',
     final: false,
   },
   completed: {
     label: 'Cerrada',
-    badge: 'bg-green-100 text-green-900',
-    dot: 'bg-green-600',
+    badge: 'bg-ok-suave text-ok',
+    dot: 'bg-ok',
     effect: 'Se registrará la fecha de cierre. Es un estado final: la OT no podrá volver a modificarse.',
     final: true,
   },
   cancelled: {
     label: 'Cancelada',
-    badge: 'bg-gray-200 text-gray-800',
-    dot: 'bg-gray-500',
+    badge: 'bg-borde text-tinta',
+    dot: 'bg-neutro',
     effect: 'Es un estado final: la OT no podrá volver a modificarse.',
     final: true,
   },
   overdue: {
     label: 'Vencida',
-    badge: 'bg-red-100 text-red-900',
-    dot: 'bg-red-600',
+    badge: 'bg-peligro-suave text-peligro',
+    dot: 'bg-peligro',
     effect: 'La OT superó su fecha de vencimiento.',
     final: false,
   },
@@ -58,8 +58,8 @@ const STATUS_META: Record<string, StatusMeta> = {
 
 const FALLBACK: StatusMeta = {
   label: 'Desconocido',
-  badge: 'bg-gray-100 text-gray-800',
-  dot: 'bg-gray-400',
+  badge: 'bg-superficie-2 text-tinta',
+  dot: 'bg-neutro',
   effect: '',
   final: false,
 };
@@ -77,14 +77,14 @@ export function filterGroup(estado: WorkOrderStatus): WorkOrderStatus {
 }
 
 const PRIORITY_META: Record<string, { label: string; badge: string }> = {
-  low: { label: 'Baja', badge: 'bg-gray-100 text-gray-800' },
-  medium: { label: 'Media', badge: 'bg-sky-100 text-sky-900' },
-  high: { label: 'Alta', badge: 'bg-orange-100 text-orange-900' },
-  urgent: { label: 'Urgente', badge: 'bg-red-100 text-red-900' },
+  low: { label: 'Baja', badge: 'bg-superficie-2 text-tinta' },
+  medium: { label: 'Media', badge: 'bg-accion-suave text-accion' },
+  high: { label: 'Alta', badge: 'bg-alerta-suave text-alerta' },
+  urgent: { label: 'Urgente', badge: 'bg-peligro-suave text-peligro' },
 };
 
 export function priorityMeta(priority: string | null | undefined) {
-  return (priority && PRIORITY_META[priority]) || { label: priority || '—', badge: 'bg-gray-100 text-gray-800' };
+  return (priority && PRIORITY_META[priority]) || { label: priority || '—', badge: 'bg-superficie-2 text-tinta' };
 }
 
 const TIPO_LABEL: Record<string, string> = {

@@ -21,7 +21,7 @@ export interface StatusChangeRequest {
   template: `
     @if (options().length) {
       <select
-        class="rounded-md border border-gray-300 bg-white py-1 pl-2 pr-7 text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        class="rounded-control border border-borde-control bg-superficie py-1 pl-2 pr-7 text-sm font-medium text-tinta focus:outline-none focus:ring-2 focus:ring-accion"
         [attr.aria-label]="'Cambiar estado de la OT ' + order().numero_ot + '. Estado actual: ' + currentLabel()"
         (change)="onChange($event)">
         <option [value]="order().estado" selected>{{ currentLabel() }}</option>

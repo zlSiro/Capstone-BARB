@@ -42,14 +42,23 @@ class OtEvent:
     empresa_id: int | None = None
 
 
+# Clave interna del payload: ids de los usuarios a quienes concierne la OT (técnico asignado, quien la creó y
+# quien reportó el aviso del que nació). Solo sirve para filtrar; el router la quita antes de enviar el evento.
+VISIBLE_A = "visible_a"
+
+
 @dataclass(eq=False)  # identidad: se guarda en un set
 class Subscriber:
     empresa_id: int | None  # None = todas las empresas (super_usuario)
+    # Si se indica, solo recibe los eventos de las OT que le conciernen (operador y técnico: no ven las ajenas).
+    solo_usuario_id: int | None = None
     queue: asyncio.Queue[OtEvent] = field(default_factory=lambda: asyncio.Queue(maxsize=QUEUE_SIZE))
     initial: list[OtEvent] = field(default_factory=list)  # replay / resync previo al stream en vivo
 
     def accepts(self, event: OtEvent) -> bool:
-        return self.empresa_id is None or self.empresa_id == event.empresa_id
+        if not (self.empresa_id is None or self.empresa_id == event.empresa_id):
+            return False
+        return self.solo_usuario_id is None or self.solo_usuario_id in (event.data.get(VISIBLE_A) or [])
 
 
 class OtEventBroker:
@@ -108,9 +117,11 @@ class OtEventBroker:
         return [ev for seq, ev in self._buffer if seq > last_seq and sub.accepts(ev)]
 
     @contextmanager
-    def subscribe(self, empresa_id: int | None, last_event_id: str | None = None) -> Iterator[Subscriber]:
+    def subscribe(
+        self, empresa_id: int | None, last_event_id: str | None = None, solo_usuario_id: int | None = None
+    ) -> Iterator[Subscriber]:
         """Registra una conexión; se da de baja sola al salir (desconexión del cliente)."""
-        sub = Subscriber(empresa_id=empresa_id)
+        sub = Subscriber(empresa_id=empresa_id, solo_usuario_id=solo_usuario_id)
         # Sin await entre registrar y calcular el replay: no se pierden eventos en medio.
         self._subscribers.add(sub)
         sub.initial = self._replay_for(sub, last_event_id)

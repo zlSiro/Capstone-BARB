@@ -1,16 +1,16 @@
 <!-- frontend/src/app/features/chat/doc-chat.component.html -->
 
-<div class="flex h-[calc(100vh-4rem)]">
+<div class="flex h-full">
 
   <!-- ══════════════ SIDEBAR: HISTORIAL ══════════════ -->
-  <aside class="w-[440px] flex-shrink-0 flex flex-col border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+  <aside aria-label="Historial de conversaciones" class="min-w-0 flex-col border-r border-borde bg-superficie md:w-[440px] md:flex-shrink-0" [class]="historialAbierto() ? 'flex w-full' : 'hidden md:flex'">
 
     <!-- Header sidebar -->
-    <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-      <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">
-        📋 {{ 'chatHistory.title' | translate }}
+    <div class="px-4 py-3 border-b border-borde ">
+      <h2 class="text-base font-semibold text-tinta ">
+        <app-icon name="registro" [size]="20" class="mr-1 align-text-bottom" /> {{ 'chatHistory.title' | translate }}
       </h2>
-      <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+      <p class="text-sm text-tinta-suave mt-0.5">
         {{ 'chatHistory.sidebarSubtitle' | translate }}
       </p>
     </div>
@@ -18,23 +18,23 @@
     <!-- Tabla de sesiones -->
     <div class="flex-1 overflow-y-auto">
       @if (loadingSessions()) {
-        <div class="p-4 text-center text-sm text-gray-500 dark:text-gray-400">
+        <div class="p-4 text-center text-sm text-tinta-suave ">
           {{ 'common.loading' | translate }}
         </div>
       } @else if (sessionError()) {
-        <div class="p-4 text-sm text-red-600 dark:text-red-400">
-          ⚠️ {{ sessionError() }}
+        <div class="p-4 text-sm text-peligro ">
+          <app-icon name="alerta" [size]="18" class="mr-1 align-text-bottom" /> {{ sessionError() }}
         </div>
       } @else if (sessions().length === 0) {
-        <div class="p-6 text-center text-sm text-gray-400 dark:text-gray-500">
-          <p class="text-2xl mb-2">💬</p>
+        <div class="p-6 text-center text-sm text-tinta-suave ">
+          <p class="mb-2 text-tinta-suave"><app-icon name="chat" [size]="36" /></p>
           <p>{{ 'chatHistory.sidebarEmpty' | translate }}</p>
-          <p class="text-xs mt-1">{{ 'chatHistory.sidebarEmptyHint' | translate }}</p>
+          <p class="text-sm mt-1">{{ 'chatHistory.sidebarEmptyHint' | translate }}</p>
         </div>
       } @else {
-        <table class="w-full text-xs">
-          <thead class="bg-gray-50 dark:bg-gray-800 sticky top-0 z-10">
-            <tr class="text-gray-600 dark:text-gray-400">
+        <table class="w-full text-sm">
+          <thead class="bg-superficie-2 sticky top-0 z-10">
+            <tr class="text-tinta-suave ">
               <th class="text-left px-3 py-2 font-medium whitespace-nowrap">{{ 'chatHistory.date' | translate }}</th>
               <th class="text-left px-3 py-2 font-medium">{{ 'chatHistory.titleIssue' | translate }}</th>
               <th class="text-left px-3 py-2 font-medium w-16">{{ 'common.technician' | translate }}</th>
@@ -46,14 +46,13 @@
             @for (s of sessions(); track s.session_id) {
               <tr
                 (click)="selectSession(s)"
-                [class.bg-blue-50]="sessionId() === s.session_id"
-                [class.dark:bg-blue-900]="sessionId() === s.session_id"
-                class="border-t border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors"
+                [class.bg-accion-suave]="sessionId() === s.session_id"
+                class="border-t border-borde hover:bg-superficie-2 cursor-pointer transition-colors"
               >
-                <td class="px-3 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap align-top">
+                <td class="px-3 py-2 text-tinta-suave whitespace-nowrap align-top">
                   {{ formatDate(s.saved_at) }}
                 </td>
-                <td class="px-3 py-2 text-gray-900 dark:text-gray-100 font-medium align-top">
+                <td class="px-3 py-2 text-tinta font-medium align-top">
                   {{ s.titulo }}
                 </td>
                 <!-- Columnas reservadas para futura HU (Técnico / Equipo) -->
@@ -63,8 +62,9 @@
                   <button
                     (click)="deleteSession(s, $event)"
                     [title]="'chatHistory.deleteTooltip' | translate"
-                    class="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
-                  >🗑</button>
+                    class="inline-flex size-11 items-center justify-center text-tinta-suave hover:text-peligro transition-colors"
+                    aria-label="Eliminar conversación"
+                  ><app-icon name="papelera" [size]="20" /></button>
                 </td>
               </tr>
             }
@@ -75,13 +75,13 @@
   </aside>
 
   <!-- ══════════════ PANEL DE CHAT ══════════════ -->
-  <main class="flex-1 flex flex-col min-w-0">
+  <section aria-label="Conversación" class="min-w-0 flex-1 flex-col" [class]="historialAbierto() ? 'hidden md:flex' : 'flex'">
 
     <!-- Header chat -->
-    <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between bg-white dark:bg-gray-900">
+    <div class="px-6 py-4 border-b border-borde flex items-center justify-between bg-superficie ">
       <div>
-        <h1 class="text-xl font-bold text-gray-900 dark:text-gray-100">{{ 'docChat.title' | translate }}</h1>
-        <p class="text-xs text-gray-500 dark:text-gray-400">
+        <h1 class="text-xl font-bold text-tinta ">{{ 'docChat.title' | translate }}</h1>
+        <p class="text-sm text-tinta-suave ">
           @if (sessionId()) {
             {{ 'docChat.activeConversation' | translate }}
           } @else {
@@ -89,9 +89,13 @@
           }
         </p>
       </div>
+      <button type="button" class="btn-secondary mr-2 md:hidden" (click)="historialAbierto.set(true)">
+        <app-icon name="registro" [size]="20" />
+        Historial
+      </button>
       <button
         (click)="newConversation()"
-        class="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+        class="px-3 py-1.5 text-sm bg-accion text-sobre-accion rounded-control hover:bg-accion-hover transition-colors font-medium"
       >
         {{ 'docChat.newConversation' | translate }}
       </button>
@@ -100,12 +104,12 @@
     <!-- Mensajes -->
     <div
       #messagesContainer
-      class="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-950 p-6"
+      class="flex-1 overflow-y-auto bg-superficie-2 p-6"
     >
       @if (messages().length === 0 && !isLoading()) {
-        <div class="flex items-center justify-center h-full text-gray-400 dark:text-gray-500 text-sm">
+        <div class="flex items-center justify-center h-full text-tinta-suave text-sm">
           <div class="text-center">
-            <p class="text-3xl mb-2">💬</p>
+            <p class="mb-2 flex justify-center text-tinta-suave"><app-icon name="chat" [size]="48" /></p>
             <p>{{ 'docChat.emptyState' | translate }}</p>
           </div>
         </div>
@@ -121,40 +125,40 @@
         messages()[messages().length - 1].content === ''
       ) {
         <div class="flex justify-start mb-3">
-          <div class="bg-white dark:bg-gray-800 px-4 py-2 rounded-2xl rounded-bl-sm shadow-sm">
+          <div class="bg-superficie px-4 py-2 rounded-control rounded-bl-sm ">
             <span class="inline-flex gap-1">
-              <span class="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></span>
-              <span class="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:0.15s]"></span>
-              <span class="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:0.3s]"></span>
+              <span class="w-2 h-2 bg-neutro rounded-full animate-bounce"></span>
+              <span class="w-2 h-2 bg-neutro rounded-full animate-bounce [animation-delay:0.15s]"></span>
+              <span class="w-2 h-2 bg-neutro rounded-full animate-bounce [animation-delay:0.3s]"></span>
             </span>
           </div>
         </div>
       }
 
       @if (errorMessage()) {
-        <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 rounded-lg p-3 mt-2 text-sm">
-          ⚠️ {{ errorMessage() }}
+        <div class="bg-peligro-suave border border-peligro text-peligro rounded-control p-3 mt-2 text-sm">
+          <app-icon name="alerta" [size]="18" class="mr-1 align-text-bottom" /> {{ errorMessage() }}
         </div>
       }
     </div>
 
     <!-- Input -->
-    <div class="px-6 py-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+    <div class="px-6 py-4 border-t border-borde bg-superficie ">
       <!-- Preview de la imagen adjunta (HU-05, CGBIDA-279) -->
       @if (attachedImage()) {
-        <div class="mb-2 flex items-center gap-3 w-fit p-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+        <div class="mb-2 flex items-center gap-3 w-fit p-2 rounded-control border border-borde bg-superficie-2 ">
           <img
             [src]="attachedImage()"
             [alt]="'docChat.imageReady' | translate"
-            class="h-20 w-20 object-cover rounded-lg"
+            class="h-20 w-20 object-cover rounded-control"
           />
           <div class="flex flex-col gap-1 pr-1">
-            <span class="text-xs text-gray-600 dark:text-gray-300">{{ 'docChat.imageReady' | translate }}</span>
+            <span class="text-sm text-tinta-suave ">{{ 'docChat.imageReady' | translate }}</span>
             <button
               (click)="removeAttachedImage()"
               [title]="'docChat.removeImage' | translate"
               [attr.aria-label]="'docChat.removeImage' | translate"
-              class="text-xs text-red-600 dark:text-red-400 hover:underline focus:outline-none focus:ring-2 focus:ring-red-500 rounded w-fit"
+              class="text-sm text-peligro hover:underline focus:outline-none focus:ring-2 focus:ring-peligro rounded-control w-fit"
             >
               {{ 'common.remove' | translate }}
             </button>
@@ -174,19 +178,19 @@
           [disabled]="isLoading()"
           rows="2"
           [placeholder]="'docChat.inputPlaceholder' | translate"
-          class="flex-1 resize-none rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 text-sm"
+          class="flex-1 resize-none rounded-control border border-borde-control bg-superficie text-tinta px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accion disabled:opacity-50 text-sm"
         ></textarea>
         <button
           (click)="sendMessage()"
           [disabled]="isLoading() || !inputText().trim()"
-          class="px-5 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          class="px-5 py-2 bg-accion text-sobre-accion rounded-control font-medium hover:bg-accion-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {{ 'common.send' | translate }}
         </button>
       </div>
-      <p class="text-xs text-gray-400 dark:text-gray-500 mt-1.5">
+      <p class="text-sm text-tinta-suave mt-1.5">
         {{ 'docChat.imageHint' | translate }}
       </p>
     </div>
-  </main>
+  </section>
 </div>

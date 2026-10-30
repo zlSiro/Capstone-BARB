@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 
 import { ImpactoAnual } from '../../../../core/models';
 import { ImpactoEscenariosComponent } from './impacto-escenarios.component';
+import { siguelTema } from '../../../../testing/tema';
 
 /**
  * CGBIDA-436: gráfico de Escenarios de Impacto Anual.
@@ -71,7 +72,7 @@ describe('ImpactoEscenariosComponent', () => {
 
     it('tiene variantes de modo oscuro', () => {
       const { el } = setup();
-      expect(el.querySelector('[data-testid="impacto-escenarios"]')!.className).toContain('dark:');
+      expect(siguelTema(el.querySelector('[data-testid="impacto-escenarios"]')!.className)).toBe(true);
     });
   });
 

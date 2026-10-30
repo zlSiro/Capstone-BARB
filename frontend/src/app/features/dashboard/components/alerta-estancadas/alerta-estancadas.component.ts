@@ -28,9 +28,9 @@ import { I18nService } from '../../../../core/i18n/i18n.service';
   template: `
     @if (datos().total > 0) {
       <div
-        class="flex items-center gap-4 rounded-lg border p-3
-               border-red-300 bg-red-50 text-red-800
-               dark:border-red-800 dark:bg-red-950/40 dark:text-red-300
+        class="flex items-center gap-4 rounded-control border p-3
+               border-peligro bg-peligro-suave text-peligro
+                 
                max-sm:flex-col max-sm:items-start max-sm:gap-2"
         role="alert"
         data-testid="banner-estancadas"
@@ -57,11 +57,11 @@ import { I18nService } from '../../../../core/i18n/i18n.service';
           <p class="text-[15px] font-semibold" data-testid="banner-titulo">
             {{ datos().total }} {{ t().stalledLabel }}
           </p>
-          <p class="mt-1 text-[13px] opacity-90" data-testid="banner-cuerpo">
+          <p class="mt-1 text-sm opacity-90" data-testid="banner-cuerpo">
             {{ t().stalledBody }}
           </p>
 
-          <ul class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px]" data-testid="banner-desglose">
+          <ul class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm" data-testid="banner-desglose">
             @if (datos().vencidas > 0) {
               <li data-testid="banner-vencidas">
                 <span class="font-medium">{{ t().stalledExpired }}:</span> {{ datos().vencidas }}

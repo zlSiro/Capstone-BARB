@@ -35,14 +35,16 @@ import { filterGroup, priorityMeta, statusMeta, tipoLabel } from '../../utils/wo
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div class="flex flex-wrap items-center gap-3">
-            <h1 id="ot-title" class="text-2xl font-bold text-gray-800 dark:text-gray-100">Órdenes de Trabajo ({{ orders().length }})</h1>
+            <h1 id="ot-title" class="text-2xl font-bold text-tinta ">Órdenes de Trabajo ({{ orders().length }})</h1>
             @if (liveEnabled) {
               <app-ot-live-indicator [state]="simulator.connection()" />
             }
           </div>
-          <p class="text-sm text-gray-600 dark:text-gray-300">
+          <p class="text-sm text-tinta-suave ">
             @if (canChangeStatus()) {
               Usa la columna «Estado» para actualizar el avance de cada orden. Cada cambio queda registrado con tu usuario y la hora.
+            } @else if (canStartOwn()) {
+              Aquí ves las órdenes que tienes asignadas. Puedes iniciarlas desde la columna «Estado»; cerrarlas lo hace tu supervisor.
             } @else {
               Consulta el estado de las órdenes. Tu rol no permite modificar estados.
             }
@@ -58,18 +60,18 @@ import { filterGroup, priorityMeta, statusMeta, tipoLabel } from '../../utils/wo
       }
 
       @if (loading()) {
-        <div class="py-10 text-center text-gray-600 dark:text-gray-300" role="status">Cargando órdenes…</div>
+        <div class="py-10 text-center text-tinta-suave " role="status">Cargando órdenes…</div>
       } @else if (error()) {
-        <div class="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
+        <div class="rounded-control border border-peligro bg-peligro-suave px-4 py-3 text-sm text-peligro" role="alert">
           {{ error() }} <button type="button" class="ml-2 underline" (click)="load()">Reintentar</button>
         </div>
       } @else {
         <app-ot-filter-bar [counts]="counts()" [(status)]="statusFilter" [(search)]="search" />
 
-        <div class="overflow-x-auto rounded-lg border border-gray-100 bg-white shadow-sm">
-          <table class="w-full text-sm text-gray-800">
+        <div class="overflow-x-auto rounded-control border border-borde bg-superficie ">
+          <table class="tabla-apilada w-full text-sm text-tinta">
             <caption class="sr-only">Listado de órdenes de trabajo con su estado actual</caption>
-            <thead class="bg-gray-50 text-xs uppercase text-gray-600">
+            <thead class="bg-superficie-2 text-sm text-tinta-suave">
               <tr>
                 <th scope="col" class="px-4 py-2 text-left">N° OT</th>
                 @if (tenant.isSuper()) {
@@ -86,42 +88,42 @@ import { filterGroup, priorityMeta, statusMeta, tipoLabel } from '../../utils/wo
             <tbody>
               @for (ot of filtered(); track ot.ot_id) {
                 <tr
-                  class="border-t border-gray-100 transition-colors hover:bg-gray-50"
-                  [class.bg-yellow-50]="recentlyChanged().has(ot.numero_ot)">
-                  <td class="whitespace-nowrap px-4 py-2">
+                  class="border-t border-borde transition-colors hover:bg-superficie-2"
+                  [class.bg-media-suave]="recentlyChanged().has(ot.numero_ot)">
+                  <td class="whitespace-nowrap px-4 py-2" data-label="N° OT">
                     <button
                       type="button"
-                      class="rounded font-mono text-blue-800 underline-offset-2 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      class="rounded-control codigo text-accion underline-offset-2 hover:underline focus:outline-none focus:ring-2 focus:ring-accion"
                       [attr.aria-label]="'Ver detalle de la OT ' + ot.numero_ot"
                       (click)="openDetail(ot)">
                       {{ ot.numero_ot }}
                     </button>
                   </td>
                   @if (tenant.isSuper()) {
-                    <td class="px-4 py-2">{{ ot.empresa_nombre }}</td>
+                    <td class="px-4 py-2" data-label="Empresa">{{ ot.empresa_nombre }}</td>
                   }
-                  <td class="max-w-xs px-4 py-2">
+                  <td class="max-w-xs px-4 py-2" data-label="Descripción">
                     <p class="line-clamp-2" [title]="ot.title">{{ ot.title }}</p>
-                    <p class="text-xs text-gray-600">{{ tipo(ot.tipo) }}</p>
+                    <p class="text-sm text-tinta-suave">{{ tipo(ot.tipo) }}</p>
                   </td>
-                  <td class="px-4 py-2">
+                  <td class="px-4 py-2" data-label="Máquina">
                     <p>{{ ot.machine_name }}</p>
-                    <p class="text-xs text-gray-600">{{ ot.plant_name }}</p>
+                    <p class="text-sm text-tinta-suave">{{ ot.plant_name }}</p>
                   </td>
-                  <td class="px-4 py-2">{{ ot.tecnico_nombre || 'Sin asignar' }}</td>
-                  <td class="px-4 py-2">
-                    <span class="rounded-full px-2.5 py-1 text-xs font-medium" [class]="priority(ot.priority).badge">
+                  <td class="px-4 py-2" data-label="Técnico">{{ ot.tecnico_nombre || 'Sin asignar' }}</td>
+                  <td class="px-4 py-2" data-label="Prioridad">
+                    <span class="rounded-full px-2.5 py-1 text-sm font-medium" [class]="priority(ot.priority).badge">
                       {{ priority(ot.priority).label }}
                     </span>
                   </td>
-                  <td class="whitespace-nowrap px-4 py-2">
+                  <td class="whitespace-nowrap px-4 py-2" data-label="Estado">
                     <app-ot-status-select [order]="ot" (changeRequested)="requestChange($event)" />
                   </td>
-                  <td class="whitespace-nowrap px-4 py-2 text-gray-700">{{ ot.created_at | date: 'dd/MM/yyyy HH:mm' }}</td>
+                  <td class="whitespace-nowrap px-4 py-2 text-tinta" data-label="Creada">{{ ot.created_at | date: 'dd/MM/yyyy HH:mm' }}</td>
                 </tr>
               } @empty {
                 <tr>
-                  <td [attr.colspan]="tenant.isSuper() ? 8 : 7" class="py-6 text-center text-gray-600">
+                  <td [attr.colspan]="tenant.isSuper() ? 8 : 7" class="py-6 text-center text-tinta-suave">
                     {{ orders().length ? 'Ninguna orden coincide con el filtro.' : 'No hay órdenes registradas' }}
                   </td>
                 </tr>
@@ -175,6 +177,8 @@ export class WorkOrdersListComponent implements OnInit {
   protected readonly changeError = signal<string | null>(null);
 
   protected readonly canChangeStatus = computed(() => this.permissions.canPerform('cambiar_estado_ot'));
+  /** El técnico no cambia estados en general: solo inicia las OT que tiene asignadas. */
+  protected readonly canStartOwn = computed(() => this.permissions.canPerform('iniciar_ot_asignada'));
 
   protected readonly counts = computed(() => {
     const counts: Record<string, number> = { all: this.orders().length };

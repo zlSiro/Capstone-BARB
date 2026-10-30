@@ -20,6 +20,7 @@ from barb.core.db import fetch_all, fetch_one, transaction
 from barb.core.permissions import (
     ROL_SUPER,
     ROLES,
+    ROLES_GESTIONABLES_POR_ADMIN,
     empresa_obligatoria,
     get_sesion_actual,
     require_action,
@@ -42,6 +43,7 @@ _USER_SELECT = """
 
 
 ROL_GERENTE = "gerente"
+ROL_ADMIN = "admin"
 
 
 def _validar_rol(rol: str, sesion: dict) -> str:
@@ -55,6 +57,13 @@ def _validar_rol(rol: str, sesion: dict) -> str:
     # Escalamiento de privilegios: un usuario de empresa nunca puede asignar super_usuario.
     elif rol == ROL_SUPER:
         raise HTTPException(status_code=403, detail="No puedes asignar el rol super_usuario.")
+    # El administrador gobierna el sistema pero no se otorga ni otorga privilegios de decisión:
+    # gerentes y administradores los gestiona solo el gerente.
+    elif sesion["rol"] == ROL_ADMIN and rol not in ROLES_GESTIONABLES_POR_ADMIN:
+        raise HTTPException(
+            status_code=403,
+            detail="El administrador solo puede gestionar usuarios operativos (no gerentes ni otros administradores).",
+        )
     return rol
 
 
@@ -73,6 +82,9 @@ async def _usuario_visible(usuario_id: int, sesion: dict) -> dict:
             raise HTTPException(status_code=404, detail="Usuario no encontrado.")
     elif row["empresa_id"] != sesion["empresa_id"] or str(row["rol"]).lower() == ROL_SUPER:
         raise HTTPException(status_code=404, detail="Usuario no encontrado.")
+    elif sesion["rol"] == ROL_ADMIN and str(row["rol"]).lower() not in ROLES_GESTIONABLES_POR_ADMIN:
+        # El administrador no ve ni toca a gerentes ni a otros administradores (404 para no revelarlos).
+        raise HTTPException(status_code=404, detail="Usuario no encontrado.")
     return row
 
 
@@ -83,10 +95,17 @@ async def list_users(empresa_id: int | None = Query(default=None), sesion: dict 
         f"""
         {_USER_SELECT}
         WHERE (%(empresa_id)s::int IS NULL OR u.empresa_id = %(empresa_id)s)
-          AND (CASE WHEN %(es_super)s THEN u.rol = 'gerente' ELSE u.rol <> 'super_usuario' END)
+          AND (CASE WHEN %(es_super)s THEN u.rol = 'gerente'
+                    WHEN %(es_admin)s THEN u.rol = ANY(%(roles_admin)s)
+                    ELSE u.rol <> 'super_usuario' END)
         ORDER BY e.nombre NULLS FIRST, u.usuario_id
         """,
-        {"empresa_id": scope, "es_super": sesion["rol"] == ROL_SUPER},
+        {
+            "empresa_id": scope,
+            "es_super": sesion["rol"] == ROL_SUPER,
+            "es_admin": sesion["rol"] == ROL_ADMIN,
+            "roles_admin": sorted(ROLES_GESTIONABLES_POR_ADMIN),
+        },
     )
     return [serialize_user(r) for r in rows]
 

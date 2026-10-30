@@ -11,6 +11,7 @@ from barb.core.config import settings
 from barb.core.db import close_pool, execute, open_pool
 from barb.routers import (
     auth,
+    avisos,
     catalog,
     chat,
     documents,
@@ -97,6 +98,7 @@ app.include_router(stats.router)
 # Antes que work_orders: `/api/work-orders/stream` no debe caer en `/{numero_ot}`.
 app.include_router(realtime.router)
 app.include_router(work_orders.router)
+app.include_router(avisos.router)
 app.include_router(preferences.router)
 app.include_router(chat.router)
 app.include_router(notifications.router)

@@ -23,10 +23,10 @@ import { ROLE_OPTIONS, UsuarioFormModalComponent } from './usuario-form-modal.co
     <section class="flex flex-col gap-4" aria-labelledby="usuarios-title">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 id="usuarios-title" class="text-2xl font-bold text-gray-800 dark:text-gray-100">
+          <h1 id="usuarios-title" class="text-2xl font-bold text-tinta ">
             {{ isSuper() ? 'Gerentes' : 'Usuarios' }} ({{ usuarios().length }})
           </h1>
-          <p class="text-sm text-gray-600 dark:text-gray-300">
+          <p class="text-sm text-tinta-suave ">
             @if (isSuper()) {
               Gerentes de las empresas{{ tenant.empresaId() ? ' (filtrado por la empresa seleccionada)' : '' }}.
               @if (tenant.empresaId()) {
@@ -46,22 +46,22 @@ import { ROLE_OPTIONS, UsuarioFormModalComponent } from './usuario-form-modal.co
           id="usuario-filtro"
           type="search"
           placeholder="Buscar por nombre, email o rol…"
-          class="w-full max-w-sm rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          class="w-full max-w-sm rounded-control border border-borde-control bg-superficie px-3 py-2 text-sm text-tinta focus:outline-none focus:ring-2 focus:ring-accion"
           [value]="filtro()"
           (input)="filtro.set($any($event.target).value)" />
       </div>
 
       @if (loading()) {
-        <div class="py-10 text-center text-gray-600" role="status">Cargando usuarios…</div>
+        <div class="py-10 text-center text-tinta-suave" role="status">Cargando usuarios…</div>
       } @else if (error()) {
-        <div class="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
+        <div class="rounded-control border border-peligro bg-peligro-suave px-4 py-3 text-sm text-peligro" role="alert">
           {{ error() }} <button type="button" class="ml-2 underline" (click)="load()">Reintentar</button>
         </div>
       } @else {
-        <div class="overflow-x-auto rounded-lg border border-gray-100 bg-white shadow-sm">
-          <table class="w-full text-sm text-gray-800">
+        <div class="overflow-x-auto rounded-control border border-borde bg-superficie ">
+          <table class="tabla-apilada w-full text-sm text-tinta">
             <caption class="sr-only">Listado de usuarios</caption>
-            <thead class="bg-gray-50 text-xs uppercase text-gray-600">
+            <thead class="bg-superficie-2 text-sm text-tinta-suave">
               <tr>
                 <th scope="col" class="px-4 py-2 text-left">Usuario</th>
                 <th scope="col" class="px-4 py-2 text-left">Rol</th>
@@ -75,25 +75,25 @@ import { ROLE_OPTIONS, UsuarioFormModalComponent } from './usuario-form-modal.co
             </thead>
             <tbody>
               @for (u of filtrados(); track u.usuario_id) {
-                <tr class="border-t border-gray-100 hover:bg-gray-50">
-                  <td class="px-4 py-2">
+                <tr class="border-t border-borde hover:bg-superficie-2">
+                  <td class="px-4 py-2" data-label="Usuario">
                     <div class="font-medium">{{ u.nombre }}</div>
-                    <div class="text-xs text-gray-600">{{ u.email }}</div>
+                    <div class="text-sm text-tinta-suave">{{ u.email }}</div>
                   </td>
-                  <td class="px-4 py-2">
-                    <span class="rounded bg-blue-50 px-2 py-1 text-xs font-medium text-blue-800">{{ rolLabel(u.rol) }}</span>
+                  <td class="px-4 py-2" data-label="Rol">
+                    <span class="rounded-control bg-accion-suave px-2 py-1 text-sm font-medium text-accion">{{ rolLabel(u.rol) }}</span>
                   </td>
                   @if (isSuper()) {
-                    <td class="px-4 py-2">{{ u.empresa_nombre ?? 'Plataforma BARB' }}</td>
+                    <td class="px-4 py-2" data-label="Empresa">{{ u.empresa_nombre ?? 'Plataforma BARB' }}</td>
                   }
-                  <td class="px-4 py-2">
-                    <span class="rounded px-2 py-1 text-xs font-medium"
-                          [class]="u.activo ? 'bg-green-100 text-green-800' : 'bg-gray-200 text-gray-700'">
+                  <td class="px-4 py-2" data-label="Estado">
+                    <span class="rounded-control px-2 py-1 text-sm font-medium"
+                          [class]="u.activo ? 'bg-ok-suave text-ok' : 'bg-borde text-tinta'">
                       {{ u.activo ? 'Activo' : 'Inactivo' }}
                     </span>
                   </td>
-                  <td class="px-4 py-2">{{ u.ultimo_login ? (u.ultimo_login | date: 'dd-MM-yyyy HH:mm') : 'Nunca' }}</td>
-                  <td class="px-4 py-2">
+                  <td class="px-4 py-2" data-label="Último acceso">{{ u.ultimo_login ? (u.ultimo_login | date: 'dd-MM-yyyy HH:mm') : 'Nunca' }}</td>
+                  <td class="px-4 py-2" data-label="Acciones">
                     <div class="flex flex-wrap gap-1">
                       <button type="button" class="btn-secondary" (click)="openEdit(u)" [attr.aria-label]="'Editar ' + u.nombre">Editar</button>
                       @if (!esYo(u)) {
@@ -107,7 +107,7 @@ import { ROLE_OPTIONS, UsuarioFormModalComponent } from './usuario-form-modal.co
                 </tr>
               } @empty {
                 <tr>
-                  <td [attr.colspan]="isSuper() ? 6 : 5" class="py-6 text-center text-gray-600">No hay usuarios que coincidan.</td>
+                  <td [attr.colspan]="isSuper() ? 6 : 5" class="py-6 text-center text-tinta-suave">No hay usuarios que coincidan.</td>
                 </tr>
               }
             </tbody>
@@ -120,6 +120,7 @@ import { ROLE_OPTIONS, UsuarioFormModalComponent } from './usuario-form-modal.co
       <app-usuario-form-modal
         [usuario]="editing()"
         [isSuper]="isSuper()"
+        [soloOperativos]="soloOperativos()"
         [empresas]="empresas()"
         [defaultEmpresaId]="tenant.empresaId()"
         (closed)="modalOpen.set(false)"
@@ -135,6 +136,8 @@ export class UsuariosComponent {
   private readonly toast = inject(ToastService);
 
   protected readonly isSuper = this.tenant.isSuper;
+  /** El administrador de empresa solo gestiona roles operativos (no gerentes ni otros administradores). */
+  protected readonly soloOperativos = computed(() => this.auth.user()?.role === 'admin');
   protected readonly usuarios = signal<UsuarioPerfil[]>([]);
   protected readonly empresas = signal<Empresa[]>([]);
   protected readonly loading = signal(true);

@@ -28,6 +28,11 @@ export class WorkOrdersService {
     });
   }
 
+  /** PATCH /work-orders/{n}/assignment — prioriza y asigna o reasigna una OT abierta (supervisor y gerente). */
+  assign(numeroOt: string, changes: { tecnico_id?: number; priority?: string; fecha_vencimiento?: string }) {
+    return this.http.patch<WorkOrder>(`${this.apiUrl}/work-orders/${numeroOt}/assignment`, changes);
+  }
+
   delete(numeroOt: string) {
     return this.http.delete(`${this.apiUrl}/work-orders/${numeroOt}`);
   }

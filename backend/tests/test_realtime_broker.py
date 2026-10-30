@@ -144,3 +144,25 @@ def test_ticket_expirado_se_rechaza(monkeypatch):
     real = time.monotonic()
     monkeypatch.setattr(realtime.time, "monotonic", lambda: real + realtime.TICKET_TTL_SECONDS + 1)
     assert consume_ticket(ticket) is None
+
+
+# --- Filtro por usuario: operador y técnico solo reciben los eventos de las OT que les conciernen ---
+
+def test_el_suscriptor_de_vista_propia_solo_recibe_lo_que_le_concierne():
+    broker = OtEventBroker()
+    with broker.subscribe(1, solo_usuario_id=4) as carlos, broker.subscribe(1) as supervision:
+        broker.publish(EVENT_OT_STATUS_CHANGED, {"numero_ot": "OT-1", "visible_a": [4, 10]}, 1)
+        broker.publish(EVENT_OT_STATUS_CHANGED, {"numero_ot": "OT-2", "visible_a": [5, 10]}, 1)
+        broker.publish(EVENT_OT_STATUS_CHANGED, {"numero_ot": "OT-3"}, 1)  # sin lista: no le concierne a nadie en particular
+        assert [carlos.queue.get_nowait().data["numero_ot"]] == ["OT-1"]
+        assert carlos.queue.empty()
+        assert supervision.queue.qsize() == 3  # supervisión ve todas las de su empresa
+
+
+def test_el_replay_tampoco_filtra_de_mas_ni_de_menos():
+    broker = OtEventBroker()
+    primero = broker.publish(EVENT_OT_STATUS_CHANGED, {"numero_ot": "OT-1", "visible_a": [4]}, 1)
+    broker.publish(EVENT_OT_STATUS_CHANGED, {"numero_ot": "OT-2", "visible_a": [5]}, 1)
+    broker.publish(EVENT_OT_STATUS_CHANGED, {"numero_ot": "OT-3", "visible_a": [4]}, 1)
+    with broker.subscribe(1, last_event_id=primero.id, solo_usuario_id=4) as sub:
+        assert [e.data["numero_ot"] for e in sub.initial] == ["OT-3"]

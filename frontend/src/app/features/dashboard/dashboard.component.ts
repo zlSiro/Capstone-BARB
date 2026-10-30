@@ -41,8 +41,8 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
     <div class="mx-auto flex w-full max-w-screen-2xl flex-col gap-3">
       <div class="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100">{{ t().dashboardTitle }}</h1>
-          <p class="text-sm text-gray-500 dark:text-gray-400">{{ t().dashboardSubtitle }}</p>
+          <h1 class="text-2xl font-bold text-tinta ">{{ t().dashboardTitle }}</h1>
+          <p class="text-sm text-tinta-suave ">{{ t().dashboardSubtitle }}</p>
         </div>
 
         <!-- Moneda y rango temporal, juntos a la derecha de la cabecera. -->
@@ -54,11 +54,11 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
             tipo de cambio se convirtieron las cifras.
           -->
           @if (currency.sinTasa()) {
-            <p class="text-xs text-amber-600 dark:text-amber-400" data-testid="moneda-sin-tasa">
+            <p class="text-sm text-media " data-testid="moneda-sin-tasa">
               {{ t().currencyNoRate }}
             </p>
           } @else if (currency.moneda() === 'USD') {
-            <p class="text-xs text-gray-500 dark:text-gray-400" data-testid="moneda-tasa">
+            <p class="text-sm text-tinta-suave " data-testid="moneda-tasa">
               {{ t().currencyRate }} {{ tasaTexto() }} CLP/USD
             </p>
           }
@@ -68,8 +68,8 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
             la presentacion. Se usa aria-pressed y no un select porque son dos estados.
           -->
           <div
-            class="flex items-center gap-1 rounded-lg border border-gray-300 p-0.5
-                   dark:border-gray-700"
+            class="flex items-center gap-1 rounded-control border border-borde-control p-0.5
+                   "
             role="group"
             [attr.aria-label]="t().currencyLabel"
             data-testid="selector-moneda"
@@ -94,9 +94,9 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
               id="rango-temporal"
               data-testid="selector-rango"
               (change)="cambiarRango($any($event.target).value)"
-              class="cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs
-                     text-gray-700 outline-none transition-colors focus:border-blue-500
-                     dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+              class="cursor-pointer rounded-control border border-borde-control bg-superficie px-3 py-2 text-sm
+                     text-tinta outline-none transition-colors focus:border-accion
+                       "
             >
               @for (r of rangos; track r) {
                 <option [value]="r" [selected]="r === rango()" [attr.data-testid]="'rango-' + r">
@@ -109,13 +109,13 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
       </div>
 
       @if (loading()) {
-        <div class="py-10 text-center text-gray-500 dark:text-gray-400" role="status">
+        <div class="py-10 text-center text-tinta-suave " role="status">
           {{ t().loading }}
         </div>
       } @else if (error()) {
         <div
-          class="rounded-lg border border-red-200 bg-red-50 p-6 text-center text-red-700
-                 dark:border-red-800 dark:bg-red-950 dark:text-red-300"
+          class="rounded-control border border-peligro bg-peligro-suave p-6 text-center text-peligro
+                   "
           role="alert"
         >
           {{ t().loadError }}
@@ -131,13 +131,13 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
         <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           @for (kpi of tarjetas(); track kpi.clave) {
             <div
-              class="rounded-lg border border-gray-100 bg-white p-3 shadow-sm
-                     dark:border-gray-700 dark:bg-gray-900"
+              class="rounded-control border border-borde bg-superficie p-3 
+                      "
               [attr.data-testid]="'kpi-' + kpi.clave"
             >
               <div class="flex items-start justify-between gap-1">
                 <div class="flex min-w-0 items-center gap-1">
-                  <p class="truncate text-xs uppercase text-gray-500 dark:text-gray-400">
+                  <p class="truncate text-sm text-tinta-suave ">
                     {{ kpi.etiqueta }}
                   </p>
                   <!--
@@ -150,10 +150,10 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
                       [attr.aria-label]="t().mtbfUnitLabel"
                       [attr.data-testid]="'selector-unidad-mtbf'"
                       (change)="cambiarUnidadMtbf($any($event.target).value)"
-                      class="h-4 shrink-0 cursor-pointer rounded border border-gray-300
-                             bg-transparent px-0.5 text-[10px] leading-none
-                             text-gray-600 outline-none focus:border-blue-500
-                             dark:border-gray-600 dark:text-gray-300"
+                      class="h-4 shrink-0 cursor-pointer rounded-control border border-borde-control
+                             bg-transparent px-0.5 text-sm leading-none
+                             text-tinta-suave outline-none focus:border-accion
+                              "
                     >
                       @for (u of unidadesMtbf; track u) {
                         <option [value]="u" [selected]="u === mtbf.unidad()"
@@ -174,10 +174,10 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
                     <button
                       type="button"
                       class="flex h-4 w-4 items-center justify-center rounded-full border
-                             border-gray-300 text-[9px] font-bold leading-none text-gray-500
-                             transition-colors hover:border-blue-500 hover:text-blue-600
-                             focus:border-blue-500 focus:text-blue-600 focus:outline-none
-                             dark:border-gray-600 dark:text-gray-400"
+                             border-borde-control text-sm font-bold leading-none text-tinta-suave
+                             transition-colors hover:border-accion hover:text-accion
+                             focus:border-accion focus:text-accion focus:outline-none
+                              "
                       [attr.aria-describedby]="'kpi-tip-' + kpi.clave"
                       [attr.aria-label]="kpi.etiqueta"
                       [attr.data-testid]="'info-kpi-' + kpi.clave"
@@ -187,16 +187,16 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
                       [id]="'kpi-tip-' + kpi.clave"
                       [attr.data-testid]="'tooltip-kpi-' + kpi.clave"
                       class="pointer-events-none invisible absolute right-0 top-full z-50 mt-2 w-64
-                             rounded-lg border border-gray-200 bg-white p-3 text-xs font-normal
-                             normal-case leading-relaxed text-gray-600 shadow-lg
+                             rounded-control border border-borde bg-superficie p-3 text-sm font-normal
+                             normal-case leading-relaxed text-tinta-suave shadow-lg
                              group-hover:visible group-focus-within:visible
-                             dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                               "
                     >{{ kpi.tooltip }}</div>
                   </div>
                 }
               </div>
               <p class="mt-1 text-2xl font-bold" [class]="kpi.color">{{ kpi.valor }}</p>
-              <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">{{ kpi.descripcion }}</p>
+              <p class="mt-1 text-sm text-tinta-suave ">{{ kpi.descripcion }}</p>
             </div>
           }
         </div>
@@ -351,7 +351,7 @@ export class DashboardComponent implements OnInit {
         etiqueta: tx.mttrGlobal,
         valor: `${f.mttr}m`,
         descripcion: tx.mttrSub,
-        color: 'text-gray-800 dark:text-gray-100',
+        color: 'text-tinta ',
         tooltip: ''
       },
       {
@@ -359,7 +359,7 @@ export class DashboardComponent implements OnInit {
         etiqueta: tx.efficiency,
         valor: `${f.efficiency}%`,
         descripcion: tx.efficiencySub,
-        color: 'text-green-600 dark:text-green-400',
+        color: 'text-ok ',
         tooltip: ''
       },
       {
@@ -367,7 +367,7 @@ export class DashboardComponent implements OnInit {
         etiqueta: tx.directCost,
         valor: cifra(f.costo_total_acumulado),
         descripcion: tx.directCostSub,
-        color: 'text-gray-800 dark:text-gray-100',
+        color: 'text-tinta ',
         tooltip: `${tx.kpiCostoTooltip}${notaMoneda}`
       },
       {
@@ -380,8 +380,8 @@ export class DashboardComponent implements OnInit {
           : tx.mtbfNeedData,
         descripcion: tx.mtbfSub,
         color: mtbfOk
-          ? 'text-gray-800 dark:text-gray-100'
-          : 'text-xs font-medium text-amber-600 dark:text-amber-400',
+          ? 'text-tinta '
+          : 'text-sm font-medium text-media ',
         tooltip: ''
       },
       {
@@ -389,7 +389,7 @@ export class DashboardComponent implements OnInit {
         etiqueta: tx.savingsGenerated,
         valor: cifra(f.ahorro_generado),
         descripcion: tx.savingsSub,
-        color: 'text-orange-600 dark:text-orange-400',
+        color: 'text-alerta ',
         tooltip: `${tx.kpiAhorroTooltip} Supuesto: ${supuesto} por minuto.${notaMoneda}`
       }
     ];
@@ -470,9 +470,9 @@ export class DashboardComponent implements OnInit {
    * no dependa de que Tailwind genere variantes condicionales.
    */
   protected readonly claseMonedaActiva =
-    'rounded px-2 py-1 text-xs font-semibold bg-blue-600 text-white';
+    'rounded-control px-2 py-1 text-sm font-semibold bg-accion text-sobre-accion';
   protected readonly claseMonedaInactiva =
-    'rounded px-2 py-1 text-xs font-medium text-gray-600 dark:text-gray-300';
+    'rounded-control px-2 py-1 text-sm font-medium text-tinta-suave ';
 
   private cargar(): void {
     this.loading.set(true);

@@ -95,16 +95,16 @@ interface MaquinaForm {
 
           @if (!esEdicion()) {
           <!-- Disciplinas -->
-          <fieldset class="md:col-span-2 rounded-lg border border-slate-700 p-4">
-            <legend class="px-2 text-xs font-semibold uppercase tracking-wide text-slate-300">
+          <fieldset class="md:col-span-2 rounded-control border border-borde p-4">
+            <legend class="px-2 text-sm font-semibold text-tinta-suave">
               Disciplinas
             </legend>
-            <p class="mb-3 text-xs text-slate-400">
+            <p class="mb-3 text-sm text-tinta-suave">
               Se reutilizan si la empresa ya las tiene; sólo se crean las que falten.
             </p>
 
             @if (disciplinas().length === 0) {
-              <p class="mb-3 text-sm text-slate-400" data-testid="sin-disciplinas">
+              <p class="mb-3 text-sm text-tinta-suave" data-testid="sin-disciplinas">
                 Sin disciplinas. Puedes crearlas después.
               </p>
             }
@@ -121,7 +121,7 @@ interface MaquinaForm {
                 />
                 <button
                   type="button"
-                  class="rounded border border-slate-600 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800"
+                  class="rounded-control border border-borde px-3 py-2 text-sm text-tinta hover:bg-superficie"
                   data-testid="quitar-disciplina"
                   (click)="quitarDisciplina($index)"
                   [attr.aria-label]="'Quitar disciplina ' + (d || $index + 1)"
@@ -133,7 +133,7 @@ interface MaquinaForm {
 
             <button
               type="button"
-              class="mt-1 rounded border border-slate-600 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800"
+              class="mt-1 rounded-control border border-borde px-3 py-1.5 text-sm text-tinta hover:bg-superficie"
               data-testid="agregar-disciplina"
               (click)="agregarDisciplina()"
             >
@@ -142,19 +142,19 @@ interface MaquinaForm {
           </fieldset>
 
           <!-- Máquinas -->
-          <fieldset class="md:col-span-2 rounded-lg border border-slate-700 p-4">
-            <legend class="px-2 text-xs font-semibold uppercase tracking-wide text-slate-300">
+          <fieldset class="md:col-span-2 rounded-control border border-borde p-4">
+            <legend class="px-2 text-sm font-semibold text-tinta-suave">
               Máquinas
             </legend>
 
             @if (maquinas().length === 0) {
-              <p class="mb-3 text-sm text-slate-400" data-testid="sin-maquinas">
+              <p class="mb-3 text-sm text-tinta-suave" data-testid="sin-maquinas">
                 Sin máquinas. Puedes agregarlas después.
               </p>
             }
 
             @for (m of maquinas(); track $index) {
-              <div class="mb-3 rounded border border-slate-800 p-3">
+              <div class="mb-3 rounded-control border border-borde p-3">
                 <div class="grid gap-2 md:grid-cols-4">
                   <div>
                     <label class="fld-label" [attr.for]="'maq-nombre-' + $index">Nombre *</label>
@@ -197,7 +197,7 @@ interface MaquinaForm {
                   <div class="flex items-end">
                     <button
                       type="button"
-                      class="w-full rounded border border-slate-600 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800"
+                      class="w-full rounded-control border border-borde px-3 py-2 text-sm text-tinta hover:bg-superficie"
                       data-testid="quitar-maquina"
                       (click)="quitarMaquina($index)"
                       [attr.aria-label]="'Quitar máquina ' + (m.nombre || $index + 1)"
@@ -235,7 +235,7 @@ interface MaquinaForm {
                     />
                   </div>
                 </div>
-                <p class="mt-1 text-xs text-slate-400">
+                <p class="mt-1 text-sm text-tinta-suave">
                   Vacío = usa el SLA y el costo generales de la empresa.
                 </p>
               </div>
@@ -243,7 +243,7 @@ interface MaquinaForm {
 
             <button
               type="button"
-              class="mt-1 rounded border border-slate-600 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800"
+              class="mt-1 rounded-control border border-borde px-3 py-1.5 text-sm text-tinta hover:bg-superficie"
               data-testid="agregar-maquina"
               (click)="agregarMaquina()"
             >
@@ -264,7 +264,7 @@ interface MaquinaForm {
             <button
               type="button"
               (click)="closed.emit()"
-              class="rounded border border-slate-600 px-4 py-2 text-sm text-slate-200 hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              class="rounded-control border border-borde px-4 py-2 text-sm text-tinta hover:bg-superficie focus:outline-none focus:ring-2 focus:ring-accion"
             >
               Cancelar
             </button>
@@ -275,7 +275,7 @@ interface MaquinaForm {
         </form>
       } @else {
         <div class="space-y-4">
-          <p class="text-sm text-slate-200" data-testid="confirmacion">
+          <p class="text-sm text-tinta" data-testid="confirmacion">
             ¿Crear la planta <strong>{{ model().nombre.trim() }}</strong> con
             <strong>{{ totalMaquinas() }}</strong>
             {{ totalMaquinas() === 1 ? 'máquina' : 'máquinas' }} y
@@ -284,15 +284,15 @@ interface MaquinaForm {
           </p>
 
           @if (model().ubicacion.trim()) {
-            <p class="text-xs text-slate-400">Ubicación: {{ model().ubicacion.trim() }}</p>
+            <p class="text-sm text-tinta-suave">Ubicación: {{ model().ubicacion.trim() }}</p>
           }
 
           @if (totalDisciplinas() > 0) {
             <div>
-              <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Disciplinas</p>
+              <p class="text-sm font-semibold text-tinta-suave">Disciplinas</p>
               <ul class="mt-1 flex flex-wrap gap-2" data-testid="resumen-disciplinas">
                 @for (d of disciplinasLimpas(); track d) {
-                  <li class="rounded bg-slate-800 px-2 py-1 text-xs text-slate-200">{{ d }}</li>
+                  <li class="rounded-control bg-superficie px-2 py-1 text-sm text-tinta">{{ d }}</li>
                 }
               </ul>
             </div>
@@ -300,13 +300,13 @@ interface MaquinaForm {
 
           @if (totalMaquinas() > 0) {
             <div>
-              <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Máquinas</p>
+              <p class="text-sm font-semibold text-tinta-suave">Máquinas</p>
               <ul class="mt-1 space-y-1" data-testid="resumen-maquinas">
                 @for (m of maquinasLimpias(); track m.codigo) {
-                  <li class="flex items-center justify-between rounded border border-slate-800 px-3 py-1.5 text-sm">
-                    <span class="text-slate-200">{{ m.nombre }}</span>
-                    <span class="flex items-center gap-2 text-xs text-slate-400">
-                      <span class="rounded bg-slate-800 px-1.5 py-0.5">{{ m.codigo }}</span>
+                  <li class="flex items-center justify-between rounded-control border border-borde px-3 py-1.5 text-sm">
+                    <span class="text-tinta">{{ m.nombre }}</span>
+                    <span class="flex items-center gap-2 text-sm text-tinta-suave">
+                      <span class="rounded-control bg-superficie px-1.5 py-0.5">{{ m.codigo }}</span>
                       @if (m.disciplina) {
                         <span>{{ m.disciplina }}</span>
                       } @else {
@@ -326,7 +326,7 @@ interface MaquinaForm {
           <div class="flex justify-end gap-2 pt-2">
             <button
               type="button"
-              class="rounded border border-slate-600 px-4 py-2 text-sm text-slate-200 hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              class="rounded-control border border-borde px-4 py-2 text-sm text-tinta hover:bg-superficie focus:outline-none focus:ring-2 focus:ring-accion"
               data-testid="volver"
               (click)="volver()"
               [disabled]="submitting()"
