@@ -51,6 +51,7 @@ from barb.core.config import settings
 from barb.services.ai_tools import (
     TEXTO_RECHAZO,
     crear_ot_aprobada,
+    crear_planta_aprobada,
     crear_tools,
     es_confirmacion,
     es_rechazo,
@@ -99,6 +100,13 @@ REGLAS_CON_TOOLS = (
     "confirmación la maneja el sistema, no tú.\n"
     "- Si el usuario corrige un dato (equipo, problema o prioridad), vuelve a llamarla con "
     "los datos corregidos para que la propuesta se actualice.\n"
+    "\nMANTENEDOR DE PLANTAS Y MÁQUINAS:\n"
+    "10. Antes de `actualizar_parametros_maquina`, usa `listar_maquinas_planta` si no "
+    "conoces los datos actuales; luego repite al usuario el equipo y los valores nuevos y "
+    "espera su confirmación explícita antes de llamarla.\n"
+    "11. Para crear una planta usa `proponer_planta_completa` con sus máquinas (máximo "
+    "8); NO crea nada hasta que el usuario confirme. Los códigos de máquina deben ser "
+    "únicos dentro de la planta.\n"
     "- No la uses ante una descripción vaga: si falta el equipo o el problema, pregunta "
     "primero."
 )
@@ -164,14 +172,24 @@ def crear_grafo(
                 break
 
         if es_confirmacion(respuesta):
-            resultado = await crear_ot_aprobada(
-                borrador["consulta_maquina"],
-                borrador["problema"],
-                borrador["prioridad"],
-                empresa_id,
-                usuario_id,
-                rol,
-            )
+            if borrador["tipo"] == "planta":
+                resultado = await crear_planta_aprobada(
+                    borrador["nombre"],
+                    borrador["maquinas"],
+                    empresa_id,
+                    usuario_id,
+                    rol,
+                    ubicacion=borrador.get("ubicacion"),
+                )
+            else:
+                resultado = await crear_ot_aprobada(
+                    borrador["consulta_maquina"],
+                    borrador["problema"],
+                    borrador["prioridad"],
+                    empresa_id,
+                    usuario_id,
+                    rol,
+                )
             return {"messages": [AIMessage(content=resultado)]}
         if es_rechazo(respuesta):
             return {"messages": [AIMessage(content=TEXTO_RECHAZO)]}
@@ -187,23 +205,27 @@ def crear_grafo(
         ultimo = estado["messages"][-1]
         return "fin" if isinstance(ultimo, AIMessage) else "seguir"
 
+    # Las tools cuyo turno termina con la propuesta: su texto EXACTO es lo que se
+    # persiste y lo que el gate del turno siguiente re-parsea.
+    _TOOLS_DE_PROPUESTA = frozenset({"proponer_ot", "proponer_planta_completa"})
+
     def tras_tools(estado: EstadoChat) -> Literal["propuesta", "seguir"]:
-        """Si la ronda de tools incluyó `proponer_ot`, el turno termina con la propuesta
-        en vez de pasar por `generate`: el texto que se persiste tiene que ser el EXACTO
-        de la tool, no un parafraseo del modelo."""
+        """Si la ronda de tools incluyó una tool de propuesta, el turno termina con la
+        propuesta en vez de pasar por `generate`: el texto que se persiste tiene que ser
+        el EXACTO de la tool, no un parafraseo del modelo."""
         for mensaje in reversed(estado["messages"]):
             if isinstance(mensaje, ToolMessage):
                 continue
             if isinstance(mensaje, AIMessage):
                 llamadas = mensaje.tool_calls or []
-                return "propuesta" if any(t.get("name") == "proponer_ot" for t in llamadas) else "seguir"
+                return "propuesta" if any(t.get("name") in _TOOLS_DE_PROPUESTA for t in llamadas) else "seguir"
             break
         return "seguir"
 
     def finalizar_propuesta(estado: EstadoChat) -> dict:
         """Devuelve el texto de la propuesta tal cual, como AIMessage final del turno."""
         for mensaje in reversed(estado["messages"]):
-            if isinstance(mensaje, ToolMessage) and mensaje.name == "proponer_ot":
+            if isinstance(mensaje, ToolMessage) and mensaje.name in _TOOLS_DE_PROPUESTA:
                 return {"messages": [AIMessage(content=str(mensaje.content))]}
         # Sin ToolMessage de propuesta (no debería ocurrir): red de seguridad.
         return {"messages": [AIMessage(content="No pude registrar la propuesta. Intenta de nuevo.")]}

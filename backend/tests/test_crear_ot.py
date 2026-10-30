@@ -195,7 +195,14 @@ async def test_el_grafo_bindea_las_dos_skills(db_pool):
     crear_grafo(empresa_id=1, llm=espia, usuario_id=1, rol="admin")
 
     nombres = sorted(t.name for t in espia.tools)
-    assert nombres == ["consultar_ots_maquina", "proponer_ot"]
+    # HU-26: el universo de Skills creó a 5. Ninguna escribe sin confirmación.
+    assert nombres == [
+        "actualizar_parametros_maquina",
+        "consultar_ots_maquina",
+        "listar_maquinas_planta",
+        "proponer_ot",
+        "proponer_planta_completa",
+    ]
 
 
 # ---------------------------------------------------------------------------

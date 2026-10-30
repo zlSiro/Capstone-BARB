@@ -92,7 +92,14 @@ def _insert_espia(monkeypatch):
 async def test_el_modelo_solo_ve_tools_de_lectura_y_propuesta():
     """Criterio central del candado: no existe ninguna tool que escriba en la base."""
     herramientas = {t.name: t for t in crear_tools(empresa_id=1, usuario_id=1, rol="admin")}
-    assert set(herramientas) == {"consultar_ots_maquina", "proponer_ot"}
+    # HU-26: se agregaron las Skills de topología. Ninguna escribe sin confirmación.
+    assert set(herramientas) == {
+        "consultar_ots_maquina",
+        "proponer_ot",
+        "listar_maquinas_planta",
+        "actualizar_parametros_maquina",
+        "proponer_planta_completa",
+    }
 
 
 @pytest.mark.asyncio

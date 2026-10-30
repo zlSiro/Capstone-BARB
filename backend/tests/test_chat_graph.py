@@ -186,7 +186,14 @@ async def test_la_tool_encuentra_una_maquina_real_y_cuenta_sus_ots(db_pool):
     tools = crear_tools(empresa_id=1)
     # Consultar y PROponer; el orden importa poco, sí que estén las dos. El candado
     # (CGBIDA-476) garantiza que ninguna tool escriba en la base.
-    assert sorted(t.name for t in tools) == ["consultar_ots_maquina", "proponer_ot"]
+    # HU-26: el universo de Skills creó a 5 (las 3 de topología se suman).
+    assert sorted(t.name for t in tools) == [
+        "actualizar_parametros_maquina",
+        "consultar_ots_maquina",
+        "listar_maquinas_planta",
+        "proponer_ot",
+        "proponer_planta_completa",
+    ]
 
     consultar = next(t for t in tools if t.name == "consultar_ots_maquina")
     salida = await consultar.ainvoke({"nombre_maquina": "Compressor A1"})

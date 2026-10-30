@@ -14,7 +14,6 @@ from barb.core.permissions import (
     resolver_empresa,
 )
 from barb.schemas.plantas import (
-    DisciplinaResuelta,
     MaquinaActualizada,
     MaquinaCreada,
     MaquinaNuevaRequest,
@@ -24,6 +23,7 @@ from barb.schemas.plantas import (
     PlantaCompletaResponse,
     PlantaUpdateRequest,
 )
+from barb.services import catalog_service
 
 logger = logging.getLogger("barb.catalog")
 
@@ -176,9 +176,7 @@ async def get_technicians(empresa_id: int | None = Query(default=None), sesion: 
 # =============================================================================
 
 
-async def _resolver_disciplina(
-    cur, empresa_id: int, nombre: str, cache: dict[str, tuple[int, bool, str]]
-) -> int:
+async def _resolver_disciplina(cur, empresa_id: int, nombre: str, cache: dict[str, tuple[int, bool, str]]) -> int:
     """
     Devuelve el id de la disciplina, creándola si la empresa no la tiene.
 
@@ -242,135 +240,16 @@ async def create_planta_completa(
     Las disciplinas se resuelven contra la EMPRESA, no contra la planta: `disciplina` cuelga
     de `empresa` y se comparte entre plantas. Se reutiliza la existente (comparando por
     `lower()`) o se crea; nunca se duplica.
+
+    La lógica vive en `services/catalog_service.py` (la comparte con las tools de IA); acá
+    queda la cáscara HTTP: permisos, sesión y la traducción `DomainError` → `HTTPException`.
     """
     empresa_id = empresa_obligatoria(sesion)
-
-    nombre_planta = payload.nombre.strip()
-    ubicacion = (payload.ubicacion or "").strip() or None
-
-    # Nombres de disciplina sin vacíos ni repetidos (comparados sin distinguir mayúsculas).
-    disciplinas: list[str] = []
-    vistos: set[str] = set()
-    for bruto in payload.disciplinas:
-        limpio = (bruto or "").strip()
-        if not limpio or limpio.lower() in vistos:
-            continue
-        vistos.add(limpio.lower())
-        disciplinas.append(limpio)
-
-    # Códigos de máquina repetidos en el propio payload: se detectan antes de tocar la base.
-    codigos = [(m.codigo or "").strip().lower() for m in payload.maquinas]
-    if len(codigos) != len(set(codigos)):
-        raise HTTPException(
-            status_code=409,
-            detail="Hay dos máquinas con el mismo código en la solicitud.",
-        )
-
-    cache_disciplinas: dict[str, tuple[int, bool, str]] = {}
-
     try:
-        async with transaction() as cur:
-            await cur.execute(
-                """
-                INSERT INTO planta (empresa_id, nombre, ubicacion)
-                VALUES (%(empresa_id)s, %(nombre)s, %(ubicacion)s)
-                RETURNING planta_id
-                """,
-                {"empresa_id": empresa_id, "nombre": nombre_planta, "ubicacion": ubicacion},
-            )
-            planta_id = int((await cur.fetchone())["planta_id"])
-
-            # Disciplinas declaradas: se crean o se reutilizan.
-            for nombre in disciplinas:
-                await _resolver_disciplina(cur, empresa_id, nombre, cache_disciplinas)
-
-            maquinas: list[MaquinaCreada] = []
-            extra = await _sla_costo_disponibles()
-            for maquina in payload.maquinas:
-                disciplina_id: int | None = None
-                if maquina.disciplina and maquina.disciplina.strip():
-                    disciplina_id = await _resolver_disciplina(
-                        cur, empresa_id, maquina.disciplina.strip(), cache_disciplinas
-                    )
-
-                if extra:
-                    await cur.execute(
-                        """
-                        INSERT INTO maquina (
-                            planta_id, disciplina_id, nombre, codigo,
-                            sla_horas, costo_inactividad_minuto
-                        )
-                        VALUES (
-                            %(planta_id)s, %(disciplina_id)s, %(nombre)s, %(codigo)s,
-                            %(sla_horas)s, %(costo_inactividad_minuto)s
-                        )
-                        RETURNING maquina_id
-                        """,
-                        {
-                            "planta_id": planta_id,
-                            "disciplina_id": disciplina_id,
-                            "nombre": maquina.nombre.strip(),
-                            "codigo": maquina.codigo.strip(),
-                            "sla_horas": maquina.sla_horas,
-                            "costo_inactividad_minuto": maquina.costo_inactividad_minuto,
-                        },
-                    )
-                else:
-                    if maquina.sla_horas is not None or maquina.costo_inactividad_minuto is not None:
-                        # No se ignora en silencio: el usuario cargó un dato que no se va a
-                        # guardar. Mejor decirlo que dejarlo creer que quedó.
-                        raise _error_sla_sin_columnas()
-                    await cur.execute(
-                        """
-                        INSERT INTO maquina (planta_id, disciplina_id, nombre, codigo)
-                        VALUES (%(planta_id)s, %(disciplina_id)s, %(nombre)s, %(codigo)s)
-                        RETURNING maquina_id
-                        """,
-                        {
-                            "planta_id": planta_id,
-                            "disciplina_id": disciplina_id,
-                            "nombre": maquina.nombre.strip(),
-                            "codigo": maquina.codigo.strip(),
-                        },
-                    )
-                maquinas.append(
-                    MaquinaCreada(
-                        maquina_id=int((await cur.fetchone())["maquina_id"]),
-                        nombre=maquina.nombre.strip(),
-                        codigo=maquina.codigo.strip(),
-                        disciplina_id=disciplina_id,
-                        sla_horas=maquina.sla_horas,
-                        costo_inactividad_minuto=maquina.costo_inactividad_minuto,
-                    )
-                )
-    except pg_errors.UniqueViolation as e:
-        detalle = str(e)
-        if "planta_empresa_id_nombre_key" in detalle:
-            mensaje = f"Ya existe una planta llamada «{nombre_planta}» en tu empresa."
-        elif "maquina_planta_id_codigo_key" in detalle:
-            mensaje = "Ya existe una máquina con ese código en la planta."
-        else:
-            mensaje = "Ya existe un registro con esos datos."
-        raise HTTPException(status_code=409, detail=mensaje) from e
-    except pg_errors.ForeignKeyViolation as e:
-        raise HTTPException(
-            status_code=409,
-            detail="La empresa o la disciplina indicada ya no existe.",
-        ) from e
-    except Exception as e:
-        logger.exception("Error al crear la planta completa")
-        raise HTTPException(status_code=500, detail="Error interno al crear la planta.") from e
-
-    return PlantaCompletaResponse(
-        planta_id=planta_id,
-        nombre=nombre_planta,
-        ubicacion=ubicacion,
-        disciplinas=[
-            DisciplinaResuelta(disciplina_id=disc_id, nombre=mostrado, creada=creada)
-            for disc_id, creada, mostrado in cache_disciplinas.values()
-        ],
-        maquinas=maquinas,
-    )
+        resultado = await catalog_service.crear_planta_completa(empresa_id, payload)
+    except catalog_service.DomainError as e:
+        raise HTTPException(status_code=e.status, detail=e.mensaje) from e
+    return PlantaCompletaResponse(**resultado)
 
 
 # =============================================================================
@@ -462,8 +341,7 @@ async def update_planta(
 
             sets = ", ".join(f"{col} = %({col})s" for col in cambios)
             await cur.execute(
-                f"UPDATE planta SET {sets} WHERE planta_id = %(_id)s "
-                "RETURNING planta_id, nombre, ubicacion",
+                f"UPDATE planta SET {sets} WHERE planta_id = %(_id)s RETURNING planta_id, nombre, ubicacion",
                 {**cambios, "_id": planta_id},
             )
             fila = await cur.fetchone()
@@ -507,9 +385,7 @@ async def add_maquina(
 
     try:
         extra = await _sla_costo_disponibles()
-        if not extra and (
-            payload.sla_horas is not None or payload.costo_inactividad_minuto is not None
-        ):
+        if not extra and (payload.sla_horas is not None or payload.costo_inactividad_minuto is not None):
             raise _error_sla_sin_columnas()
 
         async with transaction() as cur:
@@ -587,9 +463,6 @@ async def add_maquina(
     )
 
 
-
-
-
 @router.patch(
     "/api/maquinas/{maquina_id}",
     response_model=MaquinaActualizada,
@@ -613,121 +486,13 @@ async def update_maquina(
     `sla_horas` y `costo_inactividad_minuto` pueden no existir todavía en la base: si vienen
     valores y faltan las columnas, se responde 503 con el SQL a correr en vez de ignorarlos.
     Los campos en `None` no se tocan (patch parcial).
+
+    La lógica vive en `services/catalog_service.py` (la comparte con las tools de IA); acá
+    queda la cáscara HTTP: permisos, sesión y la traducción `DomainError` → `HTTPException`.
     """
     empresa_id = empresa_obligatoria(sesion)
-
-    nombre = payload.nombre.strip() if payload.nombre is not None else None
-    codigo = payload.codigo.strip() if payload.codigo is not None else None
-    if nombre is not None and not nombre:
-        raise HTTPException(status_code=422, detail="El nombre de la máquina no puede quedar vacío.")
-    if codigo is not None and not codigo:
-        raise HTTPException(status_code=422, detail="El código de la máquina no puede quedar vacío.")
-
-    extra = await _sla_costo_disponibles()
-    if not extra and (
-        payload.sla_horas is not None or payload.costo_inactividad_minuto is not None
-    ):
-        raise _error_sla_sin_columnas()
-
     try:
-        async with transaction() as cur:
-            await cur.execute(
-                """
-                SELECT m.maquina_id, m.planta_id, m.nombre, m.codigo, m.disciplina_id
-                  FROM maquina m
-                  JOIN planta p ON p.planta_id = m.planta_id
-                 WHERE m.maquina_id = %(id)s AND p.empresa_id = %(empresa)s
-                 FOR UPDATE OF m
-                """,
-                {"id": maquina_id, "empresa": empresa_id},
-            )
-            actual = await cur.fetchone()
-            if not actual:
-                raise HTTPException(status_code=404, detail="Máquina no encontrada.")
-
-            planta_id = int(actual["planta_id"])
-
-            # 409 si el código choca con OTRA máquina de la misma planta.
-            if codigo is not None:
-                await cur.execute(
-                    """
-                    SELECT 1 FROM maquina
-                     WHERE planta_id = %(p)s AND lower(codigo) = lower(%(c)s)
-                       AND maquina_id <> %(id)s
-                     LIMIT 1
-                    """,
-                    {"p": planta_id, "c": codigo, "id": maquina_id},
-                )
-                if await cur.fetchone():
-                    raise HTTPException(
-                        status_code=409,
-                        detail=f"Ya existe una máquina con el código «{codigo}» en esta planta.",
-                    )
-
-            # La disciplina, si viene, tiene que ser de la misma empresa.
-            if payload.disciplina_id is not None:
-                await cur.execute(
-                    "SELECT 1 FROM disciplina WHERE disciplina_id = %(d)s AND empresa_id = %(e)s",
-                    {"d": payload.disciplina_id, "e": empresa_id},
-                )
-                if not await cur.fetchone():
-                    raise HTTPException(
-                        status_code=422, detail="La disciplina indicada no existe en tu empresa."
-                    )
-
-            campos: list[str] = []
-            params: dict[str, object] = {"id": maquina_id}
-            if nombre is not None:
-                campos.append("nombre = %(nombre)s")
-                params["nombre"] = nombre
-            if codigo is not None:
-                campos.append("codigo = %(codigo)s")
-                params["codigo"] = codigo
-            if payload.disciplina_id is not None:
-                campos.append("disciplina_id = %(disciplina_id)s")
-                params["disciplina_id"] = payload.disciplina_id
-            if extra:
-                if payload.sla_horas is not None:
-                    campos.append("sla_horas = %(sla_horas)s")
-                    params["sla_horas"] = payload.sla_horas
-                if payload.costo_inactividad_minuto is not None:
-                    campos.append("costo_inactividad_minuto = %(costo_inactividad_minuto)s")
-                    params["costo_inactividad_minuto"] = payload.costo_inactividad_minuto
-
-            if campos:
-                await cur.execute(
-                    f"UPDATE maquina SET {', '.join(campos)} WHERE maquina_id = %(id)s",
-                    params,
-                )
-
-            columnas_extra = (
-                ", sla_horas, costo_inactividad_minuto"
-                if extra
-                else ", NULL::numeric AS sla_horas, NULL::numeric AS costo_inactividad_minuto"
-            )
-            await cur.execute(
-                f"SELECT maquina_id, planta_id, nombre, codigo, disciplina_id{columnas_extra}"
-                " FROM maquina WHERE maquina_id = %(id)s",
-                {"id": maquina_id},
-            )
-            fila = await cur.fetchone()
-    except HTTPException:
-        raise
-    except pg_errors.UniqueViolation as e:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Ya existe una máquina con el código «{codigo}» en esta planta.",
-        ) from e
-    except Exception as e:
-        logger.exception("Error al editar la máquina")
-        raise HTTPException(status_code=500, detail="Error interno al editar la máquina.") from e
-
-    return MaquinaActualizada(
-        maquina_id=int(fila["maquina_id"]),
-        planta_id=int(fila["planta_id"]),
-        nombre=fila["nombre"],
-        codigo=fila["codigo"],
-        disciplina_id=fila["disciplina_id"],
-        sla_horas=fila["sla_horas"],
-        costo_inactividad_minuto=fila["costo_inactividad_minuto"],
-    )
+        actualizada = await catalog_service.actualizar_maquina(empresa_id, maquina_id, payload.model_dump(exclude_none=True))
+    except catalog_service.DomainError as e:
+        raise HTTPException(status_code=e.status, detail=e.mensaje) from e
+    return MaquinaActualizada(**actualizada)

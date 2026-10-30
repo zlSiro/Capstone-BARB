@@ -31,11 +31,14 @@ from uuid import uuid4
 
 from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.tools import BaseTool, tool
+from pydantic import BaseModel, Field, ValidationError
 
 from barb.core.config import settings
 from barb.core.db import fetch_all, fetch_one
-from barb.core.permissions import puede_ejecutar_accion
+from barb.core.permissions import puede_acceder_ruta, puede_ejecutar_accion
 from barb.core.work_order_states import ESTADOS_FINALES, TRANSICIONES
+from barb.schemas.plantas import MaquinaCreate, PlantaCompletaCreate
+from barb.services import catalog_service
 
 logger = logging.getLogger("barb.ai_tools")
 
@@ -300,10 +303,7 @@ _PRIORIDADES = {
 # `crear_ot` es de gerente/admin por decisión del negocio (ver permissions.ACCIONES), pero
 # las tools no pasan por las dependencias de FastAPI: sin este chequeo, un técnico creaba
 # por el chat OTs que el endpoint le rechaza con 403.
-SIN_PERMISO_OT = (
-    "No tienes permisos para crear órdenes de trabajo con tu rol. "
-    "Pídeselo a un gerente o administrador."
-)
+SIN_PERMISO_OT = "No tienes permisos para crear órdenes de trabajo con tu rol. Pídeselo a un gerente o administrador."
 
 
 def _puede_crear_ot(rol: str | None) -> bool:
@@ -455,18 +455,28 @@ def _parsear_propuesta(texto: str) -> dict | None:
 
 def propuesta_pendiente(messages: list[BaseMessage]) -> dict | None:
     """
-    ¿El turno anterior dejó una OT propuesta sin resolver?
+    ¿El turno anterior dejó una propuesta (OT o planta) sin resolver? Devuelve sus datos
+    con un campo `tipo` para que el gate sepa qué ejecutar.
 
     El historial guarda solo texto user/assistant y el turno de propuesta termina con el
     texto EXACTO de la tool (ver `chat_graph.finalizar_propuesta`), así que alcanza con
     mirar el último mensaje del asistente: si es una propuesta, está pendiente; si es una
-    resolución («OT creada…», descarte) o charla común, no hay nada pendiente. La
-    propuesta caduca sola en cuanto la conversación sigue.
+    resolución («OT creada…», «Planta … creada», descarte) o charla común, no hay nada
+    pendiente. La propuesta caduca sola en cuanto la conversación sigue.
+
+    Regla de fallo cerrado: un texto con prefijo pero formato roto se descarta (None);
+    nunca se interpreta un parseo fallido como aprobación.
     """
     ultimo_ai = next((m for m in reversed(messages) if isinstance(m, AIMessage)), None)
-    if ultimo_ai is None or not str(ultimo_ai.content).startswith(_PREFIJO_PROPUESTA):
+    if ultimo_ai is None:
         return None
-    return _parsear_propuesta(str(ultimo_ai.content))
+    texto = str(ultimo_ai.content)
+    if texto.startswith(_PREFIJO_PROPUESTA_PLANTA):
+        return _parsear_propuesta_planta(texto)  # ya lleva "tipo": "planta"
+    if texto.startswith(_PREFIJO_PROPUESTA):
+        datos = _parsear_propuesta(texto)
+        return {"tipo": "ot", **datos} if datos else None
+    return None
 
 
 def _primera_palabra(texto: str) -> str:
@@ -591,6 +601,221 @@ async def crear_ot_aprobada(
     )
 
 
+# ---------------------------------------------------------------------------
+# Permisos y plantas (HU-26: Skills de topología)
+# ---------------------------------------------------------------------------
+
+# El mantenedor es de gerente/admin (misma matriz que `require_route("plantas")`). Se
+# replica acá porque las tools no pasan por las dependencias de FastAPI: el Depends del
+# router nunca se ejecuta cuando la escritura la hace una tool.
+PERMISO_DENEGADO = "No tengo permiso para modificar el mantenedor con tu rol. Pídeselo a un gerente o administrador."
+
+
+def _puede_gestionar(rol: str | None) -> bool:
+    """El mantenedor es de gerente/admin: mismo permiso que el endpoint usaría."""
+    try:
+        return puede_acceder_ruta(rol or "", "plantas") is True
+    except Exception:  # noqa: BLE001 — ruta no definida en la matriz
+        logger.exception("No se pudo evaluar el permiso 'plantas' para el rol %r", rol)
+        return False
+
+
+_MAX_PLANTAS = 10
+
+
+async def _buscar_plantas(empresa_id: int, consulta: str) -> list[dict]:
+    """Plantas de la empresa que se parecen a la consulta (mismo criterio que máquinas)."""
+    filas = await fetch_all(
+        """
+        SELECT p.planta_id, p.nombre, p.ubicacion,
+               (SELECT COUNT(*) FROM maquina m WHERE m.planta_id = p.planta_id) AS maquinas
+          FROM planta p
+         WHERE p.empresa_id = %(empresa)s
+         ORDER BY p.nombre
+         LIMIT %(limite)s
+        """,
+        {"empresa": empresa_id, "limite": _MAX_CANDIDATAS},
+    )
+    candidatas = [_Candidata(fila, _puntaje(consulta, fila["nombre"], "")) for fila in filas]
+    buenas = [c for c in candidatas if c.puntaje >= _UMBRAL_PARECIDO]
+    buenas.sort(key=lambda c: c.puntaje, reverse=True)
+    # Desempate igual que las máquinas: si el mejor le saca poco al segundo, se pide
+    # desambiguación en vez de adivinar.
+    if len(buenas) >= 2 and buenas[0].puntaje - buenas[1].puntaje < 0.05:
+        return [c.maquina for c in buenas[:_MAX_PLANTAS]]
+    return [c.maquina for c in buenas[:1]]
+
+
+async def _resolver_planta(empresa_id: int, consulta: str, accion: str) -> tuple[dict | None, str | None]:
+    """
+    Traduce lo escrito a UNA planta de la empresa: `(planta, None)` si hay una sola
+    coincidencia, o `(None, mensaje)` con la respuesta ya redactada (no existe o es
+    ambigua). Mismo contrato que `_resolver_maquina`.
+    """
+    try:
+        plantas = await _buscar_plantas(empresa_id, consulta)
+    except Exception:  # noqa: BLE001 — una tool no debe tumbar el grafo
+        logger.exception("Tool: fallo buscando planta %r en empresa %s", consulta, empresa_id)
+        return None, "No pude consultar las plantas. Intenta de nuevo."
+
+    if not plantas:
+        return None, (
+            f"No encontré ninguna planta que coincida con «{consulta}» en tu empresa. Dime el nombre exacto y {accion}."
+        )
+
+    if len(plantas) > 1:
+        opciones = "; ".join(p["nombre"] for p in plantas)
+        return None, (f"«{consulta}» coincide con varias plantas: {opciones}. Indica cuál de ellas te interesa.")
+
+    return plantas[0], None
+
+
+# ---------------------------------------------------------------------------
+# Propuesta de planta nueva (mismo candado que las OTs: propuesta parseable + aprobada)
+# ---------------------------------------------------------------------------
+
+_PREFIJO_PROPUESTA_PLANTA = "PROPUESTA DE PLANTA NUEVA"
+
+# Una línea por máquina, con separador "|". El formato lo generamos nosotros y lo
+# parseamos nosotros: no depende de cómo redacte el modelo.
+_RE_MAQUINA_PLANTA = re.compile(
+    r"^- MAQ codigo=(?P<codigo>[^|]+?) \| nombre=(?P<nombre>[^|]+?) \| "
+    r"disciplina=(?P<disciplina>[^|]*) \| sla=(?P<sla>[^|]*) \| costo=(?P<costo>[^|]*)$"
+)
+
+
+def _sin_separadores(texto: str) -> str:
+    """Quita | y saltos de línea: un nombre con '|' podría inyectar campos en el parseo."""
+    return " ".join(str(texto).replace("|", "/").split())
+
+
+def _texto_propuesta_planta(nombre: str, ubicacion: str | None, maquinas: list[dict]) -> str:
+    """Texto exacto que el asistente muestra (y persiste) al proponer una planta."""
+    lineas = [
+        _PREFIJO_PROPUESTA_PLANTA,
+        "",
+        f"Voy a crear la planta «{_sin_separadores(nombre)}»"
+        + (f" en {_sin_separadores(ubicacion)}" if ubicacion else "")
+        + " con estas máquinas:",
+        "",
+    ]
+    for m in maquinas:
+        lineas.append(
+            f"- MAQ codigo={_sin_separadores(m.get('codigo', ''))} "
+            f"| nombre={_sin_separadores(m.get('nombre', ''))} "
+            f"| disciplina={_sin_separadores(m.get('disciplina') or '')} "
+            f"| sla={m.get('sla_horas') if m.get('sla_horas') is not None else ''} "
+            f"| costo={m.get('costo_inactividad_minuto') if m.get('costo_inactividad_minuto') is not None else ''}"
+        )
+    lineas += ["", "¿Confirmas la creación? (responde sí o no)"]
+    return "\n".join(lineas)
+
+
+def _parsear_propuesta_planta(texto: str) -> dict | None:
+    """Datos de la propuesta de planta, o None si el formato no cierra."""
+    if not texto.startswith(_PREFIJO_PROPUESTA_PLANTA):
+        return None
+
+    cabecera = re.search(
+        r"Voy a crear la planta «(?P<nombre>[^»]+)»(?: en (?P<ubicacion>[^»]+?))?"
+        r"(?:\s+con estas máquinas:)?",
+        texto,
+    )
+    if not cabecera:
+        return None
+
+    maquinas = []
+    for linea in texto.splitlines():
+        m = _RE_MAQUINA_PLANTA.match(linea.strip())
+        if not m:
+            continue
+        try:
+            sla = float(m.group("sla")) if m.group("sla").strip() else None
+            costo = float(m.group("costo")) if m.group("costo").strip() else None
+        except ValueError:
+            return None  # propuesta corrupta: se descarta, no se adivina
+        maquinas.append(
+            {
+                "nombre": m.group("nombre").strip(),
+                "codigo": m.group("codigo").strip(),
+                "disciplina": m.group("disciplina").strip() or None,
+                "sla_horas": sla,
+                "costo_inactividad_minuto": costo,
+            }
+        )
+
+    return {
+        "tipo": "planta",
+        "nombre": cabecera.group("nombre").strip(),
+        "ubicacion": (cabecera.group("ubicacion") or "").strip() or None,
+        "maquinas": maquinas,
+    }
+
+
+class _MaquinaPlanta(BaseModel):
+    """Una máquina del alta masiva. El modelo ve estos campos y sus descripciones."""
+
+    nombre: str = Field(description="Nombre del equipo, ej. 'Compressor A1'")
+    codigo: str = Field(description="Código único dentro de la planta, ej. 'COMP-A1'")
+    disciplina: str | None = Field(default=None, description="Mecánica, Eléctrica, Neumática… (opcional)")
+    sla_horas: float | None = Field(default=None, ge=0, le=8760, description="Horas de SLA (opcional)")
+    costo_inactividad_minuto: float | None = Field(default=None, ge=0, description="Costo por minuto detenida (opcional)")
+
+
+_MAX_MAQUINAS_ALTA = 8
+
+
+async def crear_planta_aprobada(
+    nombre: str,
+    maquinas: list[dict],
+    empresa_id: int,
+    usuario_id: int | None = None,
+    rol: str | None = None,
+    ubicacion: str | None = None,
+) -> str:
+    """
+    Crea la planta YA CONFIRMADA por el usuario.
+
+    NO es una tool: el modelo no la ve ni puede llamarla. La invoca el gate del grafo
+    (`chat_graph.py`) con los datos de la propuesta, solo después de validar el «sí».
+    La propuesta llega parseada del texto de la conversación, así que se revalida entera
+    con Pydantic antes de escribir.
+    """
+    if not _puede_gestionar(rol):
+        return PERMISO_DENEGADO
+
+    try:
+        payload = PlantaCompletaCreate(
+            nombre=nombre,
+            ubicacion=ubicacion,
+            disciplinas=sorted(
+                {str(m["disciplina"]).strip() for m in maquinas if m.get("disciplina") and str(m["disciplina"]).strip()}
+            ),
+            maquinas=[MaquinaCreate(**m) for m in maquinas],
+        )
+    except ValidationError:
+        return (
+            "La propuesta quedó incompleta o inválida, así que no creé nada. Volvamos a armarla con `proponer_planta_completa`."
+        )
+
+    try:
+        resultado = await catalog_service.crear_planta_completa(empresa_id, payload)
+    except catalog_service.DomainError as e:
+        return f"No pude crear la planta: {e.mensaje}"
+    except Exception as e:  # noqa: BLE001
+        logger.exception("crear_planta_aprobada: fallo creando %r", nombre)
+        return f"No pude crear la planta ({type(e).__name__}). No se guardó nada."
+
+    logger.info(
+        "crear_planta_aprobada: empresa=%s usuario=%s planta=%s maquinas=%d",
+        empresa_id,
+        usuario_id,
+        resultado.get("planta_id"),
+        len(maquinas),
+    )
+    return f"Planta «{resultado['nombre']}» creada con {len(resultado.get('maquinas', []))} máquina(s)."
+
+
 def crear_tools(empresa_id: int, usuario_id: int | None = None, rol: str | None = None) -> list[BaseTool]:
     """
     Tools disponibles para una empresa concreta y su usuario.
@@ -670,4 +895,209 @@ def crear_tools(empresa_id: int, usuario_id: int | None = None, rol: str | None 
         prioridad_valida, _ = _normalizar_prioridad(prioridad)
         return _texto_propuesta(objetivo, problema, prioridad_valida)
 
-    return [consultar_ots_maquina, proponer_ot]
+    @tool("listar_maquinas_planta")
+    async def listar_maquinas_planta(planta: str = "") -> str:
+        """Lista las máquinas de una planta, con su SLA, su costo de inactividad y sus
+        OTs abiertas.
+
+        Úsala SIEMPRE antes de modificar o crear algo en el mantenedor: es la forma de
+        saber qué existe de verdad y no inventar nombres, códigos ni plantas.
+
+        Args:
+            planta: Nombre o parte del nombre de la planta. Si se omite, devuelve el
+                listado de plantas de la empresa con cuántas máquinas tiene cada una.
+        """
+        # Sin `_puede_gestionar`: leer el catálogo lo puede hacer cualquier usuario
+        # autenticado (es lo que hacen los GET del router). Ver spec §4.6.
+        consulta = (planta or "").strip()
+
+        if not consulta:
+            filas = await fetch_all(
+                """
+                SELECT p.nombre, p.ubicacion,
+                       (SELECT COUNT(*) FROM maquina m WHERE m.planta_id = p.planta_id) AS n
+                  FROM planta p
+                 WHERE p.empresa_id = %(e)s
+                 ORDER BY p.nombre
+                """,
+                {"e": empresa_id},
+            )
+            if not filas:
+                return "Tu empresa todavía no tiene plantas en el mantenedor."
+            lineas = [f"- {f['nombre']} ({f['n']} máquina(s), {f['ubicacion'] or 'sin ubicación'})" for f in filas]
+            return "Plantas de tu empresa:\n" + "\n".join(lineas)
+
+        objetivo, error = await _resolver_planta(empresa_id, consulta, "reviso sus máquinas")
+        if error:
+            return error
+
+        maquinas = await fetch_all(
+            """
+            SELECT m.nombre, m.codigo, m.sla_horas, m.costo_inactividad_minuto,
+                   d.nombre AS disciplina,
+                   (SELECT COUNT(*) FROM orden_trabajo ot
+                     WHERE ot.maquina_id = m.maquina_id
+                       AND ot.estado NOT IN ('completed', 'cancelled')) AS abiertas
+              FROM maquina m
+              LEFT JOIN disciplina d ON d.disciplina_id = m.disciplina_id
+             WHERE m.planta_id = %(p)s
+             ORDER BY m.nombre
+            """,
+            {"p": objetivo["planta_id"]},
+        )
+        if not maquinas:
+            return f"«{objetivo['nombre']}» todavía no tiene máquinas."
+
+        lineas = []
+        for m in maquinas:
+            sla = f"{float(m['sla_horas']):g} h" if m["sla_horas"] is not None else "el general"
+            costo = (
+                f"{float(m['costo_inactividad_minuto']):,.0f}/min".replace(",", ".")
+                if m["costo_inactividad_minuto"] is not None
+                else "el general"
+            )
+            lineas.append(
+                f"- {m['nombre']} [{m['codigo']}] · {m['disciplina'] or 'sin disciplina'} · "
+                f"SLA {sla} · costo {costo} · {m['abiertas']} OT(s) abierta(s)"
+            )
+
+        return f"Máquinas de «{objetivo['nombre']}» ({len(maquinas)}):\n" + "\n".join(lineas)
+
+    @tool("actualizar_parametros_maquina")
+    async def actualizar_parametros_maquina(
+        nombre_maquina: str,
+        sla_horas: float | None = None,
+        costo_inactividad_minuto: float | None = None,
+    ) -> str:
+        """Cambia el SLA (en horas) y/o el costo de inactividad por minuto de una máquina.
+
+        NO la llames sin confirmar: primero repite al usuario qué equipo y qué valores vas
+        a dejar, y espera su «sí». Si no sabes cuál es la máquina, usa
+        `listar_maquinas_planta`.
+
+        Args:
+            nombre_maquina: Nombre o código del equipo ("Compressor A1", "COMP-A1").
+                Se admite coincidencia parcial.
+            sla_horas: Horas de plazo que tolera estar detenida (0 a 8760).
+                Omitir si no se cambia.
+            costo_inactividad_minuto: Costo por minuto detenida (>= 0).
+                Omitir si no se cambia.
+        """
+        if not _puede_gestionar(rol):
+            return PERMISO_DENEGADO
+
+        if sla_horas is None and costo_inactividad_minuto is None:
+            return "Di qué cambias: el SLA en horas, el costo por minuto, o los dos."
+
+        if sla_horas is not None and not (0 <= sla_horas <= 8760):
+            return "El SLA tiene que estar entre 0 y 8760 horas (un año)."
+        if costo_inactividad_minuto is not None and costo_inactividad_minuto < 0:
+            return "El costo por minuto no puede ser negativo."
+
+        consulta = (nombre_maquina or "").strip()
+        if not consulta:
+            return "Necesito el nombre o el código de la máquina."
+
+        maquina, error = await _resolver_maquina(empresa_id, consulta, "cambio sus parámetros")
+        if error:
+            return error
+
+        cambios = {}
+        if sla_horas is not None:
+            cambios["sla_horas"] = sla_horas
+        if costo_inactividad_minuto is not None:
+            cambios["costo_inactividad_minuto"] = costo_inactividad_minuto
+
+        try:
+            antes = await fetch_one(
+                "SELECT sla_horas, costo_inactividad_minuto FROM maquina WHERE maquina_id = %(m)s",
+                {"m": maquina["maquina_id"]},
+            )
+            # MISMA función que usa el PATCH: 409, 404, validación y FOR UPDATE salen de ahí.
+            await catalog_service.actualizar_maquina(empresa_id, maquina["maquina_id"], cambios)
+        except catalog_service.DomainError as e:
+            return e.mensaje
+        except Exception as e:  # noqa: BLE001
+            logger.exception(
+                "Tool actualizar_parametros_maquina: fallo con %r (empresa %s)",
+                maquina.get("nombre"),
+                empresa_id,
+            )
+            return f"No pude actualizar «{maquina['nombre']}» ({type(e).__name__})."
+
+        logger.info(
+            "Tool actualizar_parametros_maquina: empresa=%s usuario=%s maquina=%s cambios=%s",
+            empresa_id,
+            usuario_id,
+            maquina["maquina_id"],
+            cambios,
+        )
+
+        def _fmt(valor, sufijo: str) -> str:
+            return "sin definir (usa el general)" if valor is None else f"{float(valor):g} {sufijo}"
+
+        # OJO: no usar `sla_horas or antes['sla_horas']`: un SLA de 0 es válido (atención
+        # inmediata) y el `or` lo descartaría. Con `.get()` el 0 sobrevive.
+        nuevo_sla = cambios.get("sla_horas", antes["sla_horas"])
+        nuevo_costo = cambios.get("costo_inactividad_minuto", antes["costo_inactividad_minuto"])
+
+        return (
+            f"Actualicé «{maquina['nombre']}» en {maquina.get('planta') or 'su planta'}:\n"
+            f"- SLA: {_fmt(antes['sla_horas'], 'h')} → {_fmt(nuevo_sla, 'h')}\n"
+            f"- Costo por minuto: {_fmt(antes['costo_inactividad_minuto'], '/min')} → "
+            f"{_fmt(nuevo_costo, '/min')}\n"
+            "Los próximos vencimientos de OT ya se calculan con el SLA nuevo."
+        )
+
+    @tool("proponer_planta_completa")
+    async def proponer_planta_completa(
+        nombre: str,
+        maquinas: list[_MaquinaPlanta] | None = None,
+        ubicacion: str | None = None,
+    ) -> str:
+        """Propone crear una planta nueva con sus máquinas y le pide confirmación al
+        usuario.
+
+        NO crea nada: la planta se crea solo si el usuario responde que sí. Úsala cuando
+        el usuario pida crear una planta o dar de alta un conjunto de equipos. Si corrige
+        un dato, vuelve a llamarla con los datos corregidos.
+
+        Args:
+            nombre: Nombre de la planta (2 a 120 caracteres).
+            maquinas: Equipos a crear. Máximo 8 por alta.
+            ubicacion: Comuna o dirección (opcional).
+        """
+        if not _puede_gestionar(rol):
+            return PERMISO_DENEGADO
+
+        nombre_limpio = " ".join((nombre or "").split())
+        if len(nombre_limpio) < 2:
+            return "Necesito un nombre de planta de al menos 2 caracteres."
+
+        equipos = [m.model_dump() for m in (maquinas or [])]
+        if len(equipos) > _MAX_MAQUINAS_ALTA:
+            return (
+                f"Son {len(equipos)} máquinas y el máximo por alta es {_MAX_MAQUINAS_ALTA}. "
+                "Cárgalas en tandas o desde el mantenedor."
+            )
+
+        # Códigos repetidos dentro de la propia lista: el 409 los detectaría recién al
+        # insertar, después de que el usuario ya confirmó, y el mensaje sería peor.
+        vistos: set[str] = set()
+        for m in equipos:
+            codigo = str(m.get("codigo") or "").strip().lower()
+            if not codigo:
+                return "Cada máquina necesita un código."
+            if codigo in vistos:
+                return f"Hay un código repetido en la lista: «{m.get('codigo')}»."
+            vistos.add(codigo)
+
+        return _texto_propuesta_planta(nombre_limpio, ubicacion, equipos)
+
+    return [
+        consultar_ots_maquina,
+        proponer_ot,
+        listar_maquinas_planta,
+        actualizar_parametros_maquina,
+        proponer_planta_completa,
+    ]

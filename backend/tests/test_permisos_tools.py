@@ -24,6 +24,7 @@ from barb.services.ai_tools import (
     _puede_crear_ot,
     _texto_propuesta,
     crear_ot_aprobada,
+    crear_planta_aprobada,
     crear_tools,
 )
 from barb.services.chat_graph import crear_grafo
@@ -64,9 +65,7 @@ def test_un_rol_desconocido_falla_cerrado():
 
 @pytest.mark.asyncio
 async def test_el_tecnico_no_puede_proponer_ot():
-    salida = await _tools(TECNICO)["proponer_ot"].ainvoke(
-        {"nombre_maquina": "Compressor A1", "descripcion_problema": PROBLEMA}
-    )
+    salida = await _tools(TECNICO)["proponer_ot"].ainvoke({"nombre_maquina": "Compressor A1", "descripcion_problema": PROBLEMA})
     assert salida == SIN_PERMISO_OT
 
 
@@ -139,11 +138,22 @@ def test_no_existe_una_tool_de_creacion_directa():
     puede llamarla. Si algún día vuelve a serlo, el candado deja de existir.
     """
     nombres = set(_tools(GERENTE))
-    assert nombres == {"consultar_ots_maquina", "proponer_ot"}
+    # HU-26: el universo creó a 5 con las Skills de topología. Las escrituras siguen
+    # detrás del candado: las tools solo PROPONEN; las `_aprobada` (que escriben) nunca
+    # son tools.
+    assert nombres == {
+        "consultar_ots_maquina",
+        "proponer_ot",
+        "listar_maquinas_planta",
+        "actualizar_parametros_maquina",
+        "proponer_planta_completa",
+    }
     assert "crear_ot" not in nombres
     assert "crear_ot_aprobada" not in nombres
+    assert "crear_planta_aprobada" not in nombres
     # Una función común tiene __name__; una @tool además expone .name.
     assert not hasattr(crear_ot_aprobada, "name")
+    assert not hasattr(crear_planta_aprobada, "name")
 
 
 # =============================================================================
