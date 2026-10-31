@@ -716,9 +716,13 @@ def _parsear_propuesta_planta(texto: str) -> dict | None:
     if not texto.startswith(_PREFIJO_PROPUESTA_PLANTA):
         return None
 
+    # El sufijo es OBLIGATORIO porque el formato lo escribió siempre `_texto_propuesta_planta`
+    # (parceo estricto: ejecutar un parseo que no cierre = no creó nada). La ubicación es
+    # codiciosa y limitada a una línea: hasta la refactorización, `[^»]+?` (+ un grupo
+    # opcional a su derecha) capturaba solo la primera letra («Q» en vez de «Quilicura»).
     cabecera = re.search(
-        r"Voy a crear la planta «(?P<nombre>[^»]+)»(?: en (?P<ubicacion>[^»]+?))?"
-        r"(?:\s+con estas máquinas:)?",
+        r"Voy a crear la planta «(?P<nombre>[^»]+)»(?: en (?P<ubicacion>[^\n»]+))?"
+        r" con estas máquinas:",
         texto,
     )
     if not cabecera:
