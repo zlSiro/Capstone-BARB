@@ -57,6 +57,18 @@ async def lifespan(app: FastAPI):
             "(requiere MULTIMODAL_MODEL y NVIDIA_MULTIMODAL_API_KEY o NVIDIA_API_KEY)."
         )
 
+    # --- Identidad del motor de chat (HU-04) ---
+    # Se loguea a propósito en cada arranque: durante el desarrollo un `fastapi dev`
+    # viejo siguió sirviendo en el puerto y parecía que las correcciones "no funcionaban"
+    # cuando en realidad no estaban cargadas. Esta línea permite confirmar de un vistazo
+    # qué motor está corriendo: si no dice "LangGraph", el proceso es anterior.
+    _tools = "tools activas" if settings.embeddings_configurados else "tools sin RAG semántico"
+    logger.info(
+        "Motor de chat: LangGraph (retrieve -> generate -> tools), %s; embeddings %s",
+        _tools,
+        settings.embeddings_model if settings.embeddings_configurados else "(no configurados)",
+    )
+
     # --- Limpieza de sesiones expiradas al arrancar ---
     try:
         eliminadas_row = await _cleanup_expired_sessions()

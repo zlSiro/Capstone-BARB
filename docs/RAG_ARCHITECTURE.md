@@ -179,3 +179,45 @@ Errores: `400` (no PDF / tamaño excedido), `401`, `403`, `413`, `503` (Supabase
   el volumen persiste; el equipo debe recrear su contenedor local (10 min).
 - La búsqueda solo cubre documentos subidos tras la implementación (no hay
   backfill de archivos históricos del repositorio documental del legado).
+
+## 9. Estado de implementación (Fase 1, 2026-10-23)
+
+La búsqueda del chat **ya es semántica**. Antes usaba solo `to_tsquery` (full-text), y
+eso dejaba fuera el caso que más importa: si el usuario escribe «torque» y el manual dice
+«par de apriete», el texto no los relaciona.
+
+Implementado:
+
+- `services/embeddings.py`: cliente de embeddings contra NIM.
+- `scripts/backfill_embeddings.py`: vectoriza `documento_chunk` → `documento_embedding`
+  (idempotente, con `--dry-run` que valida la dimensión antes de escribir).
+- `services/document_service.search_chunks`: semántico primero, con fallback a full-text
+  si el proveedor no está configurado, falla, o ningún fragmento supera el umbral
+  `rag_min_similarity` (0.25).
+- 17 chunks de los 8 documentos vectorizados a 2048 dims (los que exige la columna).
+
+### Dos correcciones al diseño de arriba
+
+1. **No se usa `OpenAIEmbeddings`.** Se intentó primero, como decía D1, pero
+   `langchain-openai` 1.6.6 no reenvía `input_type` (`AsyncEmbeddings.create() got an
+   unexpected keyword argument 'input_type'`). Se reemplazó por un POST directo con
+   `httpx`: menos abstracción y el contrato de NIM a la vista.
+
+2. **`input_type` es obligatorio, y medido.** Los modelos de NVIDIA distinguen el vector
+   de una PREGUNTA (`query`) del de un FRAGMENTO (`passage`). Omitirlo no degrada un poco:
+   rompe el espacio. Medido sobre los 17 chunks reales:
+
+   | | min relevante | max irrelevante | separación |
+   |---|---|---|---|
+   | sin `input_type` | 0.371 | 0.740 | **−0.369** (ruido) |
+   | con `input_type` | 0.341 | 0.137 | **+0.204** |
+
+   Con `input_type` se acierta el documento en 5 de 5 consultas de prueba y las
+   irrelevantes quedan por debajo del umbral.
+
+### Deuda pendiente
+
+- La ingesta nueva (`index_chunks`) todavía **no** genera embeddings: los documentos
+  subidos después del backfill quedan sin vector hasta que se corra el script. El fallback
+  léxico los cubre mientras tanto.
+- Calibrar `rag_min_similarity` con un corpus más grande que 17 chunks.

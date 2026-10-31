@@ -495,12 +495,23 @@ async def test_busqueda_rag_con_datos_semilla_respeta_empresa_y_estado(client, d
 # =============================================================================
 
 class _Chain:
-    def __init__(self):
-        self.payload = None
+    """Sustituto de `chat.astream_respuesta` (HU-04 Fase 2).
 
-    async def astream(self, payload):
-        self.payload = payload
-        yield "respuesta basada en docs"
+    Antes se parcheaba `create_conversation_chain`; ahora el router invoca una función
+    que devuelve el generador, así que el doble registra los kwargs y se puede iterar.
+    """
+
+    def __init__(self, textos: list[str] | None = None):
+        self.payload = None
+        self.textos = textos if textos is not None else ["respuesta basada en docs"]
+
+    def __call__(self, **kwargs):
+        self.payload = kwargs
+        return self._generar()
+
+    async def _generar(self):
+        for texto in self.textos:
+            yield texto
 
 
 @pytest.fixture
@@ -532,13 +543,20 @@ async def _stream(client, body):
         return resp.status_code, raw
 
 
-async def test_chat_sin_documentacion_no_invoca_al_llm(client, user_chat, repo_mock):
+async def test_chat_sin_documentacion_responde_la_frase_fija(client, user_chat, repo_mock):
+    """
+    Sin documentación y sin herramienta aplicable, el usuario NO recibe una invención.
+
+    Cambio de contrato (HU-04 Fase 2): antes, «sin documentos» cortaba antes de llamar al
+    LLM. Con las Skills eso ya no puede ser así — una pregunta sobre OTs reales no tiene
+    por qué tener un manual que la respalde. La garantía se movió: el grafo SÍ se invoca,
+    pero si no produce texto (el modelo no encontró respaldo documental ni de herramientas)
+    el router responde la frase fija. Este test cubre esa red de seguridad.
+    """
     user_chat()
-    with patch("barb.routers.chat.search_chunks", return_value=[]), \
-         patch("barb.routers.chat.create_conversation_chain") as chain:
+    with patch("barb.routers.chat.astream_respuesta", new=_Chain(textos=[])):
         status, raw = await _stream(client, {"message": "¿Cuál es la capital de Francia?"})
     assert status == 200
-    chain.assert_not_called()
     textos = [json.loads(ln[5:])["text"] for ln in raw.splitlines() if ln.startswith("data:") and "text" in ln]
     assert "".join(textos) == NO_DOCS_ANSWER
     # la respuesta fija también queda persistida en el historial
@@ -546,17 +564,17 @@ async def test_chat_sin_documentacion_no_invoca_al_llm(client, user_chat, repo_m
     assert guardados[1]["content"] == NO_DOCS_ANSWER
 
 
-async def test_chat_con_documentacion_pasa_contexto_de_su_empresa(client, user_chat, repo_mock):
+async def test_chat_usa_la_empresa_de_la_sesion_para_el_rag(client, user_chat, repo_mock):
+    """Aislamiento multi-empresa: el grafo recibe la empresa del usuario, no la del body."""
     user_chat(empresa_id=2)
     chain = _Chain()
-    chunks = [{"title": "Manual Chancador", "contenido": "Setting 150 mm"}]
-    with patch("barb.routers.chat.search_chunks", return_value=chunks) as search, \
-         patch("barb.routers.chat.create_conversation_chain", return_value=chain):
+    with patch("barb.routers.chat.astream_respuesta", new=chain):
         status, raw = await _stream(client, {"message": "setting del chancador", "empresa_id": 1})
     assert status == 200 and "respuesta basada en docs" in raw
-    assert search.call_args.args[0] == 2  # usa SU empresa; el empresa_id del body se ignora
-    assert "[Documento: Manual Chancador]" in chain.payload["context"]
-    assert "Setting 150 mm" in chain.payload["context"]
+    # La empresa viaja al grafo, que es quien hace ahora el retrieval.
+    assert chain.payload["empresa_id"] == 2
+    # Y el mensaje va como primera pista de búsqueda.
+    assert chain.payload["pistas"][0] == "setting del chancador"
 
 
 async def test_chat_super_usuario_no_tiene_acceso(client, user_chat, repo_mock):
