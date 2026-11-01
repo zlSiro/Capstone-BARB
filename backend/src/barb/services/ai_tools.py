@@ -473,6 +473,8 @@ def propuesta_pendiente(messages: list[BaseMessage]) -> dict | None:
     texto = str(ultimo_ai.content)
     if texto.startswith(_PREFIJO_PROPUESTA_PLANTA):
         return _parsear_propuesta_planta(texto)  # ya lleva "tipo": "planta"
+    if texto.startswith(_PREFIJO_PROPUESTA_PARAMETROS):
+        return _parsear_propuesta_parametros(texto)  # ya lleva "tipo": "parametros"
     if texto.startswith(_PREFIJO_PROPUESTA):
         datos = _parsear_propuesta(texto)
         return {"tipo": "ot", **datos} if datos else None
@@ -820,6 +822,195 @@ async def crear_planta_aprobada(
     return f"Planta «{resultado['nombre']}» creada con {len(resultado.get('maquinas', []))} máquina(s)."
 
 
+# ---------------------------------------------------------------------------
+# Propuesta de cambio de parámetros (mismo candado: propuesta parseable + aprobada)
+#
+# La v1 dejaba el write dentro de la tool y frenaba el cambio solo con una regla del
+# prompt: en prod el modelo la ignoró y cambió un SLA sin confirmación (31-10). Como el
+# modelo es probabilístico, el freno tenía que ser mecánico, como el de las OTs y las
+# plantas: la tool SOLO redacta la propuesta; el write vive en `actualizar_parametros_
+# aprobada`, que no es tool y la ejecuta el gate tras validar el «sí».
+# ---------------------------------------------------------------------------
+
+_PREFIJO_PROPUESTA_PARAMETROS = "PROPUESTA DE CAMBIO DE PARÁMETROS"
+
+# Una línea por la máquina tocada, con separador "|". `sla=`/`costo=` vacíos = sin cambio.
+_RE_LINEA_PARAMETROS = re.compile(
+    r"^- MAQ codigo=(?P<codigo>[^|]+?) \| nombre=(?P<nombre>[^|]+?) "
+    r"\| planta=(?P<planta>[^|]*?) "
+    r"\| sla=(?P<sla>[^|]*) \| costo=(?P<costo>[^|]*)$"
+)
+
+
+def _texto_propuesta_parametros(maquina: dict, antes: dict, cambios: dict) -> str:
+    """Texto exacto que el asistente muestra (y persiste) al proponer cambiar SLA/costo.
+
+    `maquina` es el dict del resolver (nombre, codigo, planta); `antes` trae los valores
+    actuales; `cambios` SOLO los campos a cambiar. El valor nuevo que queda si el usuario
+    confirma se muestra tal cual se guardará.
+    """
+    lineas = [
+        _PREFIJO_PROPUESTA_PARAMETROS,
+        "",
+        f"Voy a actualizar «{_sin_separadores(maquina['nombre'])}» "
+        f"[{_sin_separadores(maquina['codigo'])}]"
+        + (f" en {_sin_separadores(maquina.get('planta') or '')}" if maquina.get("planta") else "")
+        + ":",
+        "",
+    ]
+    sla_nuevo = f"{cambios['sla_horas']:g}" if "sla_horas" in cambios else ""
+    costo_nuevo = f"{cambios['costo_inactividad_minuto']:g}" if "costo_inactividad_minuto" in cambios else ""
+    lineas.append(
+        f"- MAQ codigo={_sin_separadores(maquina['codigo'])} "
+        f"| nombre={_sin_separadores(maquina['nombre'])} "
+        f"| planta={_sin_separadores(maquina.get('planta') or '')} "
+        f"| sla={sla_nuevo} | costo={costo_nuevo}"
+    )
+    detalles = []
+    if "sla_horas" in cambios:
+        antes_sla = "sin definir (usa el general)" if antes["sla_horas"] is None else f"{float(antes['sla_horas']):g} h"
+        detalles.append(f"- SLA: {antes_sla} → {float(cambios['sla_horas']):g} h")
+    if "costo_inactividad_minuto" in cambios:
+        antes_costo = (
+            "sin definir (usa el general)"
+            if antes["costo_inactividad_minuto"] is None
+            else f"{float(antes['costo_inactividad_minuto']):,.0f}/min".replace(",", ".")
+        )
+        detalles.append(
+            f"- Costo por minuto: {antes_costo} → {float(cambios['costo_inactividad_minuto']):,.0f}/min".replace(",", ".")
+        )
+    lineas += [*detalles, "", "¿Confirmas el cambio? (responde sí o no)"]
+    return "\n".join(lineas)
+
+
+def _parsear_propuesta_parametros(texto: str) -> dict | None:
+    """Datos de la propuesta de parámetros, o None si el formato no cierra (fallo cerrado)."""
+    if not texto.startswith(_PREFIJO_PROPUESTA_PARAMETROS):
+        return None
+
+    maquinas = []
+    for linea in texto.splitlines():
+        m = _RE_LINEA_PARAMETROS.match(linea.strip())
+        if not m:
+            continue
+        try:
+            sla = float(m.group("sla")) if m.group("sla").strip() else None
+            costo = float(m.group("costo")) if m.group("costo").strip() else None
+        except ValueError:
+            return None  # propuesta corrupta: se descarta, no se adivina
+        maquinas.append(
+            {
+                "nombre": m.group("nombre").strip(),
+                "codigo": m.group("codigo").strip(),
+                "planta": m.group("planta").strip() or None,
+                "sla_horas": sla,
+                "costo_inactividad_minuto": costo,
+            }
+        )
+
+    if len(maquinas) != 1 or (maquinas[0]["sla_horas"] is None and maquinas[0]["costo_inactividad_minuto"] is None):
+        # Debe haber EXACTAMENTE una máquina y al menos un campo a cambiar; cualquier
+        # cosa fuera de eso no es interpretable y no se escribe nada.
+        return None
+
+    return {
+        "tipo": "parametros",
+        **maquinas[0],
+    }
+
+
+async def actualizar_parametros_aprobada(
+    codigo: str,
+    sla_horas: float | None,
+    costo_inactividad_minuto: float | None,
+    empresa_id: int,
+    usuario_id: int | None = None,
+    rol: str | None = None,
+) -> str:
+    """
+    Cambia los parámetros de la máquina YA CONFIRMADOS por el usuario.
+
+    NO es una tool: el modelo no la ve ni puede llamarla. La invoca el gate del grafo
+    (`chat_graph.py`) con la propuesta parseada del texto de la conversación, solo
+    después de validar el «sí». Se revalida TODO: rangos, permiso y la máquina se
+    re-resuelve por código EXACTO (no por lo que el modelo haya parecido entender).
+    """
+    if not _puede_gestionar(rol):
+        return PERMISO_DENEGADO
+
+    cambios = {}
+    if sla_horas is not None:
+        cambios["sla_horas"] = sla_horas
+    if costo_inactividad_minuto is not None:
+        cambios["costo_inactividad_minuto"] = costo_inactividad_minuto
+    if not cambios:
+        return "La propuesta no indicaba ningún valor nuevo, así que no cambié nada."
+
+    if sla_horas is not None and not (0 <= sla_horas <= 8760):
+        return "La propuesta tenía un SLA fuera de rango (0 a 8760 h); no cambié nada."
+    if costo_inactividad_minuto is not None and costo_inactividad_minuto < 0:
+        return "La propuesta tenía un costo negativo; no cambié nada."
+
+    # Re-resolución por código EXACTO: la duplicidad o la máquina borrada después de la
+    # propuesta se detectan acá, no se adivinan con el nombre difuso.
+    try:
+        objetivo = await fetch_one(
+            """
+            SELECT m.maquina_id, m.nombre
+              FROM maquina m
+              JOIN planta p ON p.planta_id = m.planta_id
+             WHERE lower(m.codigo) = lower(%(c)s) AND p.empresa_id = %(e)s
+             LIMIT 1
+            """,
+            {"c": (codigo or "").strip(), "e": empresa_id},
+        )
+    except Exception:  # noqa: BLE001 — el gate no debe tumbar el turno
+        logger.exception("actualizar_parametros_aprobada: fallo buscando %r", codigo)
+        return "No pude validar la máquina. No cambié nada."
+    if not objetivo:
+        return (
+            f"No encontré la máquina con código «{codigo}» en tu empresa "
+            "(¿se borró o cambió de planta desde la propuesta?). No cambié nada."
+        )
+
+    try:
+        antes = await fetch_one(
+            "SELECT sla_horas, costo_inactividad_minuto FROM maquina WHERE maquina_id = %(m)s",
+            {"m": objetivo["maquina_id"]},
+        )
+        # La MISMA función que usa el PATCH: 404 multi-empresa, validación y FOR UPDATE
+        # salen de ahí. Una sola lógica de escritura para HTTP y chat.
+        await catalog_service.actualizar_maquina(empresa_id, objetivo["maquina_id"], cambios)
+    except catalog_service.DomainError as e:
+        return e.mensaje
+    except Exception as e:  # noqa: BLE001
+        logger.exception("actualizar_parametros_aprobada: fallo con %r (empresa %s)", codigo, empresa_id)
+        return f"No pude actualizar «{objetivo['nombre']}» ({type(e).__name__}). No cambié nada."
+
+    logger.info(
+        "actualizar_parametros_aprobada: empresa=%s usuario=%s maquina=%s cambios=%s",
+        empresa_id,
+        usuario_id,
+        objetivo["maquina_id"],
+        cambios,
+    )
+
+    def _fmt(valor, sufijo: str) -> str:
+        return "sin definir (usa el general)" if valor is None else f"{float(valor):g} {sufijo}"
+
+    # OJO: `.get()`, no `or`: un SLA de 0 es válido y el `or` lo descartaría.
+    nuevo_sla = cambios.get("sla_horas", antes["sla_horas"])
+    nuevo_costo = cambios.get("costo_inactividad_minuto", antes["costo_inactividad_minuto"])
+
+    return (
+        f"Actualicé «{objetivo['nombre']}»:\n"
+        f"- SLA: {_fmt(antes['sla_horas'], 'h')} → {_fmt(nuevo_sla, 'h')}\n"
+        f"- Costo por minuto: {_fmt(antes['costo_inactividad_minuto'], '/min')} → "
+        f"{_fmt(nuevo_costo, '/min')}\n"
+        "Los próximos vencimientos de OT ya se calculan con el SLA nuevo."
+    )
+
+
 def crear_tools(empresa_id: int, usuario_id: int | None = None, rol: str | None = None) -> list[BaseTool]:
     """
     Tools disponibles para una empresa concreta y su usuario.
@@ -984,11 +1175,14 @@ def crear_tools(empresa_id: int, usuario_id: int | None = None, rol: str | None 
         sla_horas: float | None = None,
         costo_inactividad_minuto: float | None = None,
     ) -> str:
-        """Cambia el SLA (en horas) y/o el costo de inactividad por minuto de una máquina.
+        """Registra la propuesta de cambiar el SLA (en horas) y/o el costo de inactividad
+        por minuto de una máquina, y el sistema le pide confirmación al usuario.
 
-        NO la llames sin confirmar: primero repite al usuario qué equipo y qué valores vas
-        a dejar, y espera su «sí». Si no sabes cuál es la máquina, usa
-        `listar_maquinas_planta`.
+        NO cambia nada: la escritura ocurre solo si el usuario responde que sí. Si no
+        sabes cuál es la máquina, usa `listar_maquinas_planta` antes. NO la llames de
+        nuevo en el mismo turno ni insistas después de proponer: la confirmación la
+        maneja el sistema, no tú. Si el usuario corrige un valor, vuelve a llamarla con
+        el valor corregido.
 
         Args:
             nombre_maquina: Nombre o código del equipo ("Compressor A1", "COMP-A1").
@@ -1001,6 +1195,8 @@ def crear_tools(empresa_id: int, usuario_id: int | None = None, rol: str | None 
         if not _puede_gestionar(rol):
             return PERMISO_DENEGADO
 
+        # Rangos y "qué cambias" se validan ANTES de resolver la máquina: mensajes más
+        # útiles y no se gasta la búsqueda en una propuesta que de todos modos se cae.
         if sla_horas is None and costo_inactividad_minuto is None:
             return "Di qué cambias: el SLA en horas, el costo por minuto, o los dos."
 
@@ -1013,7 +1209,7 @@ def crear_tools(empresa_id: int, usuario_id: int | None = None, rol: str | None 
         if not consulta:
             return "Necesito el nombre o el código de la máquina."
 
-        maquina, error = await _resolver_maquina(empresa_id, consulta, "cambio sus parámetros")
+        maquina, error = await _resolver_maquina(empresa_id, consulta, "actualizo sus parámetros")
         if error:
             return error
 
@@ -1028,41 +1224,15 @@ def crear_tools(empresa_id: int, usuario_id: int | None = None, rol: str | None 
                 "SELECT sla_horas, costo_inactividad_minuto FROM maquina WHERE maquina_id = %(m)s",
                 {"m": maquina["maquina_id"]},
             )
-            # MISMA función que usa el PATCH: 409, 404, validación y FOR UPDATE salen de ahí.
-            await catalog_service.actualizar_maquina(empresa_id, maquina["maquina_id"], cambios)
-        except catalog_service.DomainError as e:
-            return e.mensaje
-        except Exception as e:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — una tool no debe tumbar el grafo
             logger.exception(
-                "Tool actualizar_parametros_maquina: fallo con %r (empresa %s)",
+                "Tool actualizar_parametros_maquina: fallo leyendo %r (empresa %s)",
                 maquina.get("nombre"),
                 empresa_id,
             )
-            return f"No pude actualizar «{maquina['nombre']}» ({type(e).__name__})."
+            return "No pude leer los valores actuales de la máquina. Intenta de nuevo."
 
-        logger.info(
-            "Tool actualizar_parametros_maquina: empresa=%s usuario=%s maquina=%s cambios=%s",
-            empresa_id,
-            usuario_id,
-            maquina["maquina_id"],
-            cambios,
-        )
-
-        def _fmt(valor, sufijo: str) -> str:
-            return "sin definir (usa el general)" if valor is None else f"{float(valor):g} {sufijo}"
-
-        # OJO: no usar `sla_horas or antes['sla_horas']`: un SLA de 0 es válido (atención
-        # inmediata) y el `or` lo descartaría. Con `.get()` el 0 sobrevive.
-        nuevo_sla = cambios.get("sla_horas", antes["sla_horas"])
-        nuevo_costo = cambios.get("costo_inactividad_minuto", antes["costo_inactividad_minuto"])
-
-        return (
-            f"Actualicé «{maquina['nombre']}» en {maquina.get('planta') or 'su planta'}:\n"
-            f"- SLA: {_fmt(antes['sla_horas'], 'h')} → {_fmt(nuevo_sla, 'h')}\n"
-            f"- Costo por minuto: {_fmt(antes['costo_inactividad_minuto'], '/min')} → "
-            f"{_fmt(nuevo_costo, '/min')}\n"
-            "Los próximos vencimientos de OT ya se calculan con el SLA nuevo."
-        )
+        return _texto_propuesta_parametros(maquina, antes, cambios)
 
     @tool("proponer_planta_completa")
     async def proponer_planta_completa(

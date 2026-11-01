@@ -50,6 +50,7 @@ from langgraph.prebuilt import ToolNode
 from barb.core.config import settings
 from barb.services.ai_tools import (
     TEXTO_RECHAZO,
+    actualizar_parametros_aprobada,
     crear_ot_aprobada,
     crear_planta_aprobada,
     crear_tools,
@@ -101,9 +102,12 @@ REGLAS_CON_TOOLS = (
     "- Si el usuario corrige un dato (equipo, problema o prioridad), vuelve a llamarla con "
     "los datos corregidos para que la propuesta se actualice.\n"
     "\nMANTENEDOR DE PLANTAS Y MÁQUINAS:\n"
-    "10. Antes de `actualizar_parametros_maquina`, usa `listar_maquinas_planta` si no "
-    "conoces los datos actuales; luego repite al usuario el equipo y los valores nuevos y "
-    "espera su confirmación explícita antes de llamarla.\n"
+    "10. Para cambiar el SLA o el costo de inactividad de una máquina usa "
+    "`actualizar_parametros_maquina`: NO cambia nada, registra la propuesta (equipo y "
+    "valores) y el sistema le pide la confirmación al usuario; el cambio real ocurre "
+    "solo si responde que sí. Si no conoces los datos actuales, usa `listar_maquinas_"
+    "planta` antes. No la llames de nuevo en el mismo turno ni insistas después de "
+    "proponer: la confirmación la maneja el sistema, no tú.\n"
     "11. Para crear una planta usa `proponer_planta_completa` con sus máquinas (máximo "
     "8); NO crea nada hasta que el usuario confirme. Los códigos de máquina deben ser "
     "únicos dentro de la planta.\n"
@@ -184,6 +188,15 @@ def crear_grafo(
                     rol,
                     ubicacion=borrador.get("ubicacion"),
                 )
+            elif borrador["tipo"] == "parametros":
+                resultado = await actualizar_parametros_aprobada(
+                    borrador["codigo"],
+                    borrador.get("sla_horas"),
+                    borrador.get("costo_inactividad_minuto"),
+                    empresa_id,
+                    usuario_id,
+                    rol,
+                )
             else:
                 resultado = await crear_ot_aprobada(
                     borrador["consulta_maquina"],
@@ -210,7 +223,7 @@ def crear_grafo(
 
     # Las tools cuyo turno termina con la propuesta: su texto EXACTO es lo que se
     # persiste y lo que el gate del turno siguiente re-parsea.
-    _TOOLS_DE_PROPUESTA = frozenset({"proponer_ot", "proponer_planta_completa"})
+    _TOOLS_DE_PROPUESTA = frozenset({"proponer_ot", "proponer_planta_completa", "actualizar_parametros_maquina"})
 
     def tras_tools(estado: EstadoChat) -> Literal["propuesta", "seguir"]:
         """Si la ronda de tools incluyó una tool de propuesta, el turno termina con la
