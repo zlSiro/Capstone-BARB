@@ -127,7 +127,8 @@ async def test_listar_maquinas_planta_muestra_sla_y_costo(client, ctx):
     salida = await HERRAMIENTAS["listar_maquinas_planta"].ainvoke({"planta": f"Planta Skill {ctx['marca']}"})
 
     assert f"Compresor {ctx['marca']}" in salida and "PRE" in salida
-    assert "6 h" in salida and "50/min" in salida, "los valores cargados se muestran"
+    assert "6 h" in salida and "| 50 |" in salida, "los valores cargados se muestran (tabla)"
+    assert "| Máquina |" in salida, "el listado viene en tabla"
     assert salida.count("el general") == 2, "SLA y costo de la máquina sin valores: dos «el general»"
 
 

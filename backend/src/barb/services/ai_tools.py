@@ -952,20 +952,31 @@ def crear_tools(empresa_id: int, usuario_id: int | None = None, rol: str | None 
         if not maquinas:
             return f"«{objetivo['nombre']}» todavía no tiene máquinas."
 
-        lineas = []
-        for m in maquinas:
+        # Tabla, no viñetas: con 12+ equipos una lista plana se pierde en el chat; la tabla
+        # es lo que el frontend renderiza con columnas alineadas. Los valores con una sola
+        # línea de contexto van en su celda («el general» = usa el SLA/costo de la planta,
+        # no inventado). Cada celda se sanea con `_sin_separadores`: un «|» en un nombre
+        # rompería la tabla.
+        filas = []
+        for i, m in enumerate(maquinas, start=1):
             sla = f"{float(m['sla_horas']):g} h" if m["sla_horas"] is not None else "el general"
             costo = (
-                f"{float(m['costo_inactividad_minuto']):,.0f}/min".replace(",", ".")
+                f"{float(m['costo_inactividad_minuto']):,.0f}".replace(",", ".")
                 if m["costo_inactividad_minuto"] is not None
                 else "el general"
             )
-            lineas.append(
-                f"- {m['nombre']} [{m['codigo']}] · {m['disciplina'] or 'sin disciplina'} · "
-                f"SLA {sla} · costo {costo} · {m['abiertas']} OT(s) abierta(s)"
+            filas.append(
+                f"| {i} | {_sin_separadores(m['nombre'])} | {_sin_separadores(m['codigo'])} "
+                f"| {_sin_separadores(m['disciplina'] or 'sin disciplina')} "
+                f"| {sla} | {costo} | {m['abiertas']} |"
             )
 
-        return f"Máquinas de «{objetivo['nombre']}» ({len(maquinas)}):\n" + "\n".join(lineas)
+        return (
+            f"Máquinas de «{objetivo['nombre']}» ({len(maquinas)}):\n"
+            "\n"
+            "| # | Máquina | Código | Disciplina | SLA | Costo/min | OTs abiertas |\n"
+            "|---|---------|--------|------------|-----|-----------|--------------|\n" + "\n".join(filas)
+        )
 
     @tool("actualizar_parametros_maquina")
     async def actualizar_parametros_maquina(
