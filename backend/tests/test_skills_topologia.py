@@ -22,6 +22,7 @@ from barb.services import chat_graph
 from barb.services.ai_tools import (
     _PREFIJO_PROPUESTA_PLANTA,
     PERMISO_DENEGADO,
+    _parsear_propuesta_planta,
     _texto_propuesta_planta,
     crear_planta_aprobada,
     crear_tools,
@@ -222,6 +223,30 @@ async def test_proponer_planta_completa_no_escribe_nada(db_pool):
     despues = await fetch_one("SELECT COUNT(*) AS n FROM planta")
     assert antes["n"] == despues["n"], "la propuesta no debe crear filas"
     assert salida.startswith(_PREFIJO_PROPUESTA_PLANTA)
+
+
+async def test_la_propuesta_parsea_con_la_ubicacion_completa(db_pool):
+    """Round-trip de la propuesta: lo que muestra la tool es EXACTO lo que parsea el gate.
+
+    Regresión del E2E: el `[^»]+?` perezoso con un grupo opcional a la derecha capturaba
+    la primera letra de la ubicación («Q») y la planta se creaba con 1 caracter.
+    """
+    texto = _texto_propuesta_planta(
+        "Planta Round Trip",
+        "Quilicura",
+        [{"nombre": "Turbina 1", "codigo": "TRT-1", "disciplina": "Mecánica"}],
+    )
+    datos = _parsear_propuesta_planta(texto)
+
+    assert datos["ubicacion"] == "Quilicura"
+
+    # Y sin ubicación explícita: None, no basura.
+    sin_ubicacion = _texto_propuesta_planta(
+        "Planta Sin Lugar",
+        None,
+        [{"nombre": "Turbina 2", "codigo": "TRT-2"}],
+    )
+    assert _parsear_propuesta_planta(sin_ubicacion)["ubicacion"] is None
 
 
 @pytest.mark.asyncio
