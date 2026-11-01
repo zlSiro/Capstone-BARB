@@ -107,6 +107,9 @@ REGLAS_CON_TOOLS = (
     "11. Para crear una planta usa `proponer_planta_completa` con sus máquinas (máximo "
     "8); NO crea nada hasta que el usuario confirme. Los códigos de máquina deben ser "
     "únicos dentro de la planta.\n"
+    "12. Si una tool devuelve un listado con formato de tabla (|), preséntalo al usuario "
+    "TAL CUAL, sin convertirlo en viñetas ni resumirlo: la tabla es lo que se ve mejor "
+    "en el chat. No repitas la tabla dos veces ni agregues filas que la tool no mostró.\n"
     "- No la uses ante una descripción vaga: si falta el equipo o el problema, pregunta "
     "primero."
 )
