@@ -30,6 +30,7 @@ from barb.services.ai_tools import (
 from barb.services.chat_graph import crear_grafo
 
 TECNICO = "tecnico"
+SUPERVISOR = "supervisor"
 GERENTE = "gerente"
 
 PROBLEMA = "Ruido metálico al arrancar desde ayer"
@@ -46,10 +47,10 @@ def _tools(rol: str, empresa_id: int = 1, usuario_id: int = 1) -> dict:
 
 @pytest.mark.parametrize(
     "rol, esperado",
-    [("gerente", True), ("admin", True), ("tecnico", False), ("operador", False), (None, False)],
+    [("supervisor", True), ("gerente", False), ("admin", False), ("tecnico", False), ("operador", False), (None, False)],
 )
 def test_el_permiso_es_el_mismo_que_exige_el_endpoint(rol, esperado):
-    """Gerente y admin crean OTs; el resto no. Un rol nulo o vacío no revienta."""
+    """Solo el supervisor crea OTs directas; el resto no. Un rol nulo o vacío no revienta."""
     assert _puede_crear_ot(rol) is esperado
 
 
@@ -69,12 +70,31 @@ async def test_el_tecnico_no_puede_proponer_ot():
     assert salida == SIN_PERMISO_OT
 
 
+def test_el_mensaje_de_rechazo_es_el_definido_por_el_negocio():
+    assert SIN_PERMISO_OT == "No tiene privilegios para generar OT sin un aviso de falla. Por favor generar conforme al flujo"
+
+
 @pytest.mark.asyncio
-async def test_el_gerente_si_puede_proponer_ot(db_pool, caplog):
+@pytest.mark.parametrize("rol", ["operador", "tecnico", "engineer", "gerente", "admin", "visitante", "super_usuario"])
+async def test_todo_rol_que_no_es_supervisor_recibe_el_mensaje_al_intentar_generar_una_ot(rol):
+    """La intención de crear una OT desde el chat, sin un aviso de falla, se rechaza con el texto del negocio."""
+    salida = await _tools(rol)["proponer_ot"].ainvoke({"nombre_maquina": "Compressor A1", "descripcion_problema": PROBLEMA})
+    assert salida == "No tiene privilegios para generar OT sin un aviso de falla. Por favor generar conforme al flujo"
+
+
+@pytest.mark.asyncio
+async def test_el_gerente_no_puede_proponer_ot():
+    """La creación directa de OT es solo del supervisor: el gerente genera OT desde un aviso."""
+    salida = await _tools(GERENTE)["proponer_ot"].ainvoke({"nombre_maquina": "Compressor A1", "descripcion_problema": PROBLEMA})
+    assert salida == SIN_PERMISO_OT
+
+
+@pytest.mark.asyncio
+async def test_el_supervisor_si_puede_proponer_ot(db_pool, caplog):
     """Contraprueba: con permiso, la propuesta sale y NO escribe."""
     antes = await fetch_one("SELECT COUNT(*) AS n FROM orden_trabajo")
     with caplog.at_level(logging.WARNING):
-        salida = await _tools(GERENTE)["proponer_ot"].ainvoke(
+        salida = await _tools(SUPERVISOR)["proponer_ot"].ainvoke(
             {"nombre_maquina": "Compressor A1", "descripcion_problema": PROBLEMA}
         )
     despues = await fetch_one("SELECT COUNT(*) AS n FROM orden_trabajo")
@@ -108,8 +128,8 @@ async def test_el_tecnico_no_crea_la_ot_aunque_confirme(db_pool):
 
 
 @pytest.mark.asyncio
-async def test_otra_empresa_no_crea_aunque_sea_gerente(db_pool):
-    """Ser gerente de la empresa 2 no habilita a crear OTs sobre una máquina de la 1."""
+async def test_otra_empresa_no_crea_aunque_sea_supervisor(db_pool):
+    """Ser supervisor de la empresa 2 no habilita a crear OTs sobre una máquina de la 1."""
     antes = await fetch_one("SELECT COUNT(*) AS n FROM orden_trabajo")
 
     salida = await crear_ot_aprobada(
@@ -118,7 +138,7 @@ async def test_otra_empresa_no_crea_aunque_sea_gerente(db_pool):
         prioridad="high",
         empresa_id=2,
         usuario_id=17,
-        rol=GERENTE,
+        rol=SUPERVISOR,
     )
 
     despues = await fetch_one("SELECT COUNT(*) AS n FROM orden_trabajo")
@@ -137,7 +157,7 @@ def test_no_existe_una_tool_de_creacion_directa():
     La creación vive en `crear_ot_aprobada`, que NO es una tool: el modelo no la ve y no
     puede llamarla. Si algún día vuelve a serlo, el candado deja de existir.
     """
-    nombres = set(_tools(GERENTE))
+    nombres = set(_tools(SUPERVISOR))
     # HU-26: el universo creó a 5 con las Skills de topología. Las escrituras siguen
     # detrás del candado: las tools solo PROPONEN; las `_aprobada` (que escriben) nunca
     # son tools.

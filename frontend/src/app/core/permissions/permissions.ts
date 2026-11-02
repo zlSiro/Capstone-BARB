@@ -88,7 +88,8 @@ export const RUTAS: Record<RutaKey, Record<string, PermisoValor>> = {
 
 export const ACCIONES: Record<AccionKey, Record<string, boolean>> = {
   // El administrador gobierna el sistema, no opera el mantenimiento: no crea, cambia, cancela ni elimina OT.
-  crear_ot:           { operador: false, tecnico: false, supervisor: true,  engineer: false, gerente: true, admin: false, visitante: false , super_usuario: false },
+  // Crear una OT directamente (sin un aviso de falla previo) es SOLO del supervisor; el gerente genera OT desde un aviso.
+  crear_ot:           { operador: false, tecnico: false, supervisor: true,  engineer: false, gerente: false, admin: false, visitante: false , super_usuario: false },
   cambiar_estado_ot:  { operador: false, tecnico: false, supervisor: true,  engineer: true,  gerente: true, admin: false, visitante: false , super_usuario: false },
   cancelar_ot:        { operador: false, tecnico: false, supervisor: true,  engineer: false, gerente: true, admin: false, visitante: false , super_usuario: false },
   // Eliminar borra el historial de la OT: solo el gerente (lo normal es cancelar).

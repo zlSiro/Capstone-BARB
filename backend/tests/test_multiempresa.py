@@ -146,8 +146,8 @@ async def test_catalogos_filtrados_por_empresa(client):
 
 
 async def test_no_se_puede_crear_ot_con_maquina_o_tecnico_de_otra_empresa(client):
-    # Gerente de empresa 2 con la máquina de la empresa 1 (id 1 = Compressor A1).
-    h = await _login(client, ("gerente@mineranorte.cl", "minera123"))
+    # Supervisor de empresa 2 (el único rol que crea OT directas) con la máquina de la empresa 1 (id 1 = Compressor A1).
+    h = await _login(client, ("supervisor@mineranorte.cl", "minera123"))
     r = await client.post(
         "/api/work-orders",
         headers=h,

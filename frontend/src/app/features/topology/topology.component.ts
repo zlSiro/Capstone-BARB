@@ -28,6 +28,9 @@ const NODE_H = 85;
  */
 const ANCHO_NOMBRE_NODO = NODE_W - 16;
 
+/** Desplazamiento (px) desde el que un toque deja de ser un «toque» y pasa a ser un arrastre. */
+const UMBRAL_TOQUE_PX = 8;
+
 /** Factor de zoom por paso de rueda. 1,15 se siente continuo sin saltar de golpe. */
 const FACTOR_RUEDA = 1.15;
 
@@ -198,12 +201,12 @@ interface GrupoEnPanel {
   `,
   template: `
     <div class="flex flex-col gap-4">
-      <div class="flex items-center justify-between">
+      <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 class="text-2xl font-bold text-tinta ">{{ t().title }}</h1>
           <p class="text-sm text-tinta-suave " data-testid="topo-subtitulo">{{ vistaActivos() ? t().subtitleAssets : t().subtitle }}</p>
         </div>
-        <div class="flex gap-2">
+        <div class="flex flex-wrap gap-2">
           <!--
             El mantenedor de plantas vive acá y no en el menú lateral: se entra desde el
             mapa, que es donde tiene sentido (los activos que se están mirando). Solo lo ve
@@ -214,7 +217,7 @@ interface GrupoEnPanel {
               type="button"
               data-testid="gestionar-activos"
               (click)="alternarVista()"
-              class="px-3 py-2 text-sm rounded-control border border-borde-control bg-superficie hover:bg-superficie-2 "
+              class="inline-flex min-h-11 items-center justify-center rounded-control border border-borde-control bg-superficie px-3 text-sm hover:bg-superficie-2"
             >{{ vistaActivos() ? 'Volver al mapa' : 'Gestionar activos' }}</button>
           }
           <!-- Los controles de cámara solo tienen sentido sobre el mapa. -->
@@ -223,21 +226,21 @@ interface GrupoEnPanel {
               type="button"
               data-testid="zoom-in"
               (click)="zoom(1.2)"
-              class="px-3 py-2 text-sm rounded-control border border-borde-control bg-superficie hover:bg-superficie-2 "
+              class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-control border border-borde-control bg-superficie px-3 text-lg hover:bg-superficie-2"
               [attr.aria-label]="t().zoomIn"
             >+</button>
             <button
               type="button"
               data-testid="zoom-out"
               (click)="zoom(0.8)"
-              class="px-3 py-2 text-sm rounded-control border border-borde-control bg-superficie hover:bg-superficie-2 "
+              class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-control border border-borde-control bg-superficie px-3 text-lg hover:bg-superficie-2"
               [attr.aria-label]="t().zoomOut"
             >−</button>
             <button
               type="button"
               data-testid="zoom-reset"
               (click)="resetView()"
-              class="px-3 py-2 text-sm rounded-control border border-borde-control bg-superficie hover:bg-superficie-2 "
+              class="inline-flex min-h-11 items-center justify-center rounded-control border border-borde-control bg-superficie px-3 text-sm hover:bg-superficie-2"
             >{{ t().resetView }}</button>
           }
         </div>
@@ -279,7 +282,7 @@ interface GrupoEnPanel {
               data-testid="topo-canvas"
               [attr.viewBox]="viewBoxAttr()"
               preserveAspectRatio="xMidYMid meet"
-              class="w-full h-[560px] select-none"
+              class="h-[min(560px,62dvh)] w-full select-none md:h-[560px]"
               [class.cursor-grabbing]="arrastrando()"
               [class.cursor-grab]="!arrastrando()"
               style="touch-action: none"
@@ -287,6 +290,10 @@ interface GrupoEnPanel {
               (mousemove)="onMouseMove($event)"
               (mouseup)="onMouseUp()"
               (mouseleave)="onMouseUp()"
+              (pointerdown)="onPointerDown($event)"
+              (pointermove)="onPointerMove($event)"
+              (pointerup)="onPointerEnd($event)"
+              (pointercancel)="onPointerEnd($event)"
               (wheel)="onWheel($event)"
             >
               <!--
@@ -957,11 +964,121 @@ export class TopologyComponent {
     this.arrastrando.set(false);
   }
 
+  // --- Táctil: arrastre con un dedo y pinza con dos ---------------------------
+  //
+  // El ratón se maneja arriba con eventos de mouse. En una pantalla táctil el dedo NO genera
+  // mousemove al arrastrar (y `touch-action: none` desactiva el gesto nativo), así que sin esto el
+  // mapa quedaba inmóvil. Se usan Pointer Events solo para `pointerType === 'touch'`, para no
+  // duplicar lo que ya hacen los handlers de mouse.
+
+  /** Dedos apoyados ahora mismo sobre el mapa. */
+  private readonly dedos = new Map<number, { x: number; y: number }>();
+  private distanciaPinza = 0;
+  private inicioToque = { x: 0, y: 0 };
+  /** El gesto fue un arrastre o una pinza: el «clic» que el navegador emite al soltar no debe abrir un nodo. */
+  private gestoMovio = false;
+
+  protected onPointerDown(event: PointerEvent): void {
+    if (event.pointerType !== 'touch') return;
+    if (this.dedos.size === 0) this.gestoMovio = false;
+    this.dedos.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (this.dedos.size === 1) {
+      this.inicioToque = { x: event.clientX, y: event.clientY };
+      this.ultimoPunto = { x: event.clientX, y: event.clientY };
+      this.arrastrando.set(true);
+    } else if (this.dedos.size === 2) {
+      this.distanciaPinza = this.distanciaEntreDedos();
+      this.ultimoPunto = this.centroDeDedos();
+    }
+  }
+
+  protected onPointerMove(event: PointerEvent): void {
+    if (event.pointerType !== 'touch' || !this.dedos.has(event.pointerId)) return;
+    this.dedos.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    const svg = event.currentTarget as SVGSVGElement;
+    const rect = svg.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+
+    if (this.dedos.size >= 2) {
+      // Pinza: acerca o aleja alrededor del punto medio de los dos dedos, y arrastra con él.
+      const distancia = this.distanciaEntreDedos();
+      const centro = this.centroDeDedos();
+      if (this.distanciaPinza > 0 && distancia > 0) {
+        this.camaraTactil(rect, this.ultimoPunto, centro, distancia / this.distanciaPinza);
+      }
+      this.distanciaPinza = distancia;
+      this.ultimoPunto = centro;
+      this.gestoMovio = true;
+      return;
+    }
+
+    // Un dedo: arrastra el lienzo (el ancla del gesto es la última posición conocida).
+    if (Math.hypot(event.clientX - this.inicioToque.x, event.clientY - this.inicioToque.y) > UMBRAL_TOQUE_PX) this.gestoMovio = true;
+    if (this.gestoMovio) this.camaraTactil(rect, this.ultimoPunto, { x: event.clientX, y: event.clientY }, 1);
+    this.ultimoPunto = { x: event.clientX, y: event.clientY };
+  }
+
+  protected onPointerEnd(event: PointerEvent): void {
+    if (event.pointerType !== 'touch') return;
+    this.dedos.delete(event.pointerId);
+    this.distanciaPinza = 0;
+    if (this.dedos.size === 0) {
+      this.arrastrando.set(false);
+    } else {
+      // Queda un dedo tras una pinza: se re-ancla a él para que la vista no «salte».
+      this.ultimoPunto = this.centroDeDedos();
+    }
+  }
+
+  private distanciaEntreDedos(): number {
+    const [a, b] = [...this.dedos.values()];
+    return a && b ? Math.hypot(a.x - b.x, a.y - b.y) : 0;
+  }
+
+  private centroDeDedos(): { x: number; y: number } {
+    const puntos = [...this.dedos.values()];
+    const n = puntos.length || 1;
+    return { x: puntos.reduce((suma, p) => suma + p.x, 0) / n, y: puntos.reduce((suma, p) => suma + p.y, 0) / n };
+  }
+
+  /**
+   * Mueve la cámara con un gesto táctil. El punto del mapa que estaba bajo `desde` (px de pantalla) queda
+   * bajo `hasta`, y la vista se acerca (`factor` > 1) o se aleja (`factor` < 1). Con `desde === hasta` es
+   * una pinza pura; con `factor === 1` es un arrastre puro; y los dos a la vez cuando los dedos se separan
+   * y se desplazan.
+   *
+   * Con `preserveAspectRatio="meet"` el mapa se dibuja con UNA escala uniforme y queda centrado con bandas
+   * vacías, por eso se convierte pantalla -> unidades del viewBox con esa escala y ese desfase.
+   */
+  private camaraTactil(rect: DOMRect, desde: { x: number; y: number }, hasta: { x: number; y: number }, factor: number): void {
+    this.viewBox.update((v) => {
+      const aMapa = (caja: { x: number; y: number; w: number; h: number }, px: number, py: number) => {
+        const escala = Math.max(caja.w / rect.width, caja.h / rect.height);
+        const margenX = (rect.width - caja.w / escala) / 2;
+        const margenY = (rect.height - caja.h / escala) / 2;
+        return { x: caja.x + (px - rect.left - margenX) * escala, y: caja.y + (py - rect.top - margenY) * escala, escala, margenX, margenY };
+      };
+      const f = Math.min(Math.max(factor, 0.5), 2); // un gesto brusco no debe disparar la vista
+      const punto = aMapa(v, desde.x, desde.y);
+      const w = v.w / f;
+      const h = v.h / f;
+      const escala = Math.max(w / rect.width, h / rect.height);
+      const margenX = (rect.width - w / escala) / 2;
+      const margenY = (rect.height - h / escala) / 2;
+      return { x: punto.x - (hasta.x - rect.left - margenX) * escala, y: punto.y - (hasta.y - rect.top - margenY) * escala, w, h };
+    });
+  }
+
   // --- CGBIDA-364: panel de detalle ------------------------------------------
 
   protected seleccionar(nodo: TopologyNode, event: Event): void {
     // Sin esto, el clic burbujearía al <svg> y arrancaría un paneo.
     event.stopPropagation();
+    // Al soltar un arrastre táctil el navegador emite un «clic» sobre el nodo que quedó bajo el dedo.
+    if (this.gestoMovio) {
+      this.gestoMovio = false;
+      return;
+    }
     this.seleccionado.set(nodo);
     this.pila.set([nodo]);
   }

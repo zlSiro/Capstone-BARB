@@ -43,7 +43,7 @@ async def cleanup():
 
 
 async def test_crear_ot_caso_feliz(client, payload, cleanup):
-    headers = await _auth(client, GERENTE)
+    headers = await _auth(client, SUPERVISOR)
     resp = await client.post("/api/work-orders", json=payload, headers=headers)
     assert resp.status_code == 200, resp.text
     data = resp.json()
@@ -56,21 +56,29 @@ async def test_crear_ot_caso_feliz(client, payload, cleanup):
     assert data["numero_ot"] in [o["numero_ot"] for o in listado.json()]
 
 
-async def test_gerente_puede_crear_ot(client, payload, cleanup):
-    headers = await _auth(client, GERENTE)
+async def test_supervisor_puede_crear_ot_en_la_ruta_con_guion_bajo(client, payload, cleanup):
+    headers = await _auth(client, SUPERVISOR)
     resp = await client.post("/api/work_orders", json=payload, headers=headers)
     assert resp.status_code == 200, resp.text
 
 
-async def test_creado_por_es_usuario_de_sesion(client, payload, cleanup):
+async def test_gerente_no_puede_crear_ot_directa(client, payload):
+    """Solo el supervisor crea una OT sin aviso previo; el gerente genera OT desde un aviso (`gestionar_avisos`)."""
     headers = await _auth(client, GERENTE)
+    resp = await client.post("/api/work-orders", json=payload, headers=headers)
+    assert resp.status_code == 403
+    assert "crear_ot" in resp.json()["detail"]
+
+
+async def test_creado_por_es_usuario_de_sesion(client, payload, cleanup):
+    headers = await _auth(client, SUPERVISOR)
     resp = await client.post("/api/work-orders", json={**payload, "creado_por": 999999}, headers=headers)
     assert resp.status_code == 200, resp.text
     row = await fetch_one(
         "SELECT u.email FROM orden_trabajo ot JOIN usuario u ON u.usuario_id = ot.creado_por WHERE ot.numero_ot = %(n)s",
         {"n": resp.json()["numero_ot"]},
     )
-    assert row["email"] == GERENTE["email"]
+    assert row["email"] == SUPERVISOR["email"]
 
 
 async def test_supervisor_puede_crear_ot(client, payload, cleanup):
@@ -79,8 +87,8 @@ async def test_supervisor_puede_crear_ot(client, payload, cleanup):
     assert resp.status_code == 200, resp.text
 
 
-# El administrador gobierna el sistema pero no opera el mantenimiento: no crea OT.
-@pytest.mark.parametrize("creds", [TECNICO, OPERADOR, ADMIN, ENGINEER])
+# Solo el supervisor crea OT directas. El administrador gobierna el sistema y el gerente genera OT desde avisos.
+@pytest.mark.parametrize("creds", [TECNICO, OPERADOR, ADMIN, ENGINEER, GERENTE])
 async def test_roles_sin_permiso_reciben_403(client, payload, creds):
     headers = await _auth(client, creds)
     resp = await client.post("/api/work-orders", json=payload, headers=headers)
@@ -94,28 +102,28 @@ async def test_sin_token_rechaza(client, payload):
 
 @pytest.mark.parametrize("campo", ["maquina_id", "tecnico_id", "descripcion_problema"])
 async def test_campos_obligatorios_vacios_400(client, payload, campo):
-    headers = await _auth(client, GERENTE)
+    headers = await _auth(client, SUPERVISOR)
     resp = await client.post("/api/work-orders", json={**payload, campo: ""}, headers=headers)
     assert resp.status_code == 400
     assert campo in resp.json()["detail"]
 
 
 async def test_maquina_inexistente_422(client, payload):
-    headers = await _auth(client, GERENTE)
+    headers = await _auth(client, SUPERVISOR)
     resp = await client.post("/api/work-orders", json={**payload, "maquina_id": 999999}, headers=headers)
     assert resp.status_code == 422
     assert "máquina" in resp.json()["detail"]
 
 
 async def test_tecnico_inexistente_422(client, payload):
-    headers = await _auth(client, GERENTE)
+    headers = await _auth(client, SUPERVISOR)
     resp = await client.post("/api/work-orders", json={**payload, "tecnico_id": 999999}, headers=headers)
     assert resp.status_code == 422
 
 
 async def test_tecnico_sin_rol_tecnico_422(client, payload):
     admin_id = (await fetch_one("SELECT usuario_id FROM usuario WHERE email = 'admin@barb.com'"))["usuario_id"]
-    headers = await _auth(client, GERENTE)
+    headers = await _auth(client, SUPERVISOR)
     resp = await client.post("/api/work-orders", json={**payload, "tecnico_id": admin_id}, headers=headers)
     assert resp.status_code == 422
 
@@ -125,20 +133,20 @@ async def test_tecnico_sin_rol_tecnico_422(client, payload):
     [("priority", "extrema"), ("tipo", "invalido"), ("severity", "grave")],
 )
 async def test_enum_invalido_422(client, payload, campo, valor):
-    headers = await _auth(client, GERENTE)
+    headers = await _auth(client, SUPERVISOR)
     resp = await client.post("/api/work-orders", json={**payload, campo: valor}, headers=headers)
     assert resp.status_code == 422
     assert campo in resp.json()["detail"]
 
 
 async def test_content_type_no_soportado_415(client, payload):
-    headers = await _auth(client, GERENTE)
+    headers = await _auth(client, SUPERVISOR)
     resp = await client.post("/api/work-orders", content="x", headers={**headers, "Content-Type": "text/plain"})
     assert resp.status_code == 415
 
 
 async def test_json_invalido_400(client):
-    headers = await _auth(client, GERENTE)
+    headers = await _auth(client, SUPERVISOR)
     resp = await client.post(
         "/api/work-orders", content="{no json", headers={**headers, "Content-Type": "application/json"}
     )

@@ -56,7 +56,7 @@ def test_visitante_no_gana_ninguna_accion_nueva():
 
 # Quién puede ejecutar cada acción del ciclo de la OT (matriz de roles y privilegios).
 ACCIONES_ESPERADAS = {
-    "crear_ot": {"supervisor", "gerente"},
+    "crear_ot": {"supervisor"},
     "cambiar_estado_ot": {"supervisor", "engineer", "gerente"},
     "cancelar_ot": {"supervisor", "gerente"},
     "eliminar_ot": {"gerente"},

@@ -101,12 +101,12 @@ Notas sobre la respuesta:
 ## 3. Permisos
 
 Acción `crear_ot` (`backend/src/barb/core/permissions.py`, espejo en `frontend/src/app/core/permissions/permissions.ts`):
-solo **supervisor** y **gerente** (el administrador gobierna el sistema y ya no crea OT). Los demás roles reciben `403` y no ven el botón «Crear OT».
-Lo que reportan los usuarios de planta entra como **aviso de falla** y el supervisor decide si genera la OT: ver `AVISOS_FALLA.md`.
+solo el **supervisor** puede crear una OT directamente, sin un aviso de falla previo. Los demás roles (incluidos gerente y administrador) reciben `403` y no ven el botón «Crear OT».
+Lo que reportan los usuarios de planta entra como **aviso de falla** y el supervisor (o el gerente, con `gestionar_avisos`) decide si genera la OT: ver `AVISOS_FALLA.md`.
 
 ## 4. Flujo completo
 
-1. En la lista de OT (`/work-orders`), gerente/admin pulsa **+ Crear OT**; se abre `CreateOtModalComponent`.
+1. En la lista de OT (`/work-orders`), el supervisor pulsa **+ Crear OT**; se abre `CreateOtModalComponent`.
 2. El modal carga catálogos (`/api/disciplines`, `/api/machines`, `/api/technicians`). Las máquinas se filtran por disciplina.
 3. Validación en el cliente (Signal Forms): título, disciplina, máquina, técnico y descripción obligatorios; no se aceptan textos solo con espacios. Foto opcional (JPEG/PNG/WEBP).
 4. Envío `multipart/form-data` a `POST /api/work-orders`.
@@ -134,7 +134,7 @@ Backend: `uv run pytest tests/test_work_orders_create.py` (requiere Postgres, mi
 
 Checklist manual end-to-end (`uv run fastapi dev src/barb/main.py --port 9000` + `npm start`):
 
-- [ ] Login como `gerente1@planta.com` o `admin@barb.com`: aparece **+ Crear OT**.
+- [ ] Login como `supervisor1@planta.com`: aparece **+ Crear OT**. Con `gerente1@planta.com` y `admin@barb.com` no aparece y un `POST` directo responde 403.
 - [ ] Login como `carlos@planta.com` (técnico) u `operador1@planta.com`: el botón no aparece; un `POST` directo responde 403.
 - [ ] Crear OT válida: toast de éxito y la OT aparece primera en la lista.
 - [ ] Enviar con campos vacíos: errores en línea, no hay request.

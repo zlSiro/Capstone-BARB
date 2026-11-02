@@ -300,10 +300,11 @@ _PRIORIDADES = {
 # Si en los últimos minutos ya se creó una OT idéntica, no se duplica. Protege del modelo
 # que llama dos veces a la tool (o del reintento automático del grafo) sin que el usuario
 # vea dos órdenes iguales.
-# `crear_ot` es de gerente/admin por decisión del negocio (ver permissions.ACCIONES), pero
+# `crear_ot` es solo del supervisor por decisión del negocio (ver permissions.ACCIONES), pero
 # las tools no pasan por las dependencias de FastAPI: sin este chequeo, un técnico creaba
 # por el chat OTs que el endpoint le rechaza con 403.
-SIN_PERMISO_OT = "No tienes permisos para crear órdenes de trabajo con tu rol. Pídeselo a un gerente o administrador."
+# Texto fijado por el negocio: se muestra tal cual (la propuesta termina el turno con el texto EXACTO de la tool).
+SIN_PERMISO_OT = "No tiene privilegios para generar OT sin un aviso de falla. Por favor generar conforme al flujo"
 
 
 def _puede_crear_ot(rol: str | None) -> bool:

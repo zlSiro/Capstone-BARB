@@ -75,15 +75,15 @@ RUTAS: dict[str, dict[str, bool | str]] = {
 
 # =============================================================================
 # PERMISOS POR ACCIÓN  (basado en la matriz "Funciones dentro de las páginas")
-# NOTA: "crear_ot" se sobre-escribe abajo por instrucción explícita del negocio:
-# solo gerente y admin pueden crear OT (la matriz de referencia original indicaba
-# otros roles).
+# NOTA: "crear_ot" (crear una OT directamente, sin un aviso de falla previo) es exclusiva del
+# supervisor por decisión explícita del negocio. Todo lo que reportan los demás roles entra como
+# aviso de falla y el supervisor decide si genera la OT (`gestionar_avisos`).
 # =============================================================================
 
 ACCIONES: dict[str, dict[str, bool]] = {
-    # Crear una OT directamente (sin pasar por un aviso): supervisor y gerente. El administrador gobierna el
-    # sistema, no opera sobre el mantenimiento.
-    "crear_ot":            {"operador": False, "tecnico": False, "supervisor": True,  "engineer": False, "gerente": True, "admin": False, "visitante": False, "super_usuario": False},
+    # Crear una OT directamente (sin pasar por un aviso): SOLO el supervisor. El gerente y el administrador no la
+    # crean por esta vía (el gerente sí genera OT desde un aviso con `gestionar_avisos`).
+    "crear_ot":            {"operador": False, "tecnico": False, "supervisor": True,  "engineer": False, "gerente": False, "admin": False, "visitante": False, "super_usuario": False},
     # El técnico solo inicia las OT que tiene asignadas (`iniciar_ot_asignada`); cerrar es de supervisión hacia arriba.
     "cambiar_estado_ot":   {"operador": False, "tecnico": False, "supervisor": True,  "engineer": True,  "gerente": True, "admin": False, "visitante": False, "super_usuario": False},
     # Cancelar una OT (estado final) es más restrictivo que iniciarla/cerrarla: engineer no puede.

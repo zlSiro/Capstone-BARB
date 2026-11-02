@@ -71,13 +71,13 @@ async def test_si_la_columna_no_existe_usa_el_global_y_no_rompe(monkeypatch):
 
 @pytest_asyncio.fixture
 async def ot_creada(client, db_pool):
-    """Crea una OT real con el gerente de la empresa 1 y la borra al terminar."""
+    """Crea una OT real con el supervisor de la empresa 1 y la borra al terminar."""
     from barb.core.db import fetch_all
 
     token = f"test-sla-{uuid.uuid4().hex[:8]}"
     await execute(
         "INSERT INTO sesion (token, usuario_id, expira_en) "
-        "VALUES (%(t)s, 2, NOW() + INTERVAL '10 minutes')",
+        "VALUES (%(t)s, 10, NOW() + INTERVAL '10 minutes')",
         {"t": token},
     )
     h = {"Authorization": f"Bearer {token}"}
