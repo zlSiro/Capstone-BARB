@@ -22,6 +22,9 @@ pool = AsyncConnectionPool(
     max_size=10,
     # prepare_threshold=None: el pooler de Supabase (modo transaction, :6543) no soporta prepared statements.
     kwargs={"row_factory": dict_row, "prepare_threshold": None},
+    
+    # check: descarta conexiones que el pooler cerro por inactividad antes de entregarlas.
+    check=AsyncConnectionPool.check_connection,
     open=False,
 )
 
