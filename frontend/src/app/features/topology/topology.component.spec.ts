@@ -451,6 +451,161 @@ describe('TopologyComponent', () => {
     expect(despues).not.toEqual(base);
   });
 
+  // --- Táctil (celular y tablet): arrastre con un dedo y pinza con dos --------
+
+  describe('gestos táctiles', () => {
+    /** jsdom no trae PointerEvent: se arma un evento de puntero con los campos que usa el componente. */
+    const toque = (tipo: string, id: number, x: number, y: number, pointerType = 'touch') => {
+      const e = new MouseEvent(tipo, { bubbles: true, cancelable: true, clientX: x, clientY: y });
+      Object.defineProperty(e, 'pointerType', { value: pointerType });
+      Object.defineProperty(e, 'pointerId', { value: id });
+      return e;
+    };
+    const conTamano = (svg: SVGSVGElement) => {
+      svg.getBoundingClientRect = () => ({ width: 600, height: 400, top: 0, left: 0, right: 600, bottom: 400, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+    };
+    const caja = (svg: SVGSVGElement) => svg.getAttribute('viewBox')!.split(' ').map(Number);
+
+    it('el lienzo declara touch-action: none para que el navegador no robe el gesto', () => {
+      const { el } = setup(TOPOLOGIA);
+      expect(canvas(el)!.getAttribute('style')).toContain('touch-action: none');
+    });
+
+    it('un dedo arrastra el mapa en la dirección del dedo', () => {
+      const { fixture, el } = setup(TOPOLOGIA);
+      const svg = canvas(el)!;
+      conTamano(svg);
+      const antes = caja(svg);
+      svg.dispatchEvent(toque('pointerdown', 1, 100, 100));
+      svg.dispatchEvent(toque('pointermove', 1, 160, 100));
+      svg.dispatchEvent(toque('pointerup', 1, 160, 100));
+      fixture.detectChanges();
+      const despues = caja(svg);
+      expect(despues[0]).toBeLessThan(antes[0]); // el dedo fue a la derecha: la vista se corre a la izquierda
+      expect(despues[1]).toBeCloseTo(antes[1], 5);
+      expect(despues[2]).toBeCloseTo(antes[2], 5); // arrastrar no cambia el zoom
+    });
+
+    it('dos dedos que se separan acercan el mapa (pinza)', () => {
+      const { fixture, el } = setup(TOPOLOGIA);
+      const svg = canvas(el)!;
+      conTamano(svg);
+      const antes = caja(svg);
+      svg.dispatchEvent(toque('pointerdown', 1, 250, 200));
+      svg.dispatchEvent(toque('pointerdown', 2, 350, 200));
+      svg.dispatchEvent(toque('pointermove', 2, 450, 200)); // separación 100 -> 200
+      fixture.detectChanges();
+      const despues = caja(svg);
+      expect(despues[2]).toBeCloseTo(antes[2] / 2, 5);
+      expect(despues[3]).toBeCloseTo(antes[3] / 2, 5);
+    });
+
+    it('dos dedos que se juntan alejan el mapa', () => {
+      const { fixture, el } = setup(TOPOLOGIA);
+      const svg = canvas(el)!;
+      conTamano(svg);
+      const antes = caja(svg);
+      svg.dispatchEvent(toque('pointerdown', 1, 200, 200));
+      svg.dispatchEvent(toque('pointerdown', 2, 400, 200));
+      svg.dispatchEvent(toque('pointermove', 2, 300, 200)); // 200 -> 100
+      fixture.detectChanges();
+      expect(caja(svg)[2]).toBeGreaterThan(antes[2]);
+    });
+
+    it('la pinza mantiene fijo el punto bajo los dedos', () => {
+      const { fixture, el } = setup(TOPOLOGIA);
+      const svg = canvas(el)!;
+      conTamano(svg);
+      const [x0, y0, w0, h0] = caja(svg);
+      const escala = Math.max(w0 / 600, h0 / 400);
+      const foco = { x: 300 + 40, y: 200 }; // centro de la pinza
+      const unidadesEn = (b: number[], px: number, py: number) => ({
+        x: b[0] + (px - (600 - b[2] / Math.max(b[2] / 600, b[3] / 400)) / 2) * Math.max(b[2] / 600, b[3] / 400),
+        y: b[1] + (py - (400 - b[3] / Math.max(b[2] / 600, b[3] / 400)) / 2) * Math.max(b[2] / 600, b[3] / 400),
+      });
+      const antes = unidadesEn([x0, y0, w0, h0], foco.x, foco.y);
+      expect(escala).toBeGreaterThan(0);
+      svg.dispatchEvent(toque('pointerdown', 1, 290, 200));
+      svg.dispatchEvent(toque('pointerdown', 2, 390, 200));
+      svg.dispatchEvent(toque('pointermove', 2, 490, 200)); // el centro pasa de 340 a 390, así que arrastra además de acercar
+      fixture.detectChanges();
+      const despues = unidadesEn(caja(svg), 390, 200);
+      expect(despues.x).toBeCloseTo(antes.x, 3);
+      expect(despues.y).toBeCloseTo(antes.y, 3);
+    });
+
+    it('un toque corto sobre un equipo lo abre', () => {
+      const { fixture, el } = setup(TOPOLOGIA);
+      const svg = canvas(el)!;
+      conTamano(svg);
+      const nodo = el.querySelector('g[data-nodo-id="m_1"]') as SVGGElement;
+      nodo.dispatchEvent(toque('pointerdown', 1, 100, 100));
+      nodo.dispatchEvent(toque('pointerup', 1, 100, 100));
+      nodo.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      fixture.detectChanges();
+      expect(el.querySelector('[data-testid="panel-detalle"]')).not.toBeNull();
+    });
+
+    it('arrastrar empezando sobre un equipo mueve el mapa y NO abre el equipo', () => {
+      const { fixture, el } = setup(TOPOLOGIA);
+      const svg = canvas(el)!;
+      conTamano(svg);
+      const antes = caja(svg);
+      const nodo = el.querySelector('g[data-nodo-id="m_1"]') as SVGGElement;
+      nodo.dispatchEvent(toque('pointerdown', 1, 100, 100));
+      nodo.dispatchEvent(toque('pointermove', 1, 180, 140));
+      nodo.dispatchEvent(toque('pointerup', 1, 180, 140));
+      nodo.dispatchEvent(new MouseEvent('click', { bubbles: true })); // el «clic» que emite el navegador al soltar
+      fixture.detectChanges();
+      expect(caja(svg)[0]).not.toBeCloseTo(antes[0], 3);
+      expect(el.querySelector('[data-testid="panel-detalle"]')).toBeNull();
+    });
+
+    it('un temblor de menos de 8 px sigue siendo un toque (no mueve el mapa)', () => {
+      const { fixture, el } = setup(TOPOLOGIA);
+      const svg = canvas(el)!;
+      conTamano(svg);
+      const antes = svg.getAttribute('viewBox');
+      svg.dispatchEvent(toque('pointerdown', 1, 100, 100));
+      svg.dispatchEvent(toque('pointermove', 1, 104, 103));
+      svg.dispatchEvent(toque('pointerup', 1, 104, 103));
+      fixture.detectChanges();
+      expect(svg.getAttribute('viewBox')).toBe(antes);
+    });
+
+    it('al levantar un dedo tras la pinza el otro sigue arrastrando sin saltos', () => {
+      const { fixture, el } = setup(TOPOLOGIA);
+      const svg = canvas(el)!;
+      conTamano(svg);
+      svg.dispatchEvent(toque('pointerdown', 1, 250, 200));
+      svg.dispatchEvent(toque('pointerdown', 2, 350, 200));
+      svg.dispatchEvent(toque('pointerup', 2, 350, 200));
+      fixture.detectChanges();
+      const tras = svg.getAttribute('viewBox');
+      svg.dispatchEvent(toque('pointermove', 1, 250, 200)); // sin desplazamiento real: no debe saltar
+      fixture.detectChanges();
+      expect(svg.getAttribute('viewBox')).toBe(tras);
+    });
+
+    it('el ratón no se procesa dos veces: los eventos de puntero con ratón se ignoran', () => {
+      const { fixture, el } = setup(TOPOLOGIA);
+      const svg = canvas(el)!;
+      conTamano(svg);
+      const antes = svg.getAttribute('viewBox');
+      svg.dispatchEvent(toque('pointerdown', 1, 100, 100, 'mouse'));
+      svg.dispatchEvent(toque('pointermove', 1, 200, 100, 'mouse'));
+      fixture.detectChanges();
+      expect(svg.getAttribute('viewBox')).toBe(antes);
+    });
+
+    it('los botones de zoom miden al menos 44 px para tocarlos con el dedo', () => {
+      const { el } = setup(TOPOLOGIA);
+      for (const id of ['zoom-in', 'zoom-out', 'zoom-reset']) {
+        expect((el.querySelector(`[data-testid="${id}"]`) as HTMLElement).className).toContain('min-h-11');
+      }
+    });
+  });
+
   // --- Modo oscuro (HU-07) -----------------------------------------------------
 
   describe('modo oscuro', () => {
