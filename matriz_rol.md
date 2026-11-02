@@ -43,7 +43,7 @@ Leyenda: ✔ acceso total · 👁 solo lectura · propio = solo lo suyo · — s
 
 | Acción | operador | tecnico | supervisor | engineer | gerente | admin | visitante | super_usuario |
 |---|---|---|---|---|---|---|---|---|
-| `crear_ot` (directa, sin aviso) | — | — | ✔ | — | ✔ | — | — | — |
+| `crear_ot` (directa, sin aviso previo; **solo supervisor**) | — | — | ✔ | — | — | — | — | — |
 | `cambiar_estado_ot` (iniciar o cerrar) | — | — | ✔ | ✔ | ✔ | — | — | — |
 | `iniciar_ot_asignada` | — | solo la suya | — | — | — | — | — | — |
 | `cancelar_ot` | — | — | ✔ | — | ✔ | — | — | — |

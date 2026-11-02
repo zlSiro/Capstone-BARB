@@ -4,6 +4,7 @@ import { TestBed } from '@angular/core/testing';
 import { Subject } from 'rxjs';
 
 import { WorkOrder } from '../../../../core/models';
+import { AuthService } from '../../../../core/services/auth.service';
 import { PermissionsService } from '../../../../core/permissions/permissions.service';
 import { OtLiveSimulatorService } from '../../../../core/services/ot-live-simulator.service';
 import { TenantContextService } from '../../../../core/services/tenant-context.service';
@@ -113,5 +114,40 @@ describe('WorkOrdersListComponent — cambio de estado', () => {
     // El backend ya entrega allowed_transitions vacío para estos roles.
     expect(fixture.componentInstance).toBeTruthy();
     expect(el.textContent).toContain('Tu rol no permite modificar estados');
+  });
+});
+
+
+describe('WorkOrdersListComponent — botón «+ Crear OT» por rol', () => {
+  function montarConRol(role: string) {
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: AuthService, useValue: { user: () => ({ role, name: 'T' }) } },
+        { provide: TenantContextService, useValue: { isSuper: () => false } },
+      ],
+    });
+    const http = TestBed.inject(HttpTestingController);
+    const fixture = TestBed.createComponent(WorkOrdersListComponent);
+    fixture.detectChanges();
+    http.expectOne(r => r.url.endsWith('/work-orders')).flush([ORDER]);
+    fixture.detectChanges();
+    return fixture.nativeElement as HTMLElement;
+  }
+  const botonCrear = (el: HTMLElement) => Array.from(el.querySelectorAll('button')).find(b => /Crear OT/.test(b.textContent ?? ''));
+
+  it('el supervisor, único con permiso para crear una OT sin aviso previo, ve el botón y abre el diálogo', () => {
+    const el = montarConRol('supervisor');
+    expect(botonCrear(el)).toBeDefined();
+    botonCrear(el)!.click();
+    TestBed.tick();
+    expect(el.querySelector('app-create-ot-modal')).not.toBeNull();
+  });
+
+  it.each(['operador', 'tecnico', 'engineer', 'gerente', 'admin', 'visitante'])('%s no ve el botón «+ Crear OT»', rol => {
+    const el = montarConRol(rol);
+    expect(botonCrear(el)).toBeUndefined();
+    expect(el.querySelector('app-create-ot-modal')).toBeNull();
   });
 });

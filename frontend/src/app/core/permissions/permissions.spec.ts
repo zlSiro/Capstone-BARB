@@ -7,7 +7,7 @@ import { ACCIONES, AccionKey, RUTAS, ROLES, getDefaultRouteForRole, puedeAcceder
  * (y las del backend) obligan a actualizar el otro.
  */
 const ACCIONES_ESPERADAS: Partial<Record<AccionKey, string[]>> = {
-  crear_ot: ['supervisor', 'gerente'],
+  crear_ot: ['supervisor'],
   cambiar_estado_ot: ['supervisor', 'engineer', 'gerente'],
   cancelar_ot: ['supervisor', 'gerente'],
   eliminar_ot: ['gerente'],

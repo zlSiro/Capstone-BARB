@@ -116,7 +116,7 @@ async def _crear_ot_atrasada(client, dias: int, estado: str = "pending") -> str:
         "/api/work-orders",
         json={"maquina_id": maquina["maquina_id"], "tecnico_id": tecnico["usuario_id"],
               "descripcion_problema": f"{MARCA} {dias}d {estado}"},
-        headers=await _auth(client, GERENTE),
+        headers=await _auth(client, SUPERVISOR),
     )
     assert resp.status_code == 200, resp.text
     numero = resp.json()["numero_ot"]

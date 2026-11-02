@@ -39,7 +39,7 @@ def _numero(salida: str) -> str | None:
 @pytest.fixture
 def tools_chat():
     # admin (usuario 1, empresa 1): no es técnico, así que la OT se asignaría a un técnico.
-    return {t.name: t for t in crear_tools(empresa_id=1, usuario_id=1, rol="admin")}
+    return {t.name: t for t in crear_tools(empresa_id=1, usuario_id=1, rol="supervisor")}
 
 
 @pytest.mark.asyncio
@@ -51,7 +51,7 @@ async def test_crear_ot_crea_una_ot_real_y_coherente(db_pool):
         "alta",
         empresa_id=1,
         usuario_id=1,
-        rol="admin",
+        rol="supervisor",
     )
     numero = _numero(salida)
     assert numero, f"la tool no informó el número de OT: {salida}"
@@ -94,8 +94,8 @@ async def test_crear_ot_no_duplica_la_misma_orden(db_pool):
     reintentar tras un error, y el usuario no debe ver dos OTs iguales.
     """
     datos = ("Compresor A1", "Fuga de aceite en la tapa del cárter", "medium")
-    primera = await crear_ot_aprobada(*datos, empresa_id=1, usuario_id=1, rol="admin")
-    segunda = await crear_ot_aprobada(*datos, empresa_id=1, usuario_id=1, rol="admin")
+    primera = await crear_ot_aprobada(*datos, empresa_id=1, usuario_id=1, rol="supervisor")
+    segunda = await crear_ot_aprobada(*datos, empresa_id=1, usuario_id=1, rol="supervisor")
 
     numeros = [n for n in (_numero(primera), _numero(segunda)) if n]
     try:
@@ -124,7 +124,7 @@ async def test_crear_ot_no_crea_nada_si_la_maquina_no_existe(db_pool):
         "medium",
         empresa_id=1,
         usuario_id=1,
-        rol="admin",
+        rol="supervisor",
     )
 
     despues = await fetch_one("SELECT COUNT(*) AS n FROM orden_trabajo")
@@ -160,11 +160,11 @@ async def test_crear_ot_no_escribe_en_otra_empresa(db_pool):
         "Intento de escritura cruzada entre empresas",
         "medium",
         empresa_id=2,
-        usuario_id=17,
-        # Gerente de la empresa 2: tiene permiso para crear OTs, asi el test llega
+        usuario_id=18,
+        # Supervisor de la empresa 2 (el unico rol que crea OTs directas): tiene permiso, asi el test llega
         # al resolver y mide lo que dice medir (aislamiento por empresa). Con un
         # tecnico el corte ocurriria antes, en el chequeo de permisos.
-        rol="gerente",
+        rol="supervisor",
     )
 
     despues = await fetch_one(
@@ -192,7 +192,7 @@ async def test_el_grafo_bindea_las_dos_skills(db_pool):
             return self
 
     espia = _Espia()
-    crear_grafo(empresa_id=1, llm=espia, usuario_id=1, rol="admin")
+    crear_grafo(empresa_id=1, llm=espia, usuario_id=1, rol="supervisor")
 
     nombres = sorted(t.name for t in espia.tools)
     # HU-26: el universo de Skills creó a 5. Ninguna escribe sin confirmación.

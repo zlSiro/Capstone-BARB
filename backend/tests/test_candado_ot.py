@@ -91,7 +91,7 @@ def _insert_espia(monkeypatch):
 @pytest.mark.asyncio
 async def test_el_modelo_solo_ve_tools_de_lectura_y_propuesta():
     """Criterio central del candado: no existe ninguna tool que escriba en la base."""
-    herramientas = {t.name: t for t in crear_tools(empresa_id=1, usuario_id=1, rol="admin")}
+    herramientas = {t.name: t for t in crear_tools(empresa_id=1, usuario_id=1, rol="supervisor")}
     # HU-26: se agregaron las Skills de topología. Ninguna escribe sin confirmación.
     assert set(herramientas) == {
         "consultar_ots_maquina",
@@ -124,7 +124,7 @@ async def test_el_turno_de_propuesta_termina_con_el_texto_exacto(_maquina_conoci
             )
         ]
     )
-    grafo = crear_grafo(empresa_id=1, llm=modelo, usuario_id=1, rol="admin")
+    grafo = crear_grafo(empresa_id=1, llm=modelo, usuario_id=1, rol="supervisor")
 
     estado = await grafo.ainvoke(_entrada([HumanMessage(content="crea una OT por ruido")]))
 
@@ -138,7 +138,7 @@ async def test_confirmacion_inserta_la_ot(_insert_espia):
     """Con propuesta pendiente y un «sí» claro, el gate ejecuta el INSERT con los datos
     parseados de la propuesta — y el modelo no participa."""
     modelo = _LLMFalso([AIMessage(content="esto no debería usarse")])
-    grafo = crear_grafo(empresa_id=1, llm=modelo, usuario_id=1, rol="admin")
+    grafo = crear_grafo(empresa_id=1, llm=modelo, usuario_id=1, rol="supervisor")
 
     estado = await grafo.ainvoke(_entrada([AIMessage(content=_propuesta()), HumanMessage(content="sí, confirmo")]))
 
@@ -147,7 +147,7 @@ async def test_confirmacion_inserta_la_ot(_insert_espia):
     assert len(_insert_espia) == 1
     consulta, problema, prioridad, empresa_id, usuario_id, rol = _insert_espia[0]
     assert (consulta, problema, prioridad) == ("Compressor A1", "Ruido metálico al arrancar", "high")
-    assert (empresa_id, usuario_id, rol) == (1, 1, "admin")
+    assert (empresa_id, usuario_id, rol) == (1, 1, "supervisor")
     assert len(modelo.llamadas) == 0, "la confirmación no vuelve a invocar al modelo"
 
 
@@ -155,7 +155,7 @@ async def test_confirmacion_inserta_la_ot(_insert_espia):
 async def test_rechazo_no_inserta(_insert_espia):
     """Un rechazo explícito descarta la propuesta: no hay INSERT y se avisa."""
     modelo = _LLMFalso([AIMessage(content="esto no debería usarse")])
-    grafo = crear_grafo(empresa_id=1, llm=modelo, usuario_id=1, rol="admin")
+    grafo = crear_grafo(empresa_id=1, llm=modelo, usuario_id=1, rol="supervisor")
 
     estado = await grafo.ainvoke(_entrada([AIMessage(content=_propuesta()), HumanMessage(content="no, espera")]))
 
@@ -169,7 +169,7 @@ async def test_respuesta_ambigua_repregunta_con_el_mismo_texto(_insert_espia):
     """Ante la duda se re-pregunta con la propuesta IDÉNTICA (para que el turno siguiente
     la vuelva a detectar) y no se crea nada."""
     modelo = _LLMFalso([AIMessage(content="esto no debería usarse")])
-    grafo = crear_grafo(empresa_id=1, llm=modelo, usuario_id=1, rol="admin")
+    grafo = crear_grafo(empresa_id=1, llm=modelo, usuario_id=1, rol="supervisor")
 
     estado = await grafo.ainvoke(_entrada([AIMessage(content=_propuesta()), HumanMessage(content="mmm, no sé")]))
 
@@ -182,7 +182,7 @@ async def test_respuesta_ambigua_repregunta_con_el_mismo_texto(_insert_espia):
 async def test_sin_propuesta_el_gate_pasa_derecho(_insert_espia):
     """Sin propuesta pendiente, el gate no interviene y el turno corre normal."""
     modelo = _LLMFalso([AIMessage(content="El Compressor A1 tiene 3 OTs abiertas.")])
-    grafo = crear_grafo(empresa_id=1, llm=modelo, usuario_id=1, rol="admin")
+    grafo = crear_grafo(empresa_id=1, llm=modelo, usuario_id=1, rol="supervisor")
 
     estado = await grafo.ainvoke(_entrada([HumanMessage(content="¿cuántas OTs tiene el Compressor A1?")]))
 
@@ -197,7 +197,7 @@ async def test_la_resolucion_cierra_el_borrador(_insert_espia):
     """Después de crear la OT (o descartar), el borrador queda cerrado: un «sí» tardío ya
     no vuelve a insertar nada."""
     modelo = _LLMFalso([AIMessage(content="¡De nada! Avísame si necesitas otra cosa.")])
-    grafo = crear_grafo(empresa_id=1, llm=modelo, usuario_id=1, rol="admin")
+    grafo = crear_grafo(empresa_id=1, llm=modelo, usuario_id=1, rol="supervisor")
 
     await grafo.ainvoke(
         _entrada(
@@ -216,7 +216,7 @@ async def test_propuesta_corrupta_no_se_confirma(_insert_espia):
     """Un texto con el prefijo pero sin datos parseables NO llega al INSERT: el gate
     prefiere no hacer nada antes que crear una OT con datos inventados."""
     modelo = _LLMFalso([AIMessage(content="respuesta normal")])
-    grafo = crear_grafo(empresa_id=1, llm=modelo, usuario_id=1, rol="admin")
+    grafo = crear_grafo(empresa_id=1, llm=modelo, usuario_id=1, rol="supervisor")
 
     await grafo.ainvoke(
         _entrada(
@@ -243,7 +243,7 @@ async def test_astream_emite_el_texto_del_gate(_insert_espia):
             pistas=[],
             llm=_LLMFalso([AIMessage(content="esto no debería usarse")]),
             usuario_id=1,
-            rol="admin",
+            rol="supervisor",
         )
     ]
     assert "".join(chunks) == TEXTO_RECHAZO
