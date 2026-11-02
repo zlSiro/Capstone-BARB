@@ -29,6 +29,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from psycopg import OperationalError  # noqa: E402
+
 from barb.core.db import close_pool, fetch_all, open_pool  # noqa: E402
 from barb.services.document_repository import EMBEDDING_DIM, upsert_chunks  # noqa: E402
 from barb.services.embeddings import (  # noqa: E402
@@ -144,22 +146,31 @@ async def main() -> int:
 
         # --- Escritura -----------------------------------------------------------
         print(f"\n  Generando {len(pendientes)} vectores en lotes de {LOTE}...")
-        por_documento: dict[int, list[tuple[int, str, list[float]]]] = {}
         procesados = 0
+        escritos = 0
 
+        # Se escribe lote a lote: la conexion no queda ociosa mientras se embebe el resto
+        # (el pooler de Supabase la cierra) y un fallo no pierde lo ya hecho.
         for inicio in range(0, len(pendientes), LOTE):
             lote = pendientes[inicio : inicio + LOTE]
             vectores = await embed_lote([c["contenido"] for c in lote])
+            por_documento: dict[int, list[tuple[int, str, list[float]]]] = {}
             for fila, vec in zip(lote, vectores, strict=True):
                 por_documento.setdefault(int(fila["documento_id"]), []).append(
                     (int(fila["orden"]), str(fila["contenido"]), vec)
                 )
+            for documento_id, chunks in por_documento.items():
+                for intento in range(3):
+                    try:
+                        escritos += await upsert_chunks(documento_id, chunks)
+                        break
+                    except OperationalError as e:
+                        if intento == 2:
+                            raise
+                        print(f"    conexion perdida ({e.__class__.__name__}), reintentando...")
+                        await asyncio.sleep(2)
             procesados += len(lote)
-            print(f"    {procesados}/{len(pendientes)} chunks embebidos")
-
-        escritos = 0
-        for documento_id, chunks in por_documento.items():
-            escritos += await upsert_chunks(documento_id, chunks)
+            print(f"    {procesados}/{len(pendientes)} chunks escritos")
 
         _ok(f"{escritos} vectores escritos en documento_embedding.")
         print(f"        total en la tabla: {await _total_actual()}")
