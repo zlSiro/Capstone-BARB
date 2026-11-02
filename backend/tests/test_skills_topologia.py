@@ -20,10 +20,14 @@ from langchain_core.messages import AIMessage, HumanMessage
 from barb.core.db import execute, fetch_one
 from barb.services import chat_graph
 from barb.services.ai_tools import (
+    _PREFIJO_PROPUESTA_PARAMETROS,
     _PREFIJO_PROPUESTA_PLANTA,
     PERMISO_DENEGADO,
+    _parsear_propuesta_parametros,
     _parsear_propuesta_planta,
+    _texto_propuesta_parametros,
     _texto_propuesta_planta,
+    actualizar_parametros_aprobada,
     crear_planta_aprobada,
     crear_tools,
 )
@@ -171,12 +175,34 @@ async def test_actualizar_parametros_maquina_requiere_permiso(client, ctx):
 
 @pytest.mark.asyncio
 async def test_actualizar_parametros_maquina_cambia_sla_y_costo(client, ctx):
-    """El caso feliz: gerente cambia SLA y costo; el mensaje muestra antes → después y la
-    base queda con los valores nuevos."""
+    """El caso feliz PERO ahora con candado: la tool solo PROPONE (sin escribir); el
+    write real lo hace `actualizar_parametros_aprobada` tras el «sí» del gate."""
     _, maquina_id = await _planta_con_dos_maquinas(client, ctx)
 
-    salida = await HERRAMIENTAS["actualizar_parametros_maquina"].ainvoke(
+    propuesta = await HERRAMIENTAS["actualizar_parametros_maquina"].ainvoke(
         {"nombre_maquina": f"Compresor {ctx['marca']}", "sla_horas": 8, "costo_inactividad_minuto": 120}
+    )
+
+    # 1) La tool solo redacta: propuesta parseable y la base SIN cambios.
+    assert propuesta.startswith(_PREFIJO_PROPUESTA_PARAMETROS)
+    assert "¿Confirmas el cambio?" in propuesta
+    borrador = _parsear_propuesta_parametros(propuesta)
+    assert borrador and borrador["tipo"] == "parametros"
+    assert borrador["sla_horas"] == 8 and borrador["costo_inactividad_minuto"] == 120
+    fila = await fetch_one(
+        "SELECT sla_horas, costo_inactividad_minuto FROM maquina WHERE maquina_id = %(m)s",
+        {"m": maquina_id},
+    )
+    assert float(fila["sla_horas"]) == 6 and float(fila["costo_inactividad_minuto"]) == 50, "sin confirmación no escribe"
+
+    # 2) Con el «sí», el write por el gate: misma máquina, valores nuevos.
+    salida = await actualizar_parametros_aprobada(
+        borrador["codigo"],
+        borrador["sla_horas"],
+        borrador["costo_inactividad_minuto"],
+        empresa_id=1,
+        usuario_id=GERENTE_ID,
+        rol="gerente",
     )
 
     assert f"Actualicé «Compresor {ctx['marca']}»" in salida
@@ -199,6 +225,54 @@ async def test_actualizar_parametros_maquina_rechaza_valores_invalidos(db_pool):
     ):
         salida = await HERRAMIENTAS["actualizar_parametros_maquina"].ainvoke(args)
         assert esperado in salida, f"{args}: {salida}"
+
+
+async def test_actualizar_parametros_aprobada_revalida_y_no_adivina(db_pool):
+    """El write del gate revalida TODO: propuesta sin valores nuevos se descarta; la
+    máquina se re-resuelve por CÓDIGO exacto y el permiso se vuelve a chequear."""
+    # Sin valores: no hay nada que escribir.
+    salida = await actualizar_parametros_aprobada("PUMP-E4", None, None, empresa_id=1, usuario_id=GERENTE_ID, rol="gerente")
+    assert "no indicaba ningún valor" in salida
+
+    # Fuera de rango: no escribe aunque llegue con «sí».
+    salida = await actualizar_parametros_aprobada("PUMP-E4", 99999.0, None, empresa_id=1, usuario_id=GERENTE_ID, rol="gerente")
+    assert "fuera de rango" in salida
+
+    # Código que NO existe: no adivina, no escribe.
+    salida = await actualizar_parametros_aprobada("XYZ-NADIE", 8.0, None, empresa_id=1, usuario_id=GERENTE_ID, rol="gerente")
+    assert "No encontré la máquina" in salida
+
+    # Sin permiso: el gate vuelve a chequear el rol, no confía en el turno anterior.
+    salida = await actualizar_parametros_aprobada("PUMP-E4", 8.0, None, empresa_id=1, usuario_id=4, rol="tecnico")
+    assert salida == PERMISO_DENEGADO
+    fila_antes = await fetch_one("SELECT sla_horas FROM maquina WHERE codigo = %(c)s", {"c": "PUMP-E4"})
+    fila = await fetch_one("SELECT sla_horas FROM maquina WHERE codigo = %(c)s", {"c": "PUMP-E4"})
+    assert float(fila["sla_horas"] or -1) == float(fila_antes["sla_horas"] or -1), "sin permiso ni con «sí» no cambia nada"
+
+
+def test_la_propuesta_de_parametros_parsea_redonda():
+    """Round-trip del texto: lo que redacta la tool es EXACTO lo que parsea el gate
+    (con el SLA intacto y el campo no tocado vacío)."""
+    texto = _texto_propuesta_parametros(
+        {"nombre": "Pump E4", "codigo": "PUMP-E4", "planta": "Planta Central San Bernardo"},
+        {"sla_horas": 6, "costo_inactividad_minuto": None},
+        {"sla_horas": 8.0},
+    )
+
+    assert texto.startswith(_PREFIJO_PROPUESTA_PARAMETROS)
+    datos = _parsear_propuesta_parametros(texto)
+    assert datos["tipo"] == "parametros"
+    assert datos["codigo"] == "PUMP-E4" and datos["nombre"] == "Pump E4"
+    assert datos["sla_horas"] == 8.0
+    assert datos["costo_inactividad_minuto"] is None, "costo no tocado = sin cambio"
+
+    # Formato roto (parseo que no cierra) se descarta: nunca se interpreta el
+    # basura como aprobación.
+    corrompido = texto.replace("| sla=8", "| sla=carne")
+    assert _parsear_propuesta_parametros(corrompido) is None
+
+    # Y una propuesta sin la línea de la máquina (incompleta): no es interpretable.
+    assert _parsear_propuesta_parametros(f"{_PREFIJO_PROPUESTA_PARAMETROS}\n\n¿Confirmas?") is None
 
 
 # =============================================================================
@@ -392,3 +466,53 @@ async def test_el_grafo_crea_planta_con_confirmacion(db_pool, monkeypatch):
     finally:
         await execute("DELETE FROM maquina WHERE codigo IN ('TUR-1', 'TUR-2')")
         await execute("DELETE FROM planta WHERE nombre = 'Planta Candado'")
+
+
+# =============================================================================
+# El candado de los parámetros en el grafo (REGLA 10 ya no depende del modelo)
+# =============================================================================
+
+
+def _propuesta_parametros() -> str:
+    return _texto_propuesta_parametros(
+        {"nombre": "Pump E4", "codigo": "PUMP-E4", "planta": "Planta Candado SLA"},
+        {"sla_horas": 6, "costo_inactividad_minuto": 1000},
+        {"sla_horas": 8.0},
+    )
+
+
+@pytest.mark.asyncio
+async def test_el_grafo_no_cambia_parametros_sin_confirmacion(db_pool, monkeypatch):
+    """Turno ambiguo tras la propuesta de parámetros: ni un UPDATE. La propuesta se
+    re-emite idéntica. (El incidente del 31-10 en prod: el modelo escribió al instante;
+    desde esta v2 el freno es el gate, no el prompt.)"""
+    modelo = _LLMFalso()
+    grafo = crear_grafo(empresa_id=1, llm=modelo, usuario_id=GERENTE_ID, rol="gerente")
+
+    fila_antes = await fetch_one("SELECT sla_horas FROM maquina WHERE codigo = 'PUMP-E4'")
+    estado = await grafo.ainvoke(
+        _entrada([AIMessage(content=_propuesta_parametros()), HumanMessage(content="mmm, déjame pensarlo")])
+    )
+
+    final = estado["messages"][-1]
+    assert final.content == _propuesta_parametros(), "la propuesta se re-emite byte a byte"
+    fila = await fetch_one("SELECT sla_horas FROM maquina WHERE codigo = 'PUMP-E4'")
+    assert fila["sla_horas"] == fila_antes["sla_horas"], "sin el «sí» del usuario no se escribe nada"
+
+
+@pytest.mark.asyncio
+async def test_el_grafo_cambia_parametros_con_confirmacion(db_pool, monkeypatch):
+    """Con el «sí» del usuario, el gate ejecuta `actualizar_parametros_aprobada` y el SLA
+    queda escrito (mensaje con antes → después)."""
+    modelo = _LLMFalso()
+    grafo = crear_grafo(empresa_id=1, llm=modelo, usuario_id=GERENTE_ID, rol="gerente")
+
+    try:
+        estado = await grafo.ainvoke(_entrada([AIMessage(content=_propuesta_parametros()), HumanMessage(content="sí")]))
+
+        final = estado["messages"][-1]
+        assert "Actualicé «Pump E4»" in final.content and "6 h → 8 h" in final.content
+        fila = await fetch_one("SELECT sla_horas FROM maquina WHERE codigo = 'PUMP-E4'")
+        assert float(fila["sla_horas"]) == 8
+    finally:
+        await execute("UPDATE maquina SET sla_horas = 6 WHERE codigo = 'PUMP-E4'")
