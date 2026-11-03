@@ -25,7 +25,6 @@ from barb.core.db import fetch_all
 
 # Credenciales del seed (seeds/seed_data.sql) — empresa 1
 ADMIN_E1 = ("admin@barb.com", "admin123")
-VISITANTE_E1 = ("visitante@planta.com", "visitante123")
 # La empresa 2 es la única del seed con disciplina repartida en 2 plantas (d_13 y d_14),
 # así que es la que permite ejercitar A-3.
 ADMIN_E2 = ("admin@mineranorte.cl", "minera123")
@@ -261,13 +260,6 @@ async def test_empresa_id_no_entero_devuelve_422(client):
     h = await _login(client, ADMIN_E1)
     r = await client.get("/api/topology?empresa_id=abc", headers=h)
     assert r.status_code == 422, r.text
-
-
-async def test_visitante_accede_en_solo_lectura(client):
-    """La matriz da 'ver' al rol visitante (permissions.py:44)."""
-    h = await _login(client, VISITANTE_E1)
-    cuerpo = await _topologia(client, h)
-    assert cuerpo["nodos"]
 
 
 # =============================================================================

@@ -3,7 +3,7 @@
 // =============================================================================
 //
 // Roles reales del backend (permissions.py ROLES): operador, tecnico,
-// supervisor, engineer, gerente, admin, visitante. El backend devuelve el
+// supervisor, engineer, gerente, admin, super_usuario. El backend devuelve el
 // rol en minúsculas (ver auth.py login: str(user["rol"]).lower()).
 //
 
@@ -14,7 +14,6 @@ export type Role =
   | 'engineer'
   | 'gerente'
   | 'admin'
-  | 'visitante'
   // Operador de la plataforma BARB: no pertenece a una empresa y ve todas.
   | 'super_usuario'
   | (string & {});

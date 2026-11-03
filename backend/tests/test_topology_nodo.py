@@ -25,7 +25,6 @@ from barb.core.db import execute, fetch_all, fetch_one
 
 ADMIN_E1 = ("admin@barb.com", "admin123")
 ADMIN_E2 = ("admin@mineranorte.cl", "minera123")
-VISITANTE_E1 = ("visitante@planta.com", "visitante123")
 SUPER = ("super@barb.com", "super123")
 
 MAQUINA_CON_OTS = "m_1"
@@ -235,13 +234,6 @@ async def test_super_usuario_no_accede_al_detalle_de_nodos(client):
 # =============================================================================
 # Permisos y autenticación
 # =============================================================================
-
-async def test_visitante_puede_leer(client):
-    """La matriz da 'ver' al visitante en topología (permissions.py:44)."""
-    h = await _login(client, VISITANTE_E1)
-    r = await _nodo(client, h, MAQUINA_CON_OTS)
-    assert r.status_code == 200, r.text
-    assert r.json()["nodo"]["nodo_id"] == MAQUINA_CON_OTS
 
 
 async def test_sin_token_no_devuelve_datos(client):

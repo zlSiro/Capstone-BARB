@@ -31,10 +31,10 @@ describe('permisos: acciones del ciclo de la OT', () => {
     }
   });
 
-  it('el visitante no gana ninguna acción nueva', () => {
-    for (const accion of Object.keys(ACCIONES_ESPERADAS) as AccionKey[]) {
-      expect(puedeEjecutarAccion('visitante', accion)).toBe(false);
-    }
+  it('el rol «visitante» ya no existe: ni en la lista de roles ni en ninguna matriz', () => {
+    expect([...ROLES]).not.toContain('visitante');
+    expect(ROLES).toHaveLength(7);
+    for (const matriz of [...Object.values(ACCIONES), ...Object.values(RUTAS)]) expect(Object.keys(matriz)).not.toContain('visitante');
   });
 
   it('cada acción y cada ruta cubren todos los roles', () => {

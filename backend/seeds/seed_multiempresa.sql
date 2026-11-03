@@ -9,7 +9,6 @@
 --   super_usuario      super@barb.com               / super123      (sin empresa, ve todo)
 --   admin  empresa 1   admin@barb.com               / admin123      (Planta Demo BARB)
 --   engineer empresa 1 engineer1@planta.com         / engineer123   (puede subir documentos)
---   visitante empresa 1 visitante@planta.com        / visitante123
 --   admin  empresa 2   admin@mineranorte.cl         / minera123     (Minera Norte S.A.)
 --   gerente empresa 2  gerente@mineranorte.cl       / minera123
 --   tecnico empresa 2  pedro@mineranorte.cl         / minera123
@@ -30,11 +29,6 @@ VALUES ('Constructora Sur Ltda.', '76.000.004-8', 'Chile', 'Construcción', 'Mar
 -- Super usuario: empresa_id NULL (permitido solo para este rol por ck_usuario_empresa_rol).
 INSERT INTO usuario (empresa_id, nombre, email, password_hash, rol)
 VALUES (NULL, 'Super Usuario BARB', 'super@barb.com', 'super123', 'super_usuario');
-
--- Empresa 1 (Planta Demo BARB): usuario visitante para probar el modo solo lectura.
-INSERT INTO usuario (empresa_id, nombre, email, password_hash, rol)
-SELECT empresa_id, 'Visita Auditoría', 'visitante@planta.com', 'visitante123', 'visitante'
-FROM empresa WHERE nombre = 'Planta Demo BARB';
 
 -- Empresa 2 (Minera Norte S.A.)
 INSERT INTO usuario (empresa_id, nombre, email, password_hash, rol)

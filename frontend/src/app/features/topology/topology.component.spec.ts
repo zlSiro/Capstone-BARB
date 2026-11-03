@@ -1457,7 +1457,7 @@ describe('TopologyComponent — acceso al mantenedor de plantas', () => {
     expect(boton(el)!.textContent).toContain('Gestionar activos');
   });
 
-  it.each(['tecnico', 'operador', 'supervisor', 'engineer', 'visitante', null])(
+  it.each(['tecnico', 'operador', 'supervisor', 'engineer', null])(
     'oculta el botón para el rol %s',
     (role) => {
       const { el } = setupConRol(role as string | null);

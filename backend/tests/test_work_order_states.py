@@ -47,7 +47,7 @@ def test_estado_desconocido_no_tiene_transiciones():
     assert transiciones_posibles("inventado") == ()
 
 
-@pytest.mark.parametrize("rol", ["tecnico", "operador", "visitante"])
+@pytest.mark.parametrize("rol", ["tecnico", "operador"])
 def test_roles_sin_permiso_no_cambian_estado(rol):
     assert puede_ejecutar_accion(rol, "cambiar_estado_ot") is False
     assert transiciones_permitidas("pending", rol) == []
@@ -90,7 +90,7 @@ def test_el_tecnico_que_no_es_responsable_no_puede_iniciar():
     assert transiciones_permitidas("pending", "tecnico") == []
 
 
-@pytest.mark.parametrize("rol", ["operador", "visitante", "admin"])
+@pytest.mark.parametrize("rol", ["operador", "admin"])
 def test_ser_responsable_no_da_permiso_a_otros_roles(rol):
     assert transiciones_permitidas("pending", rol, es_responsable=True) == []
 

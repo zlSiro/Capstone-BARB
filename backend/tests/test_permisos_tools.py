@@ -75,7 +75,7 @@ def test_el_mensaje_de_rechazo_es_el_definido_por_el_negocio():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("rol", ["operador", "tecnico", "engineer", "gerente", "admin", "visitante", "super_usuario"])
+@pytest.mark.parametrize("rol", ["operador", "tecnico", "engineer", "gerente", "admin", "super_usuario"])
 async def test_todo_rol_que_no_es_supervisor_recibe_el_mensaje_al_intentar_generar_una_ot(rol):
     """La intención de crear una OT desde el chat, sin un aviso de falla, se rechaza con el texto del negocio."""
     salida = await _tools(rol)["proponer_ot"].ainvoke({"nombre_maquina": "Compressor A1", "descripcion_problema": PROBLEMA})

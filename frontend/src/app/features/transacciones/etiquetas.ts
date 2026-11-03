@@ -43,7 +43,6 @@ const ROL_CLAVE: Record<string, string> = {
   engineer: 'trx.engineer',
   gerente: 'trx.gerente',
   admin: 'trx.admin',
-  visitante: 'trx.visitante',
   super_usuario: 'trx.super_usuario',
 };
 

@@ -24,7 +24,6 @@ SUPERVISOR = {"email": "supervisor1@planta.com", "password": "super123"}
 ENGINEER = {"email": "engineer1@planta.com", "password": "engineer123"}
 GERENTE = {"email": "gerente1@planta.com", "password": "gerente123"}
 ADMIN = {"email": "admin@barb.com", "password": "admin123"}
-VISITANTE = {"email": "visitante@planta.com", "password": "visitante123"}
 SUPER = {"email": "super@barb.com", "password": "super123"}
 GERENTE_E2 = {"email": "gerente@mineranorte.cl", "password": "minera123"}
 
@@ -79,8 +78,8 @@ async def test_pueden_reportar_quienes_trabajan_en_planta(client, maquina_id, li
     assert (await _reportar(client, creds, maquina_id))["estado"] == "pendiente"
 
 
-@pytest.mark.parametrize("creds", [ADMIN, SUPER, VISITANTE])
-async def test_admin_super_y_visitante_no_reportan(client, maquina_id, creds):
+@pytest.mark.parametrize("creds", [ADMIN, SUPER])
+async def test_admin_y_super_no_reportan(client, maquina_id, creds):
     resp = await client.post(
         "/api/avisos", json={"maquina_id": maquina_id, "descripcion": f"{MARCA}: x"}, headers=await _login(client, creds)
     )
@@ -495,7 +494,7 @@ async def test_una_ot_creada_directamente_no_tiene_aviso(client, maquina_id, lim
             "tecnico_id": await _usuario_id(TECNICO["email"]),
             "descripcion_problema": f"{MARCA}: directa",
         },
-        headers=await _login(client, GERENTE),
+        headers=await _login(client, SUPERVISOR),
     )
     assert resp.status_code == 200, resp.text
     assert resp.json()["aviso_falla_id"] is None and resp.json()["numero_aviso"] is None

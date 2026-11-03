@@ -18,43 +18,42 @@ Leyenda: ✔ acceso total · 👁 solo lectura · propio = solo lo suyo · — s
 | `engineer` | Ingeniería: cambia estados y gestiona documentación técnica; analiza el historial. No cancela OT. |
 | `gerente` | Responsable de la empresa: todo lo de supervisión, más eliminar OT, gestionar usuarios y su bitácora de empresa. |
 | `admin` | Gobierno del sistema: usuarios operativos, plantas, máquinas, documentos y notificaciones. No opera sobre las OT. |
-| `visitante` | Solo lectura limitada. Sin cambios en esta versión. |
 | `super_usuario` | Contraparte comercial de BARB. Sin empresa: administra empresas y gerentes; no accede a datos operativos. |
 
 ## Pantallas y rutas (`RUTAS`)
 
-| Pantalla / ruta | operador | tecnico | supervisor | engineer | gerente | admin | visitante | super_usuario |
-|---|---|---|---|---|---|---|---|---|
-| Órdenes de trabajo (`menu`) | propias | asignadas | ✔ | ✔ | ✔ | ✔ | ✔ | — |
-| **Avisos de falla (`avisos`)** | propios | propios | ✔ repositorio | propios | ✔ repositorio | — | — | — |
-| DocChat (`docchat`), `debug`, `report` | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | — | — |
-| Topología, `memory` | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | 👁 | — |
-| Dashboard | — | — | ✔ | ✔ | ✔ | ✔ | 👁 | — |
-| Historial (`history`) | — | — | ✔ | ✔ | ✔ | 👁 | — | — |
-| Documentos | 👁 | 👁 | 👁 | ✔ | ✔ | ✔ | — | — |
-| Plantas, disciplinas y máquinas (alta) | — | — | — | — | ✔ | ✔ | — | — |
-| Notificaciones por correo | — | — | ✔ | — | ✔ | ✔ | — | — |
-| Usuarios (mantenedor) | — | — | — | — | ✔ todos | ✔ operativos | — | ✔ solo gerentes |
-| Empresas (mantenedor) | — | — | — | — | — | — | — | ✔ |
-| Transacciones propias (`transacciones`) | — | — | — | — | — | — | — | ✔ |
-| Transacciones de la empresa (`transacciones_empresa`) | — | — | — | — | ✔ | — | — | — |
+| Pantalla / ruta | operador | tecnico | supervisor | engineer | gerente | admin | super_usuario |
+|---|---|---|---|---|---|---|---|
+| Órdenes de trabajo (`menu`) | propias | asignadas | ✔ | ✔ | ✔ | ✔ | — |
+| **Avisos de falla (`avisos`)** | propios | propios | ✔ repositorio | propios | ✔ repositorio | — | — |
+| DocChat (`docchat`), `debug`, `report` | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | — |
+| Topología, `memory` | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | — |
+| Dashboard | — | — | ✔ | ✔ | ✔ | ✔ | — |
+| Historial (`history`) | — | — | ✔ | ✔ | ✔ | 👁 | — |
+| Documentos | 👁 | 👁 | 👁 | ✔ | ✔ | ✔ | — |
+| Plantas, disciplinas y máquinas (alta) | — | — | — | — | ✔ | ✔ | — |
+| Notificaciones por correo | — | — | ✔ | — | ✔ | ✔ | — |
+| Usuarios (mantenedor) | — | — | — | — | ✔ todos | ✔ operativos | ✔ solo gerentes |
+| Empresas (mantenedor) | — | — | — | — | — | — | ✔ |
+| Transacciones propias (`transacciones`) | — | — | — | — | — | — | ✔ |
+| Transacciones de la empresa (`transacciones_empresa`) | — | — | — | — | ✔ | — | — |
 
 ## Acciones (`ACCIONES`)
 
-| Acción | operador | tecnico | supervisor | engineer | gerente | admin | visitante | super_usuario |
-|---|---|---|---|---|---|---|---|---|
-| `crear_ot` (directa, sin aviso previo; **solo supervisor**) | — | — | ✔ | — | — | — | — | — |
-| `cambiar_estado_ot` (iniciar o cerrar) | — | — | ✔ | ✔ | ✔ | — | — | — |
-| `iniciar_ot_asignada` | — | solo la suya | — | — | — | — | — | — |
-| `cancelar_ot` | — | — | ✔ | — | ✔ | — | — | — |
-| `eliminar_ot` | — | — | — | — | ✔ | — | — | — |
-| **`reportar_falla`** | ✔ | ✔ | ✔ | ✔ | ✔ | — | — | — |
-| **`gestionar_avisos`** (generar OT o descartar) | — | — | ✔ | — | ✔ | — | — | — |
-| **`asignar_ot`** (priorizar, asignar y reasignar) | — | — | ✔ | — | ✔ | — | — | — |
-| `subir_documentos`, `eliminar_documentos` | — | — | — | ✔ | ✔ | ✔ | — | — |
-| `configurar_notificaciones` | — | — | ✔ | — | ✔ | ✔ | — | — |
-| `ver_usuarios`, `gestionar_usuarios` | — | — | — | — | ✔ todos | ✔ operativos | — | ✔ solo gerentes |
-| `gestionar_empresas` | — | — | — | — | — | — | — | ✔ |
+| Acción | operador | tecnico | supervisor | engineer | gerente | admin | super_usuario |
+|---|---|---|---|---|---|---|---|
+| `crear_ot` (directa, sin aviso previo; **solo supervisor**) | — | — | ✔ | — | — | — | — |
+| `cambiar_estado_ot` (iniciar o cerrar) | — | — | ✔ | ✔ | ✔ | — | — |
+| `iniciar_ot_asignada` | — | solo la suya | — | — | — | — | — |
+| `cancelar_ot` | — | — | ✔ | — | ✔ | — | — |
+| `eliminar_ot` | — | — | — | — | ✔ | — | — |
+| **`reportar_falla`** | ✔ | ✔ | ✔ | ✔ | ✔ | — | — |
+| **`gestionar_avisos`** (generar OT o descartar) | — | — | ✔ | — | ✔ | — | — |
+| **`asignar_ot`** (priorizar, asignar y reasignar) | — | — | ✔ | — | ✔ | — | — |
+| `subir_documentos`, `eliminar_documentos` | — | — | — | ✔ | ✔ | ✔ | — |
+| `configurar_notificaciones` | — | — | ✔ | — | ✔ | ✔ | — |
+| `ver_usuarios`, `gestionar_usuarios` | — | — | — | — | ✔ todos | ✔ operativos | ✔ solo gerentes |
+| `gestionar_empresas` | — | — | — | — | — | — | ✔ |
 
 ## Reglas que no están en las matrices
 
@@ -69,7 +68,7 @@ Leyenda: ✔ acceso total · 👁 solo lectura · propio = solo lo suyo · — s
   `cancelled` son finales. El técnico asignado solo puede iniciar su OT; un técnico que no es el asignado recibe 403.
 - **Gestión de usuarios:**
   - Nadie puede asignar `super_usuario`.
-  - El **administrador** solo ve y gestiona usuarios operativos (operador, técnico, supervisor, ingeniero y visitante): no puede
+  - El **administrador** solo ve y gestiona usuarios operativos (operador, técnico, supervisor e ingeniero): no puede
     crear, ver, editar ni eliminar gerentes ni otros administradores. Esos los gestiona el gerente.
   - Un usuario no puede desactivarse, cambiarse el rol ni eliminarse a sí mismo.
   - No se puede convertir a alguien en superusuario ni al revés.

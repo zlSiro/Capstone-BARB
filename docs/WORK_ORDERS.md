@@ -176,7 +176,7 @@ Dos acciones en `ACCIONES` (`permissions.py`, espejo en `permissions.ts`):
 | `cancelar_ot` | `cancelled` | supervisor, gerente (**engineer no**) |
 | `eliminar_ot` | — (borra la OT) | gerente |
 
-**Operador, visitante y administrador no pueden cambiar el estado** (403). El técnico solo puede **iniciar** la OT que tiene asignada (un técnico
+**Operador y administrador no pueden cambiar el estado** (403). El técnico solo puede **iniciar** la OT que tiene asignada (un técnico
 que no es el asignado recibe 403 «Solo el técnico asignado a la OT puede iniciarla.»); cerrarla y cancelarla es de supervisión.
 Cancelar es más restrictivo porque es irreversible. *Revisión de roles y privilegios: el administrador ya no cambia estados ni elimina OT, y eliminar es solo del gerente.*
 
@@ -272,7 +272,7 @@ Un cambio rechazado (403/404/409) no deja registro. Si falla el insert, también
 ## 12. Tests (HU-09)
 
 - `backend/tests/test_work_order_states.py` — unitarios de la máquina de estados y de los permisos por rol (sin BD).
-- `backend/tests/test_work_orders_status.py` — integración del endpoint: flujo completo, auditoría (usuario + timestamp), 403 para técnico/operador/visitante y para engineer al cancelar, 409 por transición inválida / mismo estado / estados finales, 400, 404, aislamiento entre empresas, rutas con guion bajo y `PUT` heredado.
+- `backend/tests/test_work_orders_status.py` — integración del endpoint: flujo completo, auditoría (usuario + timestamp), 403 para técnico/operador y para engineer al cancelar, 409 por transición inválida / mismo estado / estados finales, 400, 404, aislamiento entre empresas, rutas con guion bajo y `PUT` heredado.
 - Frontend: `ot-status-select.component.spec.ts` y `work-orders-list.component.spec.ts` (selector, confirmación, PATCH, toast y manejo de 409).
 
 ```bash

@@ -145,7 +145,7 @@ describe('WorkOrdersListComponent — botón «+ Crear OT» por rol', () => {
     expect(el.querySelector('app-create-ot-modal')).not.toBeNull();
   });
 
-  it.each(['operador', 'tecnico', 'engineer', 'gerente', 'admin', 'visitante'])('%s no ve el botón «+ Crear OT»', rol => {
+  it.each(['operador', 'tecnico', 'engineer', 'gerente', 'admin'])('%s no ve el botón «+ Crear OT»', rol => {
     const el = montarConRol(rol);
     expect(botonCrear(el)).toBeUndefined();
     expect(el.querySelector('app-create-ot-modal')).toBeNull();

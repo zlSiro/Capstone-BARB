@@ -378,7 +378,7 @@ async def test_admin_solo_gestiona_usuarios_operativos(client):
     """El admin gestiona los roles operativos; no a gerentes ni a otros administradores."""
     h = await _login(client, ADMIN_E1)
     roles_visibles = {u["rol"] for u in (await client.get("/api/usuarios", headers=h)).json()}
-    assert roles_visibles <= {"operador", "tecnico", "supervisor", "engineer", "visitante"}
+    assert roles_visibles <= {"operador", "tecnico", "supervisor", "engineer"}
     assert "gerente" not in roles_visibles and "admin" not in roles_visibles
 
     base = {"nombre": "Intento", "password": "secreto123"}

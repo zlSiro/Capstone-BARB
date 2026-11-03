@@ -60,7 +60,7 @@ Implementación: `backend/src/barb/core/work_order_states.py`. Es la **única fu
 | `cambiar_estado_ot` | En curso, Cerrada | supervisor, engineer, gerente, admin, super_usuario |
 | `cancelar_ot` (nueva) | Cancelada | supervisor, gerente, admin, super_usuario |
 
-- **Técnico, operador y visitante no pueden cambiar estados.** Recibirán 403.
+- **Técnico y operador no pueden cambiar estados.** Recibirán 403.
 - **Decisión tomada por el equipo de desarrollo (no venía en la HU):** cancelar exige una acción propia y excluye a `engineer`, porque cancelar es irreversible. Si el negocio prefiere otra regla, se cambia en un solo lugar (`ACCIONES` en `permissions.py` y su espejo `permissions.ts`).
 - Se mantiene el aislamiento entre empresas: una OT de otra empresa responde 404.
 
@@ -160,7 +160,7 @@ Pantalla `/work-orders`:
 **Backend**
 
 - `test_work_order_states.py`: reglas de la máquina de estados y permisos por rol, sin base de datos.
-- `test_work_orders_status.py`: flujo completo pendiente → en curso → cerrada; auditoría con usuario, rol y timestamp; 403 para técnico, operador, visitante y para engineer al cancelar; 409 por transición inválida, mismo estado y estados finales; 400, 404 y 422; aislamiento entre empresas; rutas con guion bajo y `PUT` heredado; un cambio rechazado no deja auditoría.
+- `test_work_orders_status.py`: flujo completo pendiente → en curso → cerrada; auditoría con usuario, rol y timestamp; 403 para técnico, operador y para engineer al cancelar; 409 por transición inválida, mismo estado y estados finales; 400, 404 y 422; aislamiento entre empresas; rutas con guion bajo y `PUT` heredado; un cambio rechazado no deja auditoría.
 - Con la base de datos limpia, los 39 tests nuevos pasaron junto con los de permisos y los de creación de OT.
 
 **Frontend**
