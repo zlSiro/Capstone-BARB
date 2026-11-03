@@ -156,13 +156,3 @@ async def test_parametro_invalido_devuelve_422(client):
     h = await _login(client, ADMIN_E1)
     r = await client.get("/api/stats/financial-impact?days=0", headers=h)
     assert r.status_code == 422, r.text
-
-
-async def test_visitante_puede_leer_las_metricas(client):
-    """La matriz de rutas da 'ver' al visitante en dashboard (permissions.py:47).
-
-    Se documenta el comportamiento real: el visitante SÍ accede, en solo lectura.
-    """
-    h = await _login(client, ("visitante@planta.com", "visitante123"))
-    r = await client.get("/api/stats/financial-impact", headers=h)
-    assert r.status_code == 200, r.text

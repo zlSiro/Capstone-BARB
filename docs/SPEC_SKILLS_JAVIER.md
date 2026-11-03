@@ -292,7 +292,7 @@ Y el mantenedor es igual de restrictivo:
 ```python
 # core/permissions.py, RUTAS["plantas"]
 {"operador": False, "tecnico": False, "supervisor": False, "engineer": False,
- "gerente": True, "admin": True, "visitante": False, "super_usuario": False}
+ "gerente": True, "admin": True, "super_usuario": False}
 ```
 
 Por eso cada tool de escritura arranca así:

@@ -45,16 +45,6 @@ def test_admin_gobierna_el_sistema_pero_no_opera_el_mantenimiento():
             assert permiso is True, ruta
 
 
-def test_visitante_no_puede_crear_ot():
-    assert puede_ejecutar_accion("visitante", "crear_ot") is False
-
-
-def test_visitante_no_gana_ninguna_accion_nueva():
-    for accion in ACCIONES_ESPERADAS:
-        assert puede_ejecutar_accion("visitante", accion) is False, accion
-
-
-# Quién puede ejecutar cada acción del ciclo de la OT (matriz de roles y privilegios).
 ACCIONES_ESPERADAS = {
     "crear_ot": {"supervisor"},
     "cambiar_estado_ot": {"supervisor", "engineer", "gerente"},

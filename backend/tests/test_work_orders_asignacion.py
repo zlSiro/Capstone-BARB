@@ -30,7 +30,7 @@ async def _usuario_id(email: str) -> int:
 
 @pytest.fixture
 async def ot(client):
-    """OT pendiente de carlos, creada por el gerente."""
+    """OT pendiente de carlos, creada por el supervisor (el único rol que crea OT directas)."""
     maquina = await fetch_one("SELECT maquina_id FROM maquina ORDER BY maquina_id LIMIT 1")
     resp = await client.post(
         "/api/work-orders",
@@ -40,7 +40,7 @@ async def ot(client):
             "descripcion_problema": f"{MARCA}: reasignación",
             "priority": "low",
         },
-        headers=await _login(client, GERENTE),
+        headers=await _login(client, SUPERVISOR),
     )
     assert resp.status_code == 200, resp.text
     yield resp.json()["numero_ot"]

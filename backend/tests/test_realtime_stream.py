@@ -33,7 +33,7 @@ async def _empresa_de(client, creds: dict) -> int:
 async def ot(client):
     maquina = await fetch_one("SELECT maquina_id FROM maquina ORDER BY maquina_id LIMIT 1")
     tecnico = await fetch_one("SELECT usuario_id FROM usuario WHERE rol = 'tecnico' AND activo ORDER BY usuario_id LIMIT 1")
-    headers = await _auth(client, GERENTE)
+    headers = await _auth(client, SUPERVISOR)
     resp = await client.post(
         "/api/work-orders",
         json={
@@ -126,7 +126,7 @@ async def test_crear_y_eliminar_ot_publican_eventos(client):
     empresa = await _empresa_de(client, ADMIN)
     maquina = await fetch_one("SELECT maquina_id FROM maquina ORDER BY maquina_id LIMIT 1")
     tecnico = await fetch_one("SELECT usuario_id FROM usuario WHERE rol = 'tecnico' AND activo ORDER BY usuario_id LIMIT 1")
-    headers = await _auth(client, GERENTE)
+    headers = await _auth(client, SUPERVISOR)
 
     with broker.subscribe(empresa) as sub:
         resp = await client.post(
@@ -144,7 +144,7 @@ async def test_crear_y_eliminar_ot_publican_eventos(client):
         creado = sub.queue.get_nowait()
         assert (creado.type, creado.data["numero_ot"]) == (EVENT_OT_CREATED, numero_ot)
 
-        resp = await client.delete(f"/api/work-orders/{numero_ot}", headers=headers)
+        resp = await client.delete(f"/api/work-orders/{numero_ot}", headers=await _auth(client, GERENTE))
         assert resp.status_code == 204, resp.text
         eliminado = sub.queue.get_nowait()
         assert (eliminado.type, eliminado.data["numero_ot"]) == (EVENT_OT_DELETED, numero_ot)

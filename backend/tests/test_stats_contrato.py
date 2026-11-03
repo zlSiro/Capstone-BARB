@@ -21,7 +21,6 @@ from barb.routers import stats
 
 ADMIN_E1 = ("admin@barb.com", "admin123")
 ADMIN_E2 = ("admin@mineranorte.cl", "minera123")
-VISITANTE = ("visitante@planta.com", "visitante123")
 TECNICO = ("carlos@planta.com", "tecnico123")
 
 RUTA = "/api/stats/financial-impact"
@@ -699,12 +698,6 @@ async def test_tecnico_recibe_403(client):
     h = await _login(client, TECNICO)
     r = await client.get(RUTA, headers=h)
     assert r.status_code == 403, r.text
-
-
-async def test_visitante_lee_en_solo_lectura(client):
-    h = await _login(client, VISITANTE)
-    r = await client.get(RUTA, headers=h)
-    assert r.status_code == 200, r.text
 
 
 async def test_rango_invalido_devuelve_422(client):

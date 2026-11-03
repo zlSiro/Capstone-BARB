@@ -85,7 +85,6 @@ Aplicar: `uv run alembic upgrade head && uv run python scripts/seed.py` (desde `
 | `super@barb.com` | `super123` | super_usuario (todas) |
 | `admin@barb.com` | `admin123` | admin · Planta Demo BARB |
 | `engineer1@planta.com` | `engineer123` | engineer · Planta Demo BARB (sube documentos) |
-| `visitante@planta.com` | `visitante123` | visitante · Planta Demo BARB |
 | `admin@mineranorte.cl` | `minera123` | admin · Minera Norte S.A. |
 | `gerente@mineranorte.cl` | `minera123` | gerente · Minera Norte S.A. |
 | `pedro@mineranorte.cl` | `minera123` | tecnico · Minera Norte S.A. |

@@ -23,7 +23,7 @@ permisos y códigos de error. Separarlos obligaría a duplicar la mitad del cont
 
 ### Permisos RBAC
 
-Todos los roles acceden a la topología; `visitante` en modo solo lectura.
+Todos los roles de empresa acceden a la topología.
 Matriz idéntica en backend y frontend:
 `backend/src/barb/core/permissions.py:44` y
 `frontend/src/app/core/permissions/permissions.ts:58`
@@ -31,7 +31,6 @@ Matriz idéntica en backend y frontend:
 | Rol | Acceso |
 |---|---|
 | operador, tecnico, supervisor, engineer, gerente, admin | ✅ completo |
-| visitante | ✅ `"ver"` (solo lectura) |
 
 El endpoint es de solo lectura: no existe variante de escritura, así que el permiso `"ver"`
 siempre alcanza.
@@ -47,7 +46,7 @@ siempre alcanza.
 | `503` | La base de datos no está disponible (conexión caída o pool agotado) | `{"detail": "No se pudo consultar la topología: la base de datos no está disponible."}` | ⚠️ ver nota |
 
 **Nota sobre `403`:** no es alcanzable. La matriz de rutas da acceso a los 7 roles
-(`permissions.py:44`), y verificado por comando: `visitante@planta.com` obtiene **HTTP 200**.
+(`permissions.py:44`).
 El único camino a un `403` en el código es la dependencia `require_route`, que no deniega a
 ningún rol definido. Si el rol del usuario no existe en la matriz, el código devuelve **500**,
 no 403 (`permissions.py:101`: `Ruta 'topology' no está definida en permissions.py`).
@@ -227,7 +226,6 @@ por la empresa de su planta, y el cálculo de estado de OT se acota a las máqui
 |---|---|
 | `admin@barb.com` (empresa 1) | 21 nodos · **1 planta**: Central San Bernardo (las otras 2 no tienen máquinas y no aparecen) |
 | `admin@mineranorte.cl` (empresa 2) | 13 nodos · plantas: Faena Chancado Norte, Concentradora Calama · **no** ve `Compressor A1` |
-| `visitante@planta.com` (empresa 1, solo lectura) | 21 nodos |
 | `super@barb.com` sin `empresa_id` | 39 nodos · **4 plantas** (de 7 en el catálogo) |
 | `super@barb.com` con `empresa_id=1` | 21 nodos · la planta de la empresa 1 |
 | `?empresa_id=abc` | **422** (`int_parsing`) |
@@ -402,7 +400,7 @@ acotado.
 ### Permisos
 
 `require_route("topology", solo_lectura=True)` — el mismo guard del mapa
-(`topology.py:195` y `:196`). **`visitante` puede leer** (`permissions.py:44` le da `"ver"`).
+(`topology.py:195` y `:196`). Todos los roles de empresa pueden leerlo.
 
 La decisión (CGBIDA-378, D4) es deliberada: el endpoint es un **subrecurso** de la topología,
 así que exige su permiso y no uno más laxo. El listado de órdenes usa `require_auth`

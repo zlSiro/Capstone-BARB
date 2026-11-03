@@ -12,7 +12,6 @@ TECNICO = {"email": "carlos@planta.com", "password": "tecnico123"}
 OPERADOR = {"email": "operador1@planta.com", "password": "operador123"}
 GERENTE = {"email": "gerente1@planta.com", "password": "gerente123"}
 TECNICO_AJENO = {"email": "ana@planta.com", "password": "tecnico123"}
-VISITANTE = {"email": "visitante@planta.com", "password": "visitante123"}
 OTRA_EMPRESA = {"email": "gerente@mineranorte.cl", "password": "minera123"}
 
 MARCA = "Test HU-09"
@@ -26,10 +25,10 @@ async def _auth(client, creds: dict) -> dict:
 
 @pytest.fixture
 async def ot(client):
-    """Crea una OT pendiente (como gerente) y la elimina al terminar."""
+    """Crea una OT pendiente (como supervisor, el único rol que crea OT directas) y la elimina al terminar."""
     maquina = await fetch_one("SELECT maquina_id FROM maquina ORDER BY maquina_id LIMIT 1")
     tecnico = await fetch_one("SELECT usuario_id FROM usuario WHERE rol = 'tecnico' AND activo ORDER BY usuario_id LIMIT 1")
-    headers = await _auth(client, GERENTE)
+    headers = await _auth(client, SUPERVISOR)
     resp = await client.post(
         "/api/work-orders",
         json={
@@ -116,8 +115,8 @@ async def test_cancelar_desde_pendiente(client, ot):
     assert resp.json()["estado"] == "cancelled"
 
 
-@pytest.mark.parametrize("creds", [TECNICO_AJENO, OPERADOR, VISITANTE])
-async def test_tecnico_ajeno_operador_y_visitante_no_cambian_estado(client, ot, creds):
+@pytest.mark.parametrize("creds", [TECNICO_AJENO, OPERADOR])
+async def test_tecnico_ajeno_y_operador_no_cambian_estado(client, ot, creds):
     resp = await _patch(client, creds, ot, "in_progress")
     assert resp.status_code == 403
     estado = await fetch_one("SELECT estado FROM orden_trabajo WHERE numero_ot = %(n)s", {"n": ot})

@@ -19,7 +19,6 @@ export const ROLE_OPTIONS: { value: Role; label: string }[] = [
   { value: 'engineer', get label() { return textoActual('usuarios.ingeniero'); } },
   { value: 'tecnico', get label() { return textoActual('usuarios.tecnico'); } },
   { value: 'operador', get label() { return textoActual('usuarios.operador'); } },
-  { value: 'visitante', get label() { return textoActual('usuarios.visitante_solo_lectura'); } },
   { value: 'super_usuario', get label() { return textoActual('usuarios.super_usuario_plataforma_barb'); } },
 ];
 
@@ -30,7 +29,7 @@ const SUPER_ROLE_OPTIONS = ROLE_OPTIONS.filter(r => r.value === 'gerente');
  * El administrador gobierna el sistema pero no se otorga ni otorga privilegios de decisión: solo gestiona
  * usuarios operativos. Gerentes y administradores los gestiona el gerente (el backend también lo exige).
  */
-const ADMIN_ROLE_OPTIONS = ROLE_OPTIONS.filter(r => ['operador', 'tecnico', 'supervisor', 'engineer', 'visitante'].includes(r.value));
+const ADMIN_ROLE_OPTIONS = ROLE_OPTIONS.filter(r => ['operador', 'tecnico', 'supervisor', 'engineer'].includes(r.value));
 
 interface UsuarioFormModel {
   nombre: string;

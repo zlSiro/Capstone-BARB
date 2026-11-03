@@ -120,8 +120,7 @@ Y su seed no tenía plantas vacías, así que A-2 nunca se le presentó.
 ## 1.c Permisos del detalle de nodo (decidido en CGBIDA-378, D4)
 
 El endpoint de detalle usa **`require_route("topology", solo_lectura=True)`**, el mismo guard
-del mapa. El `visitante` puede leer (`permissions.py:44` le da `"ver"`): **quien puede ver el
-nodo en el mapa, puede ver qué contiene.**
+del mapa: **quien puede ver el nodo en el mapa, puede ver qué contiene.**
 
 **La alternativa descartada y por qué.** El listado de órdenes de trabajo usa `require_auth`
 (`work_orders.py:162`), una dependencia que **no consulta la matriz de rutas**: su docstring la

@@ -103,7 +103,6 @@ const ROLE_CLAVE: Record<string, string> = {
   engineer: 'ot.ingeniero',
   gerente: 'ot.gerente',
   admin: 'ot.administrador',
-  visitante: 'ot.visitante',
   super_usuario: 'ot.super_usuario',
 };
 

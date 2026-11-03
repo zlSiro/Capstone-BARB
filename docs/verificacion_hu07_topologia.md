@@ -59,7 +59,7 @@ Las 20 subtareas tienen **René Rojas** como assignee. El padre CGBIDA-310 **no 
 
 | Afirmación del contrato | ¿La cumple el código? | Evidencia |
 |---|---|---|
-| Dos rutas, `Bearer`, RBAC con `visitante: "ver"` | ✅ | `topology.py:17-19`, `permissions.py:44` |
+| Dos rutas, `Bearer`, RBAC por rol (matriz de rutas) | ✅ | `topology.py:17-19`, `permissions.py:44` |
 | Respuesta `{nodos, conexiones}` | ✅ | `topology.py:142` |
 | `maquina_id` solo en nodos Máquina | ✅ | `topology.py:125`; `test_campos_de_nodo_son_los_del_contrato` |
 | `pos_y` fijo 100/300/500 | ✅ | `topology.py:82,106,130` |
