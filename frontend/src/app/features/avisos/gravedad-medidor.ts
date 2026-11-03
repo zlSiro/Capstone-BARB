@@ -3,11 +3,13 @@ import { Component, computed, input } from '@angular/core';
 import { WorkOrderSeverity } from '../../core/models';
 import { gravedadMeta } from './etiquetas';
 
+import { TranslatePipe } from '../../core/i18n/translate.pipe';
 /** Gravedad de un aviso: cuatro barras que se llenan (como la señal de un celular) y siempre el texto. No depende del color. */
 @Component({
+  imports: [TranslatePipe],
   selector: 'app-gravedad',
   template: `
-    <span class="inline-flex items-center gap-2" role="img" [attr.aria-label]="'Gravedad ' + meta().label">
+    <span class="inline-flex items-center gap-2" role="img" [attr.aria-label]="'avisos.gravedad' | translate: { v0: meta().label }">
       <span class="flex items-end gap-0.5" aria-hidden="true" [class]="meta().texto">
         @for (barra of barras; track barra) {
           <span

@@ -5,9 +5,9 @@ import { Aviso } from '../models';
 import { AvisosApi } from './avisos-api';
 import { ToastService } from './toast.service';
 
+import { I18nService } from '../i18n/i18n.service';
 /** Cada cuánto se consulta si llegaron avisos nuevos. El backend todavía no emite un evento en tiempo real. */
 export const INTERVALO_AVISOS_MS = 30_000;
-const TITULO_BASE = 'BARB · Mantenimiento de planta';
 
 /**
  * Avisos pendientes para quien puede decidir sobre ellos (`gestionar_avisos`): alimenta el indicador de la navegación,
@@ -21,6 +21,7 @@ const TITULO_BASE = 'BARB · Mantenimiento de planta';
  */
 @Service()
 export class AvisosPendientes {
+  private readonly i18n = inject(I18nService);
   private readonly api = inject(AvisosApi);
   private readonly toast = inject(ToastService);
   private readonly titulo = inject(Title);
@@ -40,7 +41,8 @@ export class AvisosPendientes {
   constructor() {
     effect(() => {
       const n = this.total();
-      this.titulo.setTitle(n > 0 ? `(${n}) ${TITULO_BASE}` : TITULO_BASE);
+      const base = this.i18n.tr('avisos.barb_mantenimiento_de_planta');
+      this.titulo.setTitle(n > 0 ? `(${n}) ${base}` : base);
     });
   }
 
@@ -111,9 +113,9 @@ export class AvisosPendientes {
   private anunciar(nuevos: Aviso[]): void {
     if (nuevos.length === 1) {
       const a = nuevos[0];
-      this.toast.warning(`Llegó un aviso nuevo: ${a.machine_name}. ${a.descripcion}`, 6000);
+      this.toast.warning(this.i18n.tr('avisos.llego_un_aviso_nuevo', { v0: a.machine_name, v1: a.descripcion }), 6000);
     } else {
-      this.toast.warning(`Llegaron ${nuevos.length} avisos nuevos.`, 6000);
+      this.toast.warning(this.i18n.tr('avisos.llegaron_avisos_nuevos', { v0: nuevos.length }), 6000);
     }
   }
 

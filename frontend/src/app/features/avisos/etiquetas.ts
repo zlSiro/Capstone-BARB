@@ -1,5 +1,6 @@
 import { EstadoAviso, WorkOrderPriority, WorkOrderSeverity } from '../../core/models';
 import { IconName } from '../../shared/components/ui/icon/icon';
+import { textoActual } from '../../core/i18n/i18n.service';
 
 /**
  * Presentación de los avisos de falla: estados, gravedad y la prioridad que se sugiere al atenderlos.
@@ -16,14 +17,25 @@ export interface EstadoMeta {
   detalle: string;
 }
 
+// Los textos van con `get`: se calculan al leerlos, así siguen el idioma elegido (la lectura es reactiva).
 export const ESTADO_META: Record<EstadoAviso, EstadoMeta> = {
-  pendiente: { label: 'Pendiente', chip: 'chip chip-media', icono: 'reloj', detalle: 'Esperando la decisión del supervisor.' },
-  con_ot: { label: 'Con OT', chip: 'chip chip-ok', icono: 'orden-ok', detalle: 'El supervisor generó una orden de trabajo.' },
+  pendiente: {
+    get label() { return textoActual('avisos.pendiente'); },
+    chip: 'chip chip-media',
+    icono: 'reloj',
+    get detalle() { return textoActual('avisos.esperando_la_decision_del'); },
+  },
+  con_ot: {
+    get label() { return textoActual('avisos.con_ot'); },
+    chip: 'chip chip-ok',
+    icono: 'orden-ok',
+    get detalle() { return textoActual('avisos.el_supervisor_genero_una'); },
+  },
   descartado: {
-    label: 'Descartado',
+    get label() { return textoActual('avisos.descartado'); },
     chip: 'chip chip-neutro',
     icono: 'circulo-tachado',
-    detalle: 'El supervisor decidió que no requiere una OT.',
+    get detalle() { return textoActual('avisos.el_supervisor_decidio_que'); },
   },
 };
 
@@ -38,24 +50,24 @@ export interface GravedadMeta {
 }
 
 export const GRAVEDAD_META: Record<WorkOrderSeverity, GravedadMeta> = {
-  low: { label: 'Baja', nivel: 1, texto: 'text-neutro', marco: 'var(--neutro)' },
-  medium: { label: 'Media', nivel: 2, texto: 'text-media', marco: 'var(--media)' },
-  high: { label: 'Alta', nivel: 3, texto: 'text-alerta', marco: 'var(--alerta)' },
-  critical: { label: 'Crítica', nivel: 4, texto: 'text-peligro', marco: 'var(--peligro)' },
+  low: { get label() { return textoActual('avisos.baja'); }, nivel: 1, texto: 'text-neutro', marco: 'var(--neutro)' },
+  medium: { get label() { return textoActual('avisos.media'); }, nivel: 2, texto: 'text-media', marco: 'var(--media)' },
+  high: { get label() { return textoActual('avisos.alta'); }, nivel: 3, texto: 'text-alerta', marco: 'var(--alerta)' },
+  critical: { get label() { return textoActual('avisos.critica'); }, nivel: 4, texto: 'text-peligro', marco: 'var(--peligro)' },
 };
 
 export const GRAVEDADES: { value: WorkOrderSeverity; label: string }[] = [
-  { value: 'low', label: 'Baja' },
-  { value: 'medium', label: 'Media' },
-  { value: 'high', label: 'Alta' },
-  { value: 'critical', label: 'Crítica' },
+  { value: 'low', get label() { return textoActual('avisos.baja'); } },
+  { value: 'medium', get label() { return textoActual('avisos.media'); } },
+  { value: 'high', get label() { return textoActual('avisos.alta'); } },
+  { value: 'critical', get label() { return textoActual('avisos.critica'); } },
 ];
 
 export const PRIORIDADES: { value: WorkOrderPriority; label: string }[] = [
-  { value: 'low', label: 'Baja' },
-  { value: 'medium', label: 'Media' },
-  { value: 'high', label: 'Alta' },
-  { value: 'urgent', label: 'Urgente' },
+  { value: 'low', get label() { return textoActual('avisos.baja'); } },
+  { value: 'medium', get label() { return textoActual('avisos.media'); } },
+  { value: 'high', get label() { return textoActual('avisos.alta'); } },
+  { value: 'urgent', get label() { return textoActual('avisos.urgente'); } },
 ];
 
 /** Prioridad con la que se propone la OT según la gravedad que percibió quien reportó (el supervisor la ajusta). */
@@ -76,7 +88,7 @@ export const estadoMeta = (e: EstadoAviso): EstadoMeta => ESTADO_META[e] ?? ESTA
 export const gravedadMeta = (g: WorkOrderSeverity | null): GravedadMeta => GRAVEDAD_META[g ?? 'medium'] ?? GRAVEDAD_META.medium;
 
 /** Motivos de descarte frecuentes: se tocan en vez de escribir. */
-export const MOTIVOS_DESCARTE = ['Duplicado', 'Falsa alarma', 'Ya tiene una OT', 'No es una falla'];
+export const motivosDescarte = (): string[] => [textoActual('avisos.duplicado'), textoActual('avisos.falsa_alarma'), textoActual('avisos.ya_tiene_una_ot'), textoActual('avisos.no_es_una_falla')];
 
 /** Síntomas frecuentes al reportar una falla: se tocan para empezar el texto sin escribir (con guantes cuesta). */
-export const SINTOMAS = ['Ruido anormal', 'Fuga', 'Vibración', 'Se calienta', 'No arranca', 'Se detuvo'];
+export const sintomasFrecuentes = (): string[] => [textoActual('avisos.ruido_anormal'), textoActual('avisos.fuga'), textoActual('avisos.vibracion'), textoActual('avisos.se_calienta'), textoActual('avisos.no_arranca'), textoActual('avisos.se_detuvo')];

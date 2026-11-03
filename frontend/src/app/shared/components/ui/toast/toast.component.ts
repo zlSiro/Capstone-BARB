@@ -3,10 +3,11 @@ import { Component, inject } from '@angular/core';
 import { Toast, ToastService } from '../../../../core/services/toast.service';
 import { Icon, IconName } from '../icon/icon';
 
+import { TranslatePipe } from '../../../../core/i18n/translate.pipe';
 /** Avisos breves. Llevan ícono y borde de color (no solo color) y, en móvil, quedan sobre la navegación inferior. */
 @Component({
   selector: 'app-toast',
-  imports: [Icon],
+  imports: [Icon, TranslatePipe],
   template: `
     <div
       class="pointer-events-none fixed inset-x-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-[60] flex flex-col gap-2 md:inset-x-auto md:bottom-4 md:right-4 md:max-w-sm"
@@ -22,7 +23,7 @@ import { Icon, IconName } from '../icon/icon';
             type="button"
             (click)="toastService.dismiss(toast.id)"
             class="-m-2 inline-flex size-11 items-center justify-center rounded-control text-tinta-suave hover:bg-superficie-2 hover:text-tinta"
-            aria-label="Cerrar aviso">
+            [attr.aria-label]="'sistema.cerrar_aviso' | translate">
             <app-icon name="x" [size]="18" />
           </button>
         </div>

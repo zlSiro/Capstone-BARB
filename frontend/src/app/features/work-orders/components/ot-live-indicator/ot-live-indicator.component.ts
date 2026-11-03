@@ -2,7 +2,9 @@ import { Component, input } from '@angular/core';
 
 import { LiveConnectionState } from '../../../../core/services/ot-live-simulator.service';
 
+import { TranslatePipe } from '../../../../core/i18n/translate.pipe';
 @Component({
+  imports: [TranslatePipe],
   selector: 'app-ot-live-indicator',
   template: `
     <span
@@ -14,8 +16,8 @@ import { LiveConnectionState } from '../../../../core/services/ot-live-simulator
         aria-hidden="true"
         class="h-2 w-2 rounded-full"
         [class]="state() === 'connected' ? 'bg-ok' : 'animate-pulse bg-media'"></span>
-      {{ state() === 'connected' ? 'En vivo' : 'Reconectando…' }}
-      <span class="font-normal">(simulado)</span>
+      {{ (state() === 'connected' ? 'ot.en_vivo' : 'ot.reconectando') | translate }}
+      <span class="font-normal">{{ 'ot.simulado' | translate }}</span>
     </span>
   `,
 })

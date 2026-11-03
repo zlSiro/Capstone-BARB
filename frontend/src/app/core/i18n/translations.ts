@@ -4,7 +4,9 @@
 
 export type AppLang = 'es' | 'en';
 
-export const translations = {
+import { textosExtra } from './textos';
+
+const base = {
   es: {
     common: {
       language: 'Idioma', refresh: 'Actualizar', loading: 'Cargando…', export: 'Exportar',
@@ -545,7 +547,23 @@ export const translations = {
   }
 };
 
+/**
+ * Diccionario final: el base (arriba) más los textos de cada vista (`textos/*.ts`). Cada archivo de `textos`
+ * tipa su `en` con la forma de su `es`, así que a una vista no le puede faltar una clave en inglés.
+ */
+export const translations = {
+  es: { ...base.es, ...textosExtra.es },
+  en: { ...base.en, ...textosExtra.en },
+};
+
 export type TranslationTree = typeof translations['es'];
+
+// Paridad ES/EN en tiempo de compilación para TODO el diccionario: si a `en` le falta una clave de `es`
+// (o le sobra una), esto no compila.
+const _enCompleto: TranslationTree = translations.en;
+const _esCompleto: typeof translations.en = translations.es;
+void _enCompleto;
+void _esCompleto;
 
 
 

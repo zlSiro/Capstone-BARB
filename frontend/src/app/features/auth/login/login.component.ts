@@ -5,21 +5,30 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { AuthService } from '../../../core/services/auth.service';
 import { PermissionsService } from '../../../core/permissions/permissions.service';
 
+import { TranslatePipe } from '../../../core/i18n/translate.pipe';
+import { I18nService } from '../../../core/i18n/i18n.service';
+import { Icon } from '../../../shared/components/ui/icon/icon';
 @Component({
   selector: 'app-login',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, TranslatePipe, Icon],
   template: `
     <main class="flex min-h-dvh items-center justify-center bg-fondo p-4">
       <div class="panel w-full max-w-md border-t-8 border-t-senal p-6 md:p-8">
-        <div class="mb-6">
-          <h1 class="codigo text-5xl font-bold text-accion">BARB</h1>
-          <p class="mt-1 text-base text-tinta-suave">Sistema de mantenimiento de planta</p>
+        <div class="mb-6 flex items-start justify-between gap-3">
+          <div>
+            <h1 class="codigo text-5xl font-bold text-accion">BARB</h1>
+            <p class="mt-1 text-base text-tinta-suave">{{ 'acceso.sistema_de_mantenimiento_de' | translate }}</p>
+          </div>
+          <button type="button" class="btn-secondary shrink-0" data-testid="login-idioma" [attr.aria-label]="'acceso.cambiar_idioma' | translate" (click)="i18n.toggleLang()">
+            <app-icon name="idioma" [size]="20" />
+            {{ i18n.lang() === 'es' ? 'ES' : 'EN' }}
+          </button>
         </div>
 
         <form (ngSubmit)="onSubmit()" class="flex flex-col gap-4">
           <div>
-            <label for="login-email" class="fld-label">Usuario</label>
+            <label for="login-email" class="fld-label">{{ 'acceso.usuario' | translate }}</label>
             <input
               id="login-email"
               type="email"
@@ -32,7 +41,7 @@ import { PermissionsService } from '../../../core/permissions/permissions.servic
           </div>
 
           <div>
-            <label for="login-password" class="fld-label">Contraseña</label>
+            <label for="login-password" class="fld-label">{{ 'acceso.contrasena' | translate }}</label>
             <input
               id="login-password"
               type="password"
@@ -51,7 +60,7 @@ import { PermissionsService } from '../../../core/permissions/permissions.servic
           }
 
           <button type="submit" [disabled]="loading()" class="btn-primary min-h-14 text-lg md:min-h-12 md:text-base">
-            {{ loading() ? 'Ingresando...' : 'Ingresar' }}
+            {{ (loading() ? 'acceso.ingresando' : 'acceso.ingresar') | translate }}
           </button>
         </form>
       </div>
@@ -59,6 +68,7 @@ import { PermissionsService } from '../../../core/permissions/permissions.servic
   `
 })
 export class LoginComponent {
+  protected readonly i18n = inject(I18nService);
   private auth = inject(AuthService);
   private router = inject(Router);
   private permissions = inject(PermissionsService);
@@ -79,7 +89,7 @@ export class LoginComponent {
       next: () => this.router.navigateByUrl(this.permissions.getDefaultRoute()),
       error: (err: HttpErrorResponse) => {
         // 403 = empresa suspendida/cancelada; el backend explica el motivo.
-        this.error.set(err.status === 403 && err.error?.detail ? err.error.detail : 'Usuario o contraseña incorrecta');
+        this.error.set(err.status === 403 && err.error?.detail ? err.error.detail : this.i18n.tr('acceso.usuario_o_contrasena_incorrect'));
         this.loading.set(false);
       }
     });

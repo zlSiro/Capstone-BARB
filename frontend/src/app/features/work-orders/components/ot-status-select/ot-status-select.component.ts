@@ -4,6 +4,7 @@ import { WorkOrder, WorkOrderStatus } from '../../../../core/models';
 import { statusMeta } from '../../utils/work-order-labels';
 import { OtStatusBadgeComponent } from '../ot-status-badge/ot-status-badge.component';
 
+import { TranslatePipe } from '../../../../core/i18n/translate.pipe';
 export interface StatusChangeRequest {
   order: WorkOrder;
   to: WorkOrderStatus;
@@ -17,12 +18,12 @@ export interface StatusChangeRequest {
  */
 @Component({
   selector: 'app-ot-status-select',
-  imports: [OtStatusBadgeComponent],
+  imports: [OtStatusBadgeComponent, TranslatePipe],
   template: `
     @if (options().length) {
       <select
         class="rounded-control border border-borde-control bg-superficie py-1 pl-2 pr-7 text-sm font-medium text-tinta focus:outline-none focus:ring-2 focus:ring-accion"
-        [attr.aria-label]="'Cambiar estado de la OT ' + order().numero_ot + '. Estado actual: ' + currentLabel()"
+        [attr.aria-label]="'ot.cambiar_estado_de_la' | translate: { v0: order().numero_ot, v1: currentLabel() }"
         (change)="onChange($event)">
         <option [value]="order().estado" selected>{{ currentLabel() }}</option>
         @for (opt of options(); track opt.value) {
