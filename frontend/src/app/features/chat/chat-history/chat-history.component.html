@@ -68,7 +68,7 @@
                     (click)="deleteSession(s, $event)"
                     [title]="'chatHistory.deleteTooltip' | translate"
                     class="inline-flex size-11 items-center justify-center text-tinta-suave hover:text-peligro transition-colors"
-                    aria-label="Eliminar conversación"
+                    [attr.aria-label]="'sistema.eliminar_conversacion' | translate"
                   >
                     <app-icon name="papelera" [size]="20" />
                   </button>

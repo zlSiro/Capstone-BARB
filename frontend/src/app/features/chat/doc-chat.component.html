@@ -3,7 +3,7 @@
 <div class="flex h-full">
 
   <!-- ══════════════ SIDEBAR: HISTORIAL ══════════════ -->
-  <aside aria-label="Historial de conversaciones" class="min-w-0 flex-col border-r border-borde bg-superficie md:w-[440px] md:flex-shrink-0" [class]="historialAbierto() ? 'flex w-full' : 'hidden md:flex'">
+  <aside [attr.aria-label]="'sistema.historial_de_conversaciones' | translate" class="min-w-0 flex-col border-r border-borde bg-superficie md:w-[440px] md:flex-shrink-0" [class]="historialAbierto() ? 'flex w-full' : 'hidden md:flex'">
 
     <!-- Header sidebar -->
     <div class="px-4 py-3 border-b border-borde ">
@@ -63,7 +63,7 @@
                     (click)="deleteSession(s, $event)"
                     [title]="'chatHistory.deleteTooltip' | translate"
                     class="inline-flex size-11 items-center justify-center text-tinta-suave hover:text-peligro transition-colors"
-                    aria-label="Eliminar conversación"
+                    [attr.aria-label]="'sistema.eliminar_conversacion' | translate"
                   ><app-icon name="papelera" [size]="20" /></button>
                 </td>
               </tr>
@@ -75,7 +75,7 @@
   </aside>
 
   <!-- ══════════════ PANEL DE CHAT ══════════════ -->
-  <section aria-label="Conversación" class="min-w-0 flex-1 flex-col" [class]="historialAbierto() ? 'hidden md:flex' : 'flex'">
+  <section [attr.aria-label]="'sistema.conversacion' | translate" class="min-w-0 flex-1 flex-col" [class]="historialAbierto() ? 'hidden md:flex' : 'flex'">
 
     <!-- Header chat -->
     <div class="px-6 py-4 border-b border-borde flex items-center justify-between bg-superficie ">

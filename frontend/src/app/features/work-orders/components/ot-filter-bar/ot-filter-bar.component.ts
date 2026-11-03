@@ -3,14 +3,16 @@ import { Component, input, model } from '@angular/core';
 import { WorkOrderStatus } from '../../../../core/models';
 import { STATUS_FILTER_ORDER, statusMeta } from '../../utils/work-order-labels';
 
+import { TranslatePipe } from '../../../../core/i18n/translate.pipe';
 /** Filtro por estado (con conteos) y búsqueda de texto. `status = ''` significa «todas». */
 @Component({
+  imports: [TranslatePipe],
   selector: 'app-ot-filter-bar',
   template: `
     <div class="flex flex-col gap-3">
-      <div role="group" aria-label="Filtrar por estado" class="flex flex-wrap gap-2">
+      <div role="group" [attr.aria-label]="'ot.filtrar_por_estado' | translate" class="flex flex-wrap gap-2">
         <button type="button" class="pill" [attr.aria-pressed]="status() === ''" (click)="status.set('')">
-          Todas <span class="font-semibold">{{ counts()['all'] ?? 0 }}</span>
+          {{ 'ot.todas' | translate }} <span class="font-semibold">{{ counts()['all'] ?? 0 }}</span>
         </button>
         @for (s of statuses; track s) {
           <button type="button" class="pill" [attr.aria-pressed]="status() === s" (click)="status.set(s)">
@@ -19,11 +21,11 @@ import { STATUS_FILTER_ORDER, statusMeta } from '../../utils/work-order-labels';
         }
       </div>
       <div>
-        <label for="ot-search" class="sr-only">Buscar orden de trabajo</label>
+        <label for="ot-search" class="sr-only">{{ 'ot.buscar_orden_de_trabajo' | translate }}</label>
         <input
           id="ot-search"
           type="search"
-          placeholder="Buscar por N° OT, máquina, técnico o descripción…"
+          [attr.placeholder]="'ot.buscar_por_n_ot' | translate"
           class="fld-input max-w-md"
           [value]="search()"
           (input)="search.set($any($event.target).value)" />

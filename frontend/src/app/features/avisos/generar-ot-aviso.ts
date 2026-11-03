@@ -11,6 +11,8 @@ import { ModalComponent } from '../../shared/components/ui/modal/modal.component
 import { PRIORIDADES, prioridadSugerida } from './etiquetas';
 import { GravedadMedidor } from './gravedad-medidor';
 
+import { TranslatePipe } from '../../core/i18n/translate.pipe';
+import { I18nService } from '../../core/i18n/i18n.service';
 interface GenerarOtModel {
   technicianId: string;
   priority: WorkOrderPriority;
@@ -21,70 +23,71 @@ interface GenerarOtModel {
 /** Diálogo con el que el supervisor atiende un aviso: elige técnico y prioridad, y se genera la OT enlazada. */
 @Component({
   selector: 'app-generar-ot-aviso',
-  imports: [FormField, ModalComponent, GravedadMedidor, Icon],
+  imports: [FormField, ModalComponent, GravedadMedidor, Icon, TranslatePipe],
   template: `
-    <app-modal title="Generar OT desde el aviso" subtitle="Se crea una orden de trabajo asignada y el aviso queda «Con OT»." (closed)="cerrar()">
+    <app-modal [title]="'avisos.generar_ot_desde_el' | translate" [subtitle]="'avisos.se_crea_una_orden' | translate" (closed)="cerrar()">
       <div class="grid gap-4">
         <div class="rounded-control border border-borde bg-superficie-2 p-3 text-base">
           <p class="codigo text-lg text-tinta-suave">{{ aviso().numero_aviso }}, {{ aviso().machine_name }}, {{ aviso().plant_name }}</p>
           <p class="mt-1">{{ aviso().descripcion }}</p>
           <p class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-tinta-suave">
-            <span>Reportado por {{ aviso().reportado_por.nombre }}</span>
+            <span>{{ 'avisos.reportado_por' | translate: { v0: aviso().reportado_por.nombre } }}</span>
             <app-gravedad [severidad]="aviso().severidad" />
           </p>
           @if (aviso().foto) {
             <p class="mt-1 flex items-center gap-1.5 text-sm text-tinta">
-              <app-icon name="imagen" [size]="18" /> La foto del aviso se adjuntará a la OT.
+              <app-icon name="imagen" [size]="18" /> {{ 'avisos.la_foto_del_aviso' | translate }}
             </p>
           }
         </div>
 
         <div>
-          <label for="gen-tecnico" class="fld-label">Técnico responsable</label>
+          <label for="gen-tecnico" class="fld-label">{{ 'avisos.tecnico_responsable' | translate }}</label>
           <select
             id="gen-tecnico"
             [formField]="otForm.technicianId"
             [attr.aria-invalid]="otForm.technicianId().touched() && otForm.technicianId().invalid()"
             [attr.aria-describedby]="otForm.technicianId().touched() && otForm.technicianId().invalid() ? 'gen-tecnico-error' : null"
             class="fld-input">
-            <option value="">Selecciona un técnico</option>
+            <option value="">{{ 'avisos.selecciona_un_tecnico' | translate }}</option>
             @for (t of technicians(); track t.id) {
               <option [value]="t.id">{{ t.name }}</option>
             }
           </select>
           @if (otForm.technicianId().touched() && otForm.technicianId().invalid()) {
-            <p id="gen-tecnico-error" role="alert" class="fld-error">{{ otForm.technicianId().errors()[0]?.message }}</p>
+            <p id="gen-tecnico-error" role="alert" class="fld-error">{{ otForm.technicianId().errors()[0]?.message | translate }}</p>
           }
         </div>
 
         <div class="grid gap-4 sm:grid-cols-2">
           <div>
-            <label for="gen-prioridad" class="fld-label">Prioridad</label>
+            <label for="gen-prioridad" class="fld-label">{{ 'avisos.prioridad' | translate }}</label>
             <select id="gen-prioridad" [formField]="otForm.priority" class="fld-input">
               @for (p of prioridades; track p.value) {
                 <option [value]="p.value">{{ p.label }}</option>
               }
             </select>
-            <p class="fld-ayuda">Sugerida según la gravedad del aviso.</p>
+            <p class="fld-ayuda">{{ 'avisos.sugerida_segun_la_gravedad' | translate }}</p>
           </div>
           <div>
-            <label for="gen-vencimiento" class="fld-label">Vencimiento (opcional)</label>
+            <label for="gen-vencimiento" class="fld-label">{{ 'avisos.vencimiento_opcional' | translate }}</label>
             <input id="gen-vencimiento" type="datetime-local" [formField]="otForm.vencimiento" class="fld-input" />
-            <p class="fld-ayuda">Si lo dejas vacío se calcula con el SLA de la máquina.</p>
+            <p class="fld-ayuda">{{ 'avisos.si_lo_dejas_vacio' | translate }}</p>
           </div>
         </div>
       </div>
 
       <div modal-footer class="grid gap-2 sm:flex sm:justify-end">
-        <button type="button" class="btn-ghost order-2 sm:order-1" (click)="cerrar()">Cancelar</button>
+        <button type="button" class="btn-ghost order-2 sm:order-1" (click)="cerrar()">{{ 'avisos.cancelar' | translate }}</button>
         <button type="button" class="btn-primary order-1 sm:order-2" [disabled]="enviando()" (click)="generar()">
-          {{ enviando() ? 'Generando…' : 'Generar OT' }}
+          {{ (enviando() ? 'avisos.generando' : 'avisos.generar_ot') | translate }}
         </button>
       </div>
     </app-modal>
   `,
 })
 export class GenerarOtAviso implements OnInit {
+  private readonly i18n = inject(I18nService);
   private readonly api = inject(AvisosApi);
   private readonly catalog = inject(CatalogService);
   private readonly toast = inject(ToastService);
@@ -99,13 +102,13 @@ export class GenerarOtAviso implements OnInit {
 
   protected readonly model = signal<GenerarOtModel>({ technicianId: '', priority: 'medium', vencimiento: '' });
   protected readonly otForm = form(this.model, (f) => {
-    required(f.technicianId, { message: 'Selecciona un técnico.' });
+    required(f.technicianId, { message: 'avisos.selecciona_un_tecnico_2' });
   });
 
   constructor() {
     this.catalog.getTechnicians().subscribe({
       next: (technicians) => this.technicians.set(technicians ?? []),
-      error: () => this.toast.error('No se pudo cargar la lista de técnicos.'),
+      error: () => this.toast.error(this.i18n.tr('avisos.no_se_pudo_cargar')),
     });
   }
 
@@ -134,12 +137,12 @@ export class GenerarOtAviso implements OnInit {
       .subscribe({
         next: (res) => {
           this.enviando.set(false);
-          this.toast.success(`OT ${res.ot.numero_ot} generada desde el aviso ${res.aviso.numero_aviso}.`);
+          this.toast.success(this.i18n.tr('avisos.ot_generada_desde_el', { v0: res.ot.numero_ot, v1: res.aviso.numero_aviso }));
           this.done.emit(res);
         },
         error: (err) => {
           this.enviando.set(false);
-          this.toast.error(apiErrorMessage(err, 'No se pudo generar la OT.'));
+          this.toast.error(apiErrorMessage(err, this.i18n.tr('avisos.no_se_pudo_generar')));
         },
       });
   }

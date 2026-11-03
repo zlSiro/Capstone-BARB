@@ -33,8 +33,8 @@ export class ChatService {
   streamChat(payload: ChatRequest): Observable<ChatStreamEvent> {
     // Mismos mensajes que históricamente mostraba el stream textual.
     return this.postSse('/stream', payload, {
-      429: 'Demasiadas peticiones. Espera un momento.',
-      422: 'Mensaje inválido (vacío o demasiado largo).',
+      429: this.i18n.tr('sistema.demasiadas_peticiones_espera_u'),
+      422: this.i18n.tr('sistema.mensaje_invalido_vacio_o'),
     });
   }
 
@@ -68,7 +68,7 @@ export class ChatService {
   ): Observable<ChatStreamEvent> {
     return new Observable<ChatStreamEvent>((subscriber) => {
       if (this.tenant.isSuper() && this.tenant.empresaId() === null) {
-        subscriber.error(new Error('Selecciona una empresa en la cabecera para consultar su documentación.'));
+        subscriber.error(new Error(this.i18n.tr('sistema.selecciona_una_empresa_en')));
         return;
       }
       const controller = new AbortController();
@@ -92,7 +92,7 @@ export class ChatService {
           if (response.status === 401) {
             this.toast.show(this.i18n.t('common').sessionExpired, 'error');
             this.auth.logout();
-            subscriber.error(new Error('Sesión expirada. Vuelve a iniciar sesión.'));
+            subscriber.error(new Error(this.i18n.tr('sistema.sesion_expirada_vuelve_a')));
             return;
           }
           const statusMessage = statusErrors[response.status];

@@ -7,6 +7,8 @@ import { ToastService } from '../../core/services/toast.service';
 import { apiErrorMessage } from '../../core/utils/http-error';
 import { ModalComponent } from '../../shared/components/ui/modal/modal.component';
 
+import { TranslatePipe } from '../../core/i18n/translate.pipe';
+import { I18nService } from '../../core/i18n/i18n.service';
 interface MaquinaModel {
   nombre: string;
   codigo: string;
@@ -32,38 +34,38 @@ interface MaquinaModel {
  */
 @Component({
   selector: 'app-maquina-form-modal',
-  imports: [FormField, ModalComponent],
+  imports: [FormField, ModalComponent, TranslatePipe],
   template: `
     <app-modal
-      [title]="esEdicion() ? 'Editar máquina' : 'Agregar máquina'"
+      [title]="(esEdicion() ? 'plantas.editar_maquina' : 'plantas.agregar_maquina_2') | translate"
       [subtitle]="
         esEdicion()
-          ? 'Cambia los datos de «' + maquina()!.name + '» en ' + planta().name + '.'
-          : 'Se agregará a la planta «' + planta().name + '».'
+          ? ('plantas.cambia_los_datos_de' | translate: { v0: maquina()!.name, v1: planta().name })
+          : ('plantas.se_agregara_a_la' | translate: { v0: planta().name })
       "
       (closed)="closed.emit()"
     >
       <form class="grid gap-4" (submit)="$event.preventDefault(); guardar()" novalidate>
         <div>
-          <label for="maq-nombre" class="fld-label">Nombre de la máquina *</label>
+          <label for="maq-nombre" class="fld-label">{{ 'plantas.nombre_de_la_maquina' | translate }}</label>
           <input
             id="maq-nombre"
             type="text"
             class="fld-input"
             data-testid="maquina-nombre"
-            placeholder="Compressor A1"
+            [attr.placeholder]="'plantas.compressor_a1' | translate"
             [formField]="f.nombre"
             [attr.aria-invalid]="f.nombre().touched() && f.nombre().invalid()"
           />
           @if (f.nombre().touched() && f.nombre().invalid()) {
             <p role="alert" class="fld-error" data-testid="error-nombre">
-              {{ f.nombre().errors()[0]?.message }}
+              {{ f.nombre().errors()[0]?.message | translate }}
             </p>
           }
         </div>
 
         <div>
-          <label for="maq-codigo" class="fld-label">Código *</label>
+          <label for="maq-codigo" class="fld-label">{{ 'plantas.codigo_2' | translate }}</label>
           <input
             id="maq-codigo"
             type="text"
@@ -75,7 +77,7 @@ interface MaquinaModel {
           />
           @if (f.codigo().touched() && f.codigo().invalid()) {
             <p role="alert" class="fld-error" data-testid="error-codigo">
-              {{ f.codigo().errors()[0]?.message }}
+              {{ f.codigo().errors()[0]?.message | translate }}
             </p>
           }
         </div>
@@ -84,7 +86,7 @@ interface MaquinaModel {
           @if (esEdicion()) {
             <!-- En edición se elige una disciplina existente: crear una nueva es parte del
                  alta de la planta, no de editar un equipo. -->
-            <label for="maq-disciplina" class="fld-label">Disciplina</label>
+            <label for="maq-disciplina" class="fld-label">{{ 'plantas.disciplina' | translate }}</label>
             <select
               id="maq-disciplina"
               class="fld-input"
@@ -92,19 +94,19 @@ interface MaquinaModel {
               [value]="model().disciplina"
               (change)="cambiarDisciplinaSelect($any($event.target).value)"
             >
-              <option value="">Sin disciplina</option>
+              <option value="">{{ 'plantas.sin_disciplina' | translate }}</option>
               @for (d of disciplinas(); track d.id) {
                 <option [value]="d.id" [selected]="model().disciplina === '' + d.id">{{ d.name }}</option>
               }
             </select>
           } @else {
-            <label for="maq-disciplina" class="fld-label">Disciplina</label>
+            <label for="maq-disciplina" class="fld-label">{{ 'plantas.disciplina' | translate }}</label>
             <input
               id="maq-disciplina"
               type="text"
               class="fld-input"
               list="disciplinas-existentes"
-              placeholder="Mecánica, Eléctrica… (opcional)"
+              [attr.placeholder]="'plantas.mecanica_electrica_opcional' | translate"
               data-testid="maquina-disciplina"
               [formField]="f.disciplina"
             />
@@ -114,14 +116,14 @@ interface MaquinaModel {
               }
             </datalist>
             <p class="mt-1 text-sm text-tinta-suave">
-              Si no existe en tu empresa, se crea.
+              {{ 'plantas.si_no_existe_en' | translate }}
             </p>
           }
         </div>
 
         <div class="grid gap-4 sm:grid-cols-2">
           <div>
-            <label for="maq-sla-horas" class="fld-label">SLA de la máquina (horas)</label>
+            <label for="maq-sla-horas" class="fld-label">{{ 'plantas.sla_de_la_maquina' | translate }}</label>
             <input
               id="maq-sla-horas"
               type="number"
@@ -132,12 +134,12 @@ interface MaquinaModel {
               [formField]="f.slaHoras"
             />
             <p class="mt-1 text-sm text-tinta-suave">
-              Tiempo máximo para atender una OT de este equipo. Vacío = SLA general de la empresa.
+              {{ 'plantas.tiempo_maximo_para_atender' | translate }}
             </p>
           </div>
 
           <div>
-            <label for="maq-costo-inactividad" class="fld-label">Costo de inactividad (por minuto)</label>
+            <label for="maq-costo-inactividad" class="fld-label">{{ 'plantas.costo_de_inactividad_por' | translate }}</label>
             <input
               id="maq-costo-inactividad"
               type="number"
@@ -148,7 +150,7 @@ interface MaquinaModel {
               [formField]="f.costoInactividad"
             />
             <p class="mt-1 text-sm text-tinta-suave">
-              Cuánto cuesta cada minuto de esta máquina detenida. Vacío = sin valorización por equipo.
+              {{ 'plantas.cuanto_cuesta_cada_minuto' | translate }}
             </p>
           </div>
         </div>
@@ -164,10 +166,10 @@ interface MaquinaModel {
             (click)="closed.emit()"
             [disabled]="submitting()"
           >
-            Cancelar
+            {{ 'plantas.cancelar' | translate }}
           </button>
           <button type="submit" class="btn-primary" data-testid="guardar-maquina" [disabled]="submitting()">
-            {{ submitting() ? (esEdicion() ? 'Guardando…' : 'Agregando…') : (esEdicion() ? 'Guardar cambios' : 'Agregar máquina') }}
+            {{ (submitting() ? (esEdicion() ? 'plantas.guardando' : 'plantas.agregando') : (esEdicion() ? 'plantas.guardar_cambios' : 'plantas.agregar_maquina_2')) | translate }}
           </button>
         </div>
       </form>
@@ -175,6 +177,7 @@ interface MaquinaModel {
   `,
 })
 export class MaquinaFormModalComponent {
+  private readonly i18n = inject(I18nService);
   private readonly catalogo = inject(CatalogService);
   private readonly toast = inject(ToastService);
 
@@ -218,12 +221,12 @@ export class MaquinaFormModalComponent {
     };
   });
   protected readonly f = form(this.model, (p) => {
-    required(p.nombre, { message: 'Ingresa el nombre de la máquina.' });
-    required(p.codigo, { message: 'Ingresa el código de la máquina.' });
+    required(p.nombre, { message: 'plantas.ingresa_el_nombre_de' });
+    required(p.codigo, { message: 'plantas.ingresa_el_codigo_de' });
     validate(p.codigo, ({ value }) =>
       value().trim().length >= 1
         ? undefined
-        : { kind: 'required', message: 'Ingresa el código de la máquina.' },
+        : { kind: 'required', message: 'plantas.ingresa_el_codigo_de' },
     );
     // Los numéricos son opcionales, pero si se escriben tienen que ser válidos: un SLA
     // negativo o un texto suelto no deben llegar al backend.
@@ -232,7 +235,7 @@ export class MaquinaFormModalComponent {
       if (!texto) return undefined;
       const n = Number(texto);
       if (!Number.isFinite(n) || n < 0 || n > 8760) {
-        return { kind: 'range', message: 'El SLA debe ser un número entre 0 y 8760 horas.' };
+        return { kind: 'range', message: 'plantas.el_sla_debe_ser' };
       }
       return undefined;
     });
@@ -241,7 +244,7 @@ export class MaquinaFormModalComponent {
       if (!texto) return undefined;
       const n = Number(texto);
       if (!Number.isFinite(n) || n < 0) {
-        return { kind: 'range', message: 'El costo debe ser un número mayor o igual a 0.' };
+        return { kind: 'range', message: 'plantas.el_costo_debe_ser' };
       }
       return undefined;
     });
@@ -290,12 +293,12 @@ export class MaquinaFormModalComponent {
       this.catalogo.actualizarMaquina(id, payload).subscribe({
         next: (maquina) => {
           this.submitting.set(false);
-          this.toast.success(`Máquina «${maquina.nombre}» actualizada.`);
+          this.toast.success(this.i18n.tr('plantas.maquina_actualizada', { v0: maquina.nombre }));
           this.saved.emit(maquina);
         },
         error: (err) => {
           this.submitting.set(false);
-          const mensaje = apiErrorMessage(err, 'No se pudo actualizar la máquina.');
+          const mensaje = apiErrorMessage(err, this.i18n.tr('plantas.no_se_pudo_actualizar'));
           this.errorGeneral.set(mensaje);
           this.toast.error(mensaje);
         },
@@ -315,13 +318,13 @@ export class MaquinaFormModalComponent {
     this.catalogo.agregarMaquina(this.planta().id, payload).subscribe({
       next: (maquina) => {
         this.submitting.set(false);
-        this.toast.success(`Máquina «${maquina.nombre}» agregada a ${this.planta().name}.`);
+        this.toast.success(this.i18n.tr('plantas.maquina_agregada_a', { v0: maquina.nombre, v1: this.planta().name }));
         this.saved.emit(maquina);
       },
       error: (err) => {
         this.submitting.set(false);
         // El 409 de código repetido trae un mensaje del dominio; se muestra tal cual.
-        const mensaje = apiErrorMessage(err, 'No se pudo agregar la máquina.');
+        const mensaje = apiErrorMessage(err, this.i18n.tr('plantas.no_se_pudo_agregar'));
         this.errorGeneral.set(mensaje);
         this.toast.error(mensaje);
       },

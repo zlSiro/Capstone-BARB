@@ -1,21 +1,23 @@
 import { OperacionTransaccion, RangoTransacciones, Transaccion } from '../../core/models';
+import { textoActual } from '../../core/i18n/i18n.service';
 
 /** Etiquetas y utilidades de presentación compartidas por las vistas de transacciones (super_usuario y gerente). */
 
 export const PAGE_SIZE = 50;
 
+// Los textos van con `get`: se calculan al leerlos, así siguen el idioma elegido.
 export const RANGOS: { value: RangoTransacciones; label: string }[] = [
-  { value: '24h', label: 'Hace 24 horas' },
-  { value: '7d', label: 'Hace una semana' },
-  { value: '30d', label: 'Hace un mes' },
-  { value: '1y', label: 'Hace un año' },
-  { value: 'custom', label: 'Personalizar' },
+  { value: '24h', get label() { return textoActual('trx.hace_24_horas'); } },
+  { value: '7d', get label() { return textoActual('trx.hace_una_semana'); } },
+  { value: '30d', get label() { return textoActual('trx.hace_un_mes'); } },
+  { value: '1y', get label() { return textoActual('trx.hace_un_ano'); } },
+  { value: 'custom', get label() { return textoActual('trx.personalizar'); } },
 ];
 
 export const OPERACION_LABEL: Record<OperacionTransaccion, string> = {
-  INSERT: 'Creó',
-  UPDATE: 'Modificó',
-  DELETE: 'Eliminó',
+  get INSERT() { return textoActual('trx.creo'); },
+  get UPDATE() { return textoActual('trx.modifico'); },
+  get DELETE() { return textoActual('trx.elimino'); },
 };
 
 export const OPERACION_STYLE: Record<OperacionTransaccion, string> = {
@@ -24,30 +26,31 @@ export const OPERACION_STYLE: Record<OperacionTransaccion, string> = {
   DELETE: 'bg-peligro-suave text-peligro',
 };
 
-const TABLA_LABEL: Record<string, string> = {
-  orden_trabajo: 'orden de trabajo',
-  usuario: 'usuario',
-  empresa: 'empresa',
-  documento: 'documento',
-  notificacion_config: 'configuración de notificaciones',
-  ot_foto: 'foto de OT',
-  ot_repuesto: 'repuesto de OT',
+const TABLA_CLAVE: Record<string, string> = {
+  orden_trabajo: 'trx.orden_de_trabajo',
+  usuario: 'trx.usuario_2',
+  empresa: 'trx.empresa_2',
+  documento: 'trx.documento',
+  notificacion_config: 'trx.configuracion_de_notificacione',
+  ot_foto: 'trx.foto_de_ot',
+  ot_repuesto: 'trx.repuesto_de_ot',
 };
 
-const ROL_LABEL: Record<string, string> = {
-  operador: 'Operador',
-  tecnico: 'Técnico',
-  supervisor: 'Supervisor',
-  engineer: 'Engineer',
-  gerente: 'Gerente',
-  admin: 'Admin',
-  visitante: 'Visitante',
-  super_usuario: 'Super usuario',
+const ROL_CLAVE: Record<string, string> = {
+  operador: 'trx.operador',
+  tecnico: 'trx.tecnico',
+  supervisor: 'trx.supervisor',
+  engineer: 'trx.engineer',
+  gerente: 'trx.gerente',
+  admin: 'trx.admin',
+  visitante: 'trx.visitante',
+  super_usuario: 'trx.super_usuario',
 };
 
-export const rolLabel = (r: string): string => ROL_LABEL[r] ?? r;
+export const rolLabel = (r: string): string => (ROL_CLAVE[r] ? textoActual(ROL_CLAVE[r]) : r);
 
-export const tablaLabel = (t: string | null): string => (t ? (TABLA_LABEL[t] ?? t.replaceAll('_', ' ')) : '');
+export const tablaLabel = (t: string | null): string =>
+  t ? (TABLA_CLAVE[t] ? textoActual(TABLA_CLAVE[t]) : t.replaceAll('_', ' ')) : '';
 
 function formatear(v: unknown): string {
   if (v === null || v === undefined || v === '') return '—';

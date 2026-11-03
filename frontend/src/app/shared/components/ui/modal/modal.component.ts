@@ -2,6 +2,7 @@ import { Component, DestroyRef, ElementRef, afterNextRender, inject, input, outp
 
 import { Icon } from '../icon/icon';
 
+import { TranslatePipe } from '../../../../core/i18n/translate.pipe';
 let nextId = 0;
 /** Cantidad de diálogos abiertos: el scroll de la página solo se libera al cerrar el último. */
 let abiertos = 0;
@@ -20,7 +21,7 @@ const FOCUSABLES =
  */
 @Component({
   selector: 'app-modal',
-  imports: [Icon],
+  imports: [Icon, TranslatePipe],
   host: { '(document:keydown.escape)': 'closed.emit()' },
   template: `
     <div
@@ -60,7 +61,7 @@ const FOCUSABLES =
               type="button"
               (click)="closed.emit()"
               class="-mr-2 -mt-1 inline-flex size-12 items-center justify-center rounded-control text-tinta-suave transition-colors hover:bg-superficie-2 hover:text-tinta md:size-10"
-              aria-label="Cerrar">
+              [attr.aria-label]="'sistema.cerrar' | translate">
               <app-icon name="x" [size]="22" />
             </button>
           </div>

@@ -1,4 +1,4 @@
-import { Component, DestroyRef, effect, inject, output, signal } from '@angular/core';
+import { Component, computed, DestroyRef, effect, inject, output, signal } from '@angular/core';
 import { form, required, validate, FormField } from '@angular/forms/signals';
 import { Router } from '@angular/router';
 import { DomSanitizer, SafeUrl } from '@angular/platform-browser';
@@ -11,10 +11,12 @@ import { ToastService } from '../../core/services/toast.service';
 import { apiErrorMessage } from '../../core/utils/http-error';
 import { Icon } from '../../shared/components/ui/icon/icon';
 import { ModalComponent } from '../../shared/components/ui/modal/modal.component';
-import { GRAVEDADES, SINTOMAS } from './etiquetas';
+import { GRAVEDADES, sintomasFrecuentes } from './etiquetas';
 import { GravedadMedidor } from './gravedad-medidor';
 import { reducirImagen } from './reducir-imagen';
 
+import { TranslatePipe } from '../../core/i18n/translate.pipe';
+import { I18nService } from '../../core/i18n/i18n.service';
 interface ReportarFallaModel {
   machineId: string;
   severidad: WorkOrderSeverity;
@@ -61,27 +63,27 @@ function borrar(clave: string): void {
  */
 @Component({
   selector: 'app-reportar-falla',
-  imports: [FormField, ModalComponent, Icon, GravedadMedidor],
+  imports: [FormField, ModalComponent, Icon, GravedadMedidor, TranslatePipe],
   template: `
     <app-modal
-      [title]="creado() ? 'Aviso enviado' : 'Reportar una falla'"
-      [subtitle]="creado() ? '' : 'Tu aviso llega al supervisor, que decide si se genera una orden de trabajo.'"
+      [title]="(creado() ? 'avisos.aviso_enviado' : 'avisos.reportar_una_falla') | translate"
+      [subtitle]="creado() ? '' : ('avisos.tu_aviso_llega_al' | translate)"
       (closed)="cerrar()">
       @if (creado(); as aviso) {
         <div class="grid justify-items-center gap-3 py-6 text-center" data-testid="aviso-confirmacion" role="status">
           <span class="text-ok"><app-icon name="check-circulo" [size]="64" /></span>
-          <p class="text-lg">Tu aviso quedó registrado con el número</p>
+          <p class="text-lg">{{ 'avisos.tu_aviso_quedo_registrado' | translate }}</p>
           <p class="codigo text-4xl text-accion" data-testid="aviso-numero">{{ aviso.numero_aviso }}</p>
           <p class="max-w-sm text-tinta-suave">
-            El supervisor lo revisará y decidirá si genera una orden de trabajo. Puedes seguir su estado en {{ puedeGestionar() ? 'la bandeja' : 'Mis avisos' }}.
+            {{ 'avisos.el_supervisor_lo_revisara' | translate: { v0: (puedeGestionar() ? 'avisos.la_bandeja' : 'avisos.mis_avisos') | translate } }}
           </p>
         </div>
       } @else {
         <div class="grid gap-6">
           <div>
-            <label for="aviso-machine" class="fld-label">1. ¿Qué máquina tiene la falla?</label>
+            <label for="aviso-machine" class="fld-label">{{ 'avisos.1_que_maquina_tiene' | translate }}</label>
             @if (recientes().length) {
-              <div class="mb-2 flex flex-wrap gap-2" role="group" aria-label="Máquinas recientes">
+              <div class="mb-2 flex flex-wrap gap-2" role="group" [attr.aria-label]="'avisos.maquinas_recientes' | translate">
                 @for (m of recientes(); track m.id) {
                   <button type="button" class="pill" [attr.aria-pressed]="model().machineId === '' + m.id" (click)="elegirMaquina(m.id)">
                     {{ m.name }}
@@ -95,20 +97,20 @@ function borrar(clave: string): void {
               [attr.aria-invalid]="avisoForm.machineId().touched() && avisoForm.machineId().invalid()"
               [attr.aria-describedby]="avisoForm.machineId().touched() && avisoForm.machineId().invalid() ? 'aviso-machine-error' : null"
               class="fld-input">
-              <option value="">Selecciona la máquina</option>
+              <option value="">{{ 'avisos.selecciona_la_maquina' | translate }}</option>
               @for (m of machines(); track m.id) {
                 <option [value]="m.id">{{ m.name }}</option>
               }
             </select>
             @if (avisoForm.machineId().touched() && avisoForm.machineId().invalid()) {
-              <p id="aviso-machine-error" role="alert" class="fld-error">{{ avisoForm.machineId().errors()[0]?.message }}</p>
+              <p id="aviso-machine-error" role="alert" class="fld-error">{{ avisoForm.machineId().errors()[0]?.message | translate }}</p>
             }
           </div>
 
           <div>
-            <label for="aviso-descripcion" class="fld-label">2. ¿Qué está pasando?</label>
-            <div class="mb-2 flex flex-wrap gap-2" role="group" aria-label="Síntomas frecuentes">
-              @for (s of sintomas; track s) {
+            <label for="aviso-descripcion" class="fld-label">{{ 'avisos.2_que_esta_pasando' | translate }}</label>
+            <div class="mb-2 flex flex-wrap gap-2" role="group" [attr.aria-label]="'avisos.sintomas_frecuentes' | translate">
+              @for (s of sintomas(); track s) {
                 <button type="button" class="pill" (click)="agregarSintoma(s)">{{ s }}</button>
               }
             </div>
@@ -118,15 +120,15 @@ function borrar(clave: string): void {
               [formField]="avisoForm.descripcion"
               [attr.aria-invalid]="avisoForm.descripcion().touched() && avisoForm.descripcion().invalid()"
               [attr.aria-describedby]="avisoForm.descripcion().touched() && avisoForm.descripcion().invalid() ? 'aviso-descripcion-error' : null"
-              placeholder="Ej. Vibración anormal y ruido metálico en el motor al arrancar."
+              [attr.placeholder]="'avisos.ej_vibracion_anormal_y' | translate"
               class="fld-input resize-none"></textarea>
             @if (avisoForm.descripcion().touched() && avisoForm.descripcion().invalid()) {
-              <p id="aviso-descripcion-error" role="alert" class="fld-error">{{ avisoForm.descripcion().errors()[0]?.message }}</p>
+              <p id="aviso-descripcion-error" role="alert" class="fld-error">{{ avisoForm.descripcion().errors()[0]?.message | translate }}</p>
             }
           </div>
 
           <fieldset>
-            <legend class="fld-label">3. ¿Qué tan grave es?</legend>
+            <legend class="fld-label">{{ 'avisos.3_que_tan_grave' | translate }}</legend>
             <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
               @for (g of gravedades; track g.value) {
                 <label
@@ -143,19 +145,19 @@ function borrar(clave: string): void {
                 </label>
               }
             </div>
-            <p class="fld-ayuda">El supervisor define la prioridad real al atender el aviso.</p>
+            <p class="fld-ayuda">{{ 'avisos.el_supervisor_define_la' | translate }}</p>
           </fieldset>
 
           <div>
-            <span id="aviso-foto-label" class="fld-label">4. Foto de la falla (opcional)</span>
+            <span id="aviso-foto-label" class="fld-label">{{ 'avisos.4_foto_de_la' | translate }}</span>
             <div class="flex flex-wrap items-center gap-2">
               <button type="button" class="btn-secondary" data-testid="btn-camara" (click)="camara.click()">
                 <app-icon name="camara" [size]="22" />
-                Tomar foto
+                {{ 'avisos.tomar_foto' | translate }}
               </button>
               <button type="button" class="btn-secondary" data-testid="btn-galeria" (click)="galeria.click()">
                 <app-icon name="imagen" [size]="22" />
-                Elegir de la galería
+                {{ 'avisos.elegir_de_la_galeria' | translate }}
               </button>
               <input #camara id="aviso-foto-camara" type="file" class="hidden" accept="image/*" capture="environment" aria-hidden="true" tabindex="-1" (change)="onFoto($event)" />
               <input
@@ -170,19 +172,19 @@ function borrar(clave: string): void {
             </div>
             @if (preview(); as src) {
               <div class="mt-3 flex items-start gap-3">
-                <img [src]="src" alt="Vista previa de la foto adjunta" class="max-h-40 max-w-[60%] rounded-control border border-borde object-contain" />
+                <img [src]="src" [attr.alt]="'avisos.vista_previa_de_la' | translate" class="max-h-40 max-w-[60%] rounded-control border border-borde object-contain" />
                 <div class="grid gap-1">
                   <p class="text-sm text-tinta-suave" aria-live="polite">{{ foto()?.name }}</p>
                   <button type="button" class="btn-ghost justify-start" (click)="quitarFoto()">
                     <app-icon name="x" [size]="18" />
-                    Quitar
+                    {{ 'avisos.quitar' | translate }}
                   </button>
                 </div>
               </div>
             } @else {
-              <p class="fld-ayuda" aria-live="polite">{{ procesandoFoto() ? 'Preparando la foto…' : 'Sin foto' }}</p>
+              <p class="fld-ayuda" aria-live="polite">{{ (procesandoFoto() ? 'avisos.preparando_la_foto' : 'avisos.sin_foto') | translate }}</p>
             }
-            <p class="fld-ayuda">JPEG, PNG o WEBP, hasta 5 MB. Ayuda al supervisor a entender la falla.</p>
+            <p class="fld-ayuda">{{ 'avisos.jpeg_png_o_webp' | translate }}</p>
           </div>
         </div>
       }
@@ -190,16 +192,16 @@ function borrar(clave: string): void {
       <div modal-footer>
         @if (creado()) {
           <div class="grid gap-2 sm:grid-cols-2">
-            <button type="button" class="btn-secondary" data-testid="btn-otra" (click)="reportarOtra()">Reportar otra</button>
+            <button type="button" class="btn-secondary" data-testid="btn-otra" (click)="reportarOtra()">{{ 'avisos.reportar_otra' | translate }}</button>
             <button type="button" class="btn-primary" data-testid="btn-ver-avisos" (click)="verAvisos()">
-              {{ puedeGestionar() ? 'Ver bandeja' : 'Ver mis avisos' }}
+              {{ (puedeGestionar() ? 'avisos.ver_bandeja' : 'avisos.ver_mis_avisos') | translate }}
             </button>
           </div>
         } @else {
           <div class="grid gap-2 sm:flex sm:justify-end">
-            <button type="button" class="btn-ghost order-2 sm:order-1" (click)="cerrar()">Cancelar</button>
+            <button type="button" class="btn-ghost order-2 sm:order-1" (click)="cerrar()">{{ 'avisos.cancelar' | translate }}</button>
             <button type="button" class="btn-primary order-1 min-h-14 text-lg sm:order-2 sm:min-h-10 sm:text-sm" [disabled]="enviando()" (click)="enviar()">
-              {{ enviando() ? 'Enviando…' : 'Enviar aviso' }}
+              {{ (enviando() ? 'avisos.enviando' : 'avisos.enviar_aviso') | translate }}
             </button>
           </div>
         }
@@ -208,6 +210,7 @@ function borrar(clave: string): void {
   `,
 })
 export class ReportarFalla {
+  private readonly i18n = inject(I18nService);
   private readonly api = inject(AvisosApi);
   private readonly catalog = inject(CatalogService);
   private readonly toast = inject(ToastService);
@@ -219,7 +222,7 @@ export class ReportarFalla {
   readonly created = output<Aviso>();
 
   protected readonly gravedades = GRAVEDADES;
-  protected readonly sintomas = SINTOMAS;
+  protected readonly sintomas = computed(() => sintomasFrecuentes());
   protected readonly machines = signal<Machine[]>([]);
   protected readonly recientes = signal<Machine[]>([]);
   protected readonly enviando = signal(false);
@@ -231,9 +234,9 @@ export class ReportarFalla {
 
   protected readonly model = signal<ReportarFallaModel>({ ...modeloInicial(), ...leer<Partial<ReportarFallaModel>>(CLAVE_BORRADOR, {}) });
   protected readonly avisoForm = form(this.model, (f) => {
-    required(f.machineId, { message: 'Selecciona la máquina.' });
-    required(f.descripcion, { message: 'Describe la falla.' });
-    validate(f.descripcion, ({ value }) => (value().trim() ? undefined : { kind: 'blank', message: 'Describe la falla.' }));
+    required(f.machineId, { message: 'avisos.selecciona_la_maquina_2' });
+    required(f.descripcion, { message: 'avisos.describe_la_falla' });
+    validate(f.descripcion, ({ value }) => (value().trim() ? undefined : { kind: 'blank', message: 'avisos.describe_la_falla' }));
   });
 
   protected readonly puedeGestionar = () => this.permissions.canPerform('gestionar_avisos');
@@ -254,7 +257,7 @@ export class ReportarFalla {
         const ids = leer<number[]>(CLAVE_RECIENTES, []);
         this.recientes.set(ids.map((id) => (machines ?? []).find((m) => m.id === id)).filter((m): m is Machine => !!m));
       },
-      error: () => this.toast.error('No se pudieron cargar las máquinas.'),
+      error: () => this.toast.error(this.i18n.tr('avisos.no_se_pudieron_cargar_2')),
     });
   }
 
@@ -284,7 +287,7 @@ export class ReportarFalla {
     if (!original) return;
 
     if (!TIPOS_FOTO.includes(original.type)) {
-      this.toast.error('Solo se permiten imágenes JPEG, PNG o WEBP.');
+      this.toast.error(this.i18n.tr('avisos.solo_se_permiten_imagenes'));
       return;
     }
     // Se reduce primero (una foto de celular suele pesar más de 5 MB) y el límite se aplica a lo que de verdad se envía.
@@ -292,7 +295,7 @@ export class ReportarFalla {
     const archivo = await reducirImagen(original);
     this.procesandoFoto.set(false);
     if (archivo.size > MAX_FOTO_MB * 1024 * 1024) {
-      this.toast.error(`La imagen supera el máximo de ${MAX_FOTO_MB} MB.`);
+      this.toast.error(this.i18n.tr('avisos.la_imagen_supera_el', { v0: MAX_FOTO_MB }));
       return;
     }
     this.liberarVistaPrevia();
@@ -331,7 +334,7 @@ export class ReportarFalla {
       },
       error: (err) => {
         this.enviando.set(false);
-        this.toast.error(apiErrorMessage(err, 'No se pudo enviar el aviso.'));
+        this.toast.error(apiErrorMessage(err, this.i18n.tr('avisos.no_se_pudo_enviar')));
       },
     });
   }

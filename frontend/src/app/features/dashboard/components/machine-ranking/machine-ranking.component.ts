@@ -4,6 +4,7 @@ import { MachineData } from '../../../../core/models';
 import { I18nService } from '../../../../core/i18n/i18n.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
 
+import { TranslatePipe } from '../../../../core/i18n/translate.pipe';
 /** Métricas que ofrece el selector, en el orden del legacy. */
 export type MetricaRanking = 'ots' | 'mttr' | 'ahorro' | 'costo';
 
@@ -65,7 +66,7 @@ const MIL = new Intl.NumberFormat('es-CL');
 @Component({
   selector: 'app-machine-ranking',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, TranslatePipe],
   template: `
     @if (maquinas().length > 0) {
       <figure
@@ -84,7 +85,7 @@ const MIL = new Intl.NumberFormat('es-CL');
                    outline-none transition-colors focus:border-accion
                       "
             data-testid="selector-metrica"
-            aria-label="Métrica del ranking"
+            [attr.aria-label]="'sistema.metrica_del_ranking' | translate"
             [value]="metrica()"
             (change)="cambiarMetrica($event)"
           >

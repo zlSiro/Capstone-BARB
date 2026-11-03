@@ -10,6 +10,8 @@ import {
 } from '../../core/models';
 import { TransaccionesEmpresaApi } from '../../core/services/transacciones-empresa-api';
 import { apiErrorMessage } from '../../core/utils/http-error';
+import { TranslatePipe } from '../../core/i18n/translate.pipe';
+import { I18nService } from '../../core/i18n/i18n.service';
 import {
   OPERACION_LABEL,
   OPERACION_STYLE,
@@ -23,10 +25,11 @@ import {
 /** Vista del gerente: lo que hicieron los usuarios de su empresa (INSERT/UPDATE/DELETE). */
 @Component({
   selector: 'app-transacciones-empresa',
-  imports: [DatePipe],
+  imports: [DatePipe, TranslatePipe],
   templateUrl: './transacciones-empresa.html',
 })
 export class TransaccionesEmpresa {
+  private readonly i18n = inject(I18nService);
   private readonly api = inject(TransaccionesEmpresaApi);
   private pendiente?: Subscription;
 
@@ -63,7 +66,7 @@ export class TransaccionesEmpresa {
   constructor() {
     this.api.getFiltros().subscribe({
       next: (o) => this.opciones.set(o),
-      error: (err) => this.error.set(apiErrorMessage(err, 'No se pudieron cargar los filtros.')),
+      error: (err) => this.error.set(apiErrorMessage(err, this.i18n.tr('trx.no_se_pudieron_cargar'))),
     });
     this.load();
   }
@@ -137,7 +140,7 @@ export class TransaccionesEmpresa {
           this.loading.set(false);
         },
         error: (err) => {
-          this.error.set(apiErrorMessage(err, 'No se pudieron cargar las transacciones.'));
+          this.error.set(apiErrorMessage(err, this.i18n.tr('trx.no_se_pudieron_cargar_2')));
           this.loading.set(false);
         },
       });

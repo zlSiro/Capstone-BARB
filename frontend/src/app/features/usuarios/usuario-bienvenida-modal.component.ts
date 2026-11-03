@@ -4,6 +4,8 @@ import { DatePipe } from '@angular/common';
 import { ToastService } from '../../core/services/toast.service';
 import { ModalComponent } from '../../shared/components/ui/modal/modal.component';
 
+import { TranslatePipe } from '../../core/i18n/translate.pipe';
+import { I18nService } from '../../core/i18n/i18n.service';
 /** Datos necesarios para redactar el aviso de bienvenida de un usuario recién creado. */
 export interface BienvenidaUsuario {
   nombre: string;
@@ -22,14 +24,14 @@ export interface BienvenidaUsuario {
  */
 @Component({
   selector: 'app-usuario-bienvenida-modal',
-  imports: [ModalComponent],
+  imports: [ModalComponent, TranslatePipe],
   providers: [DatePipe],
   template: `
     <app-modal
-      title="Usuario creado"
-      subtitle="Copia este mensaje y envíalo por correo al nuevo usuario."
+      [title]="'usuarios.usuario_creado' | translate"
+      [subtitle]="'usuarios.copia_este_mensaje_y' | translate"
       (closed)="closed.emit()">
-      <label for="bienvenida-texto" class="fld-label">Mensaje para el nuevo usuario</label>
+      <label for="bienvenida-texto" class="fld-label">{{ 'usuarios.mensaje_para_el_nuevo' | translate }}</label>
       <textarea
         id="bienvenida-texto"
         data-testid="bienvenida-texto"
@@ -38,18 +40,19 @@ export interface BienvenidaUsuario {
         class="fld-input w-full codigo text-sm"
         [value]="mensaje()"></textarea>
       <p class="mt-2 text-sm text-tinta-suave">
-        La contraseña no se vuelve a mostrar una vez que cierres esta ventana.
+        {{ 'usuarios.la_contrasena_no_se' | translate }}
       </p>
       <div class="flex justify-end gap-2 pt-4">
         <button type="button" data-testid="bienvenida-copiar" class="btn-secondary" (click)="copiar()">
-          {{ copiado() ? 'Copiado ✓' : 'Copiar mensaje' }}
+          {{ (copiado() ? 'usuarios.copiado' : 'usuarios.copiar_mensaje') | translate }}
         </button>
-        <button type="button" data-testid="bienvenida-cerrar" class="btn-primary" (click)="closed.emit()">Cerrar</button>
+        <button type="button" data-testid="bienvenida-cerrar" class="btn-primary" (click)="closed.emit()">{{ 'usuarios.cerrar' | translate }}</button>
       </div>
     </app-modal>
   `,
 })
 export class UsuarioBienvenidaModalComponent {
+  private readonly i18n = inject(I18nService);
   private readonly toast = inject(ToastService);
   private readonly datePipe = inject(DatePipe);
 
@@ -77,7 +80,7 @@ export class UsuarioBienvenidaModalComponent {
       await navigator.clipboard.writeText(this.mensaje());
       this.copiado.set(true);
     } catch {
-      this.toast.error('No se pudo copiar automáticamente. Selecciona el texto y cópialo manualmente.');
+      this.toast.error(this.i18n.tr('usuarios.no_se_pudo_copiar'));
     }
   }
 }

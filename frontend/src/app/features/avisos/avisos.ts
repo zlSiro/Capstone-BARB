@@ -12,19 +12,22 @@ import { Icon } from '../../shared/components/ui/icon/icon';
 import { rolLabel } from '../transacciones/etiquetas';
 import { DescartarAviso } from './descartar-aviso';
 import { ESTADO_META, estadoMeta, gravedadMeta } from './etiquetas';
+import { textoActual } from '../../core/i18n/i18n.service';
 import { EstadoAvisoChip } from './estado-aviso';
 import { FotoAviso } from './foto-aviso';
 import { GenerarOtAviso } from './generar-ot-aviso';
 import { GravedadMedidor } from './gravedad-medidor';
 import { VerFotoAviso } from './ver-foto-aviso';
 
+import { TranslatePipe } from '../../core/i18n/translate.pipe';
+import { I18nService } from '../../core/i18n/i18n.service';
 type Filtro = EstadoAviso | 'todos';
 
 const FILTROS: { value: Filtro; label: string }[] = [
-  { value: 'pendiente', label: ESTADO_META.pendiente.label },
-  { value: 'con_ot', label: ESTADO_META.con_ot.label },
-  { value: 'descartado', label: ESTADO_META.descartado.label },
-  { value: 'todos', label: 'Todos' },
+  { value: 'pendiente', get label() { return ESTADO_META.pendiente.label; } },
+  { value: 'con_ot', get label() { return ESTADO_META.con_ot.label; } },
+  { value: 'descartado', get label() { return ESTADO_META.descartado.label; } },
+  { value: 'todos', get label() { return textoActual('avisos.todos'); } },
 ];
 
 /**
@@ -34,10 +37,11 @@ const FILTROS: { value: Filtro; label: string }[] = [
  */
 @Component({
   selector: 'app-avisos',
-  imports: [DatePipe, RouterLink, Icon, GenerarOtAviso, DescartarAviso, VerFotoAviso, FotoAviso, EstadoAvisoChip, GravedadMedidor],
+  imports: [DatePipe, RouterLink, Icon, GenerarOtAviso, DescartarAviso, VerFotoAviso, FotoAviso, EstadoAvisoChip, GravedadMedidor, TranslatePipe],
   templateUrl: './avisos.html',
 })
 export class Avisos {
+  private readonly i18n = inject(I18nService);
   private readonly api = inject(AvisosApi);
   private readonly permisos = inject(PermissionsService);
   private readonly pendientesSvc = inject(AvisosPendientes);
@@ -107,7 +111,7 @@ export class Avisos {
         if (this.puedeGestionar()) this.pendientesSvc.sincronizar(avisos);
       },
       error: (err) => {
-        this.error.set(apiErrorMessage(err, 'No se pudieron cargar los avisos.'));
+        this.error.set(apiErrorMessage(err, this.i18n.tr('avisos.no_se_pudieron_cargar')));
         this.loading.set(false);
       },
     });

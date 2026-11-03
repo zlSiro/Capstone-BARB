@@ -10,6 +10,8 @@ import { UsersAdminService } from '../../core/services/users-admin.service';
 import { apiErrorMessage } from '../../core/utils/http-error';
 import { ROLE_OPTIONS, UsuarioFormModalComponent } from './usuario-form-modal.component';
 
+import { TranslatePipe } from '../../core/i18n/translate.pipe';
+import { I18nService } from '../../core/i18n/i18n.service';
 /**
  * Mantenedor de perfiles de usuario.
  * - Gerente/admin de empresa: gestiona solo los usuarios de su empresa (lo garantiza el backend).
@@ -18,88 +20,88 @@ import { ROLE_OPTIONS, UsuarioFormModalComponent } from './usuario-form-modal.co
  */
 @Component({
   selector: 'app-usuarios',
-  imports: [DatePipe, UsuarioFormModalComponent],
+  imports: [DatePipe, UsuarioFormModalComponent, TranslatePipe],
   template: `
     <section class="flex flex-col gap-4" aria-labelledby="usuarios-title">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 id="usuarios-title" class="text-2xl font-bold text-tinta ">
-            {{ isSuper() ? 'Gerentes' : 'Usuarios' }} ({{ usuarios().length }})
+            {{ (isSuper() ? 'usuarios.gerentes' : 'usuarios.usuarios') | translate }} ({{ usuarios().length }})
           </h1>
           <p class="text-sm text-tinta-suave ">
             @if (isSuper()) {
-              Gerentes de las empresas{{ tenant.empresaId() ? ' (filtrado por la empresa seleccionada)' : '' }}.
+              {{ 'usuarios.gerentes_de_las_empresas' | translate: { v0: tenant.empresaId() ? (' ' + ('usuarios.filtrado_por_la_empresa' | translate)) : '' } }}
               @if (tenant.empresaId()) {
-                <button type="button" class="ml-1 underline" (click)="clearEmpresaFilter()">Ver todas</button>
+                <button type="button" class="ml-1 underline" (click)="clearEmpresaFilter()">{{ 'usuarios.ver_todas' | translate }}</button>
               }
             } @else {
-              Perfiles de los miembros de {{ auth.user()?.empresa_nombre }}.
+              {{ 'usuarios.perfiles_de_los_miembros' | translate: { v0: auth.user()?.empresa_nombre } }}
             }
           </p>
         </div>
-        <button type="button" class="btn-primary" (click)="openCreate()">+ Nuevo usuario</button>
+        <button type="button" class="btn-primary" (click)="openCreate()">{{ 'usuarios.nuevo_usuario' | translate }}</button>
       </div>
 
       <div>
-        <label for="usuario-filtro" class="sr-only">Buscar usuario</label>
+        <label for="usuario-filtro" class="sr-only">{{ 'usuarios.buscar_usuario' | translate }}</label>
         <input
           id="usuario-filtro"
           type="search"
-          placeholder="Buscar por nombre, email o rol…"
+          [attr.placeholder]="'usuarios.buscar_por_nombre_email' | translate"
           class="w-full max-w-sm rounded-control border border-borde-control bg-superficie px-3 py-2 text-sm text-tinta focus:outline-none focus:ring-2 focus:ring-accion"
           [value]="filtro()"
           (input)="filtro.set($any($event.target).value)" />
       </div>
 
       @if (loading()) {
-        <div class="py-10 text-center text-tinta-suave" role="status">Cargando usuarios…</div>
+        <div class="py-10 text-center text-tinta-suave" role="status">{{ 'usuarios.cargando_usuarios' | translate }}</div>
       } @else if (error()) {
         <div class="rounded-control border border-peligro bg-peligro-suave px-4 py-3 text-sm text-peligro" role="alert">
-          {{ error() }} <button type="button" class="ml-2 underline" (click)="load()">Reintentar</button>
+          {{ error() }} <button type="button" class="ml-2 underline" (click)="load()">{{ 'usuarios.reintentar' | translate }}</button>
         </div>
       } @else {
         <div class="overflow-x-auto rounded-control border border-borde bg-superficie ">
           <table class="tabla-apilada w-full text-sm text-tinta">
-            <caption class="sr-only">Listado de usuarios</caption>
+            <caption class="sr-only">{{ 'usuarios.listado_de_usuarios' | translate }}</caption>
             <thead class="bg-superficie-2 text-sm text-tinta-suave">
               <tr>
-                <th scope="col" class="px-4 py-2 text-left">Usuario</th>
-                <th scope="col" class="px-4 py-2 text-left">Rol</th>
+                <th scope="col" class="px-4 py-2 text-left">{{ 'usuarios.usuario' | translate }}</th>
+                <th scope="col" class="px-4 py-2 text-left">{{ 'usuarios.rol' | translate }}</th>
                 @if (isSuper()) {
-                  <th scope="col" class="px-4 py-2 text-left">Empresa</th>
+                  <th scope="col" class="px-4 py-2 text-left">{{ 'usuarios.empresa' | translate }}</th>
                 }
-                <th scope="col" class="px-4 py-2 text-left">Estado</th>
-                <th scope="col" class="px-4 py-2 text-left">Último acceso</th>
-                <th scope="col" class="px-4 py-2 text-left">Acciones</th>
+                <th scope="col" class="px-4 py-2 text-left">{{ 'usuarios.estado' | translate }}</th>
+                <th scope="col" class="px-4 py-2 text-left">{{ 'usuarios.ultimo_acceso' | translate }}</th>
+                <th scope="col" class="px-4 py-2 text-left">{{ 'usuarios.acciones' | translate }}</th>
               </tr>
             </thead>
             <tbody>
               @for (u of filtrados(); track u.usuario_id) {
                 <tr class="border-t border-borde hover:bg-superficie-2">
-                  <td class="px-4 py-2" data-label="Usuario">
+                  <td class="px-4 py-2" [attr.data-label]="'usuarios.usuario' | translate">
                     <div class="font-medium">{{ u.nombre }}</div>
                     <div class="text-sm text-tinta-suave">{{ u.email }}</div>
                   </td>
-                  <td class="px-4 py-2" data-label="Rol">
+                  <td class="px-4 py-2" [attr.data-label]="'usuarios.rol' | translate">
                     <span class="rounded-control bg-accion-suave px-2 py-1 text-sm font-medium text-accion">{{ rolLabel(u.rol) }}</span>
                   </td>
                   @if (isSuper()) {
-                    <td class="px-4 py-2" data-label="Empresa">{{ u.empresa_nombre ?? 'Plataforma BARB' }}</td>
+                    <td class="px-4 py-2" [attr.data-label]="'usuarios.empresa' | translate">{{ u.empresa_nombre ?? ('usuarios.plataforma_barb' | translate) }}</td>
                   }
-                  <td class="px-4 py-2" data-label="Estado">
+                  <td class="px-4 py-2" [attr.data-label]="'usuarios.estado' | translate">
                     <span class="rounded-control px-2 py-1 text-sm font-medium"
                           [class]="u.activo ? 'bg-ok-suave text-ok' : 'bg-borde text-tinta'">
-                      {{ u.activo ? 'Activo' : 'Inactivo' }}
+                      {{ (u.activo ? 'usuarios.activo' : 'usuarios.inactivo') | translate }}
                     </span>
                   </td>
-                  <td class="px-4 py-2" data-label="Último acceso">{{ u.ultimo_login ? (u.ultimo_login | date: 'dd-MM-yyyy HH:mm') : 'Nunca' }}</td>
-                  <td class="px-4 py-2" data-label="Acciones">
+                  <td class="px-4 py-2" [attr.data-label]="'usuarios.ultimo_acceso' | translate">{{ u.ultimo_login ? (u.ultimo_login | date: 'dd-MM-yyyy HH:mm') : ('usuarios.nunca' | translate) }}</td>
+                  <td class="px-4 py-2" [attr.data-label]="'usuarios.acciones' | translate">
                     <div class="flex flex-wrap gap-1">
-                      <button type="button" class="btn-secondary" (click)="openEdit(u)" [attr.aria-label]="'Editar ' + u.nombre">Editar</button>
+                      <button type="button" class="btn-secondary" (click)="openEdit(u)" [attr.aria-label]="'usuarios.editar_2' | translate: { v0: u.nombre }">{{ 'usuarios.editar' | translate }}</button>
                       @if (!esYo(u)) {
                         <button type="button" class="btn-secondary" (click)="toggleActivo(u)"
-                                [attr.aria-label]="(u.activo ? 'Desactivar ' : 'Activar ') + u.nombre">
-                          {{ u.activo ? 'Desactivar' : 'Activar' }}
+                                [attr.aria-label]="(u.activo ? 'usuarios.desactivar' : 'usuarios.activar') | translate: { v0: u.nombre }">
+                          {{ (u.activo ? 'usuarios.desactivar_2' : 'usuarios.activar_2') | translate }}
                         </button>
                       }
                     </div>
@@ -107,7 +109,7 @@ import { ROLE_OPTIONS, UsuarioFormModalComponent } from './usuario-form-modal.co
                 </tr>
               } @empty {
                 <tr>
-                  <td [attr.colspan]="isSuper() ? 6 : 5" class="py-6 text-center text-tinta-suave">No hay usuarios que coincidan.</td>
+                  <td [attr.colspan]="isSuper() ? 6 : 5" class="py-6 text-center text-tinta-suave">{{ 'usuarios.no_hay_usuarios_que' | translate }}</td>
                 </tr>
               }
             </tbody>
@@ -129,6 +131,7 @@ import { ROLE_OPTIONS, UsuarioFormModalComponent } from './usuario-form-modal.co
   `,
 })
 export class UsuariosComponent {
+  private readonly i18n = inject(I18nService);
   protected readonly auth = inject(AuthService);
   protected readonly tenant = inject(TenantContextService);
   private readonly users = inject(UsersAdminService);
@@ -184,7 +187,7 @@ export class UsuariosComponent {
         this.loading.set(false);
       },
       error: (err) => {
-        this.error.set(apiErrorMessage(err, 'No se pudieron cargar los usuarios.'));
+        this.error.set(apiErrorMessage(err, this.i18n.tr('usuarios.no_se_pudieron_cargar')));
         this.loading.set(false);
       },
     });
@@ -208,10 +211,10 @@ export class UsuariosComponent {
   protected toggleActivo(u: UsuarioPerfil): void {
     this.users.update(u.usuario_id, { activo: !u.activo }).subscribe({
       next: () => {
-        this.toast.success(u.activo ? 'Usuario desactivado.' : 'Usuario activado.');
+        this.toast.success(this.i18n.tr(u.activo ? 'usuarios.usuario_desactivado' : 'usuarios.usuario_activado'));
         this.load();
       },
-      error: (err) => this.toast.error(apiErrorMessage(err, 'No se pudo cambiar el estado.')),
+      error: (err) => this.toast.error(apiErrorMessage(err, this.i18n.tr('usuarios.no_se_pudo_cambiar'))),
     });
   }
 }

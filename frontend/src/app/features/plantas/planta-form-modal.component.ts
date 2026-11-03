@@ -7,6 +7,8 @@ import { ToastService } from '../../core/services/toast.service';
 import { apiErrorMessage } from '../../core/utils/http-error';
 import { ModalComponent } from '../../shared/components/ui/modal/modal.component';
 
+import { TranslatePipe } from '../../core/i18n/translate.pipe';
+import { I18nService } from '../../core/i18n/i18n.service';
 /** Datos de cabecera de la planta. Es lo único que valida Signal Forms. */
 interface PlantaFormModel {
   nombre: string;
@@ -41,30 +43,30 @@ interface MaquinaForm {
  */
 @Component({
   selector: 'app-planta-form-modal',
-  imports: [FormField, ModalComponent],
+  imports: [FormField, ModalComponent, TranslatePipe],
   template: `
     <app-modal
-      [title]="
+      [title]="(
         esEdicion()
-          ? 'Editar planta'
+          ? 'plantas.editar_planta'
           : paso() === 'form'
-            ? 'Nueva planta'
-            : 'Confirmar creación'
-      "
-      [subtitle]="
+            ? 'plantas.nueva_planta_2'
+            : 'plantas.confirmar_creacion'
+      ) | translate"
+      [subtitle]="(
         esEdicion()
-          ? 'Cambia el nombre o la ubicación. Las máquinas se gestionan aparte.'
+          ? 'plantas.cambia_el_nombre_o'
           : paso() === 'form'
-            ? 'Crea la planta con sus disciplinas y máquinas en una sola operación.'
-            : 'Revisa el resumen antes de guardar.'
-      "
+            ? 'plantas.crea_la_planta_con'
+            : 'plantas.revisa_el_resumen_antes'
+      ) | translate"
       size="lg"
       (closed)="closed.emit()"
     >
       @if (paso() === 'form') {
         <form class="grid gap-4 md:grid-cols-2" (submit)="$event.preventDefault(); esEdicion() ? guardar() : irAConfirmar()" novalidate>
           <div class="md:col-span-2">
-            <label for="pla-nombre" class="fld-label">Nombre de la planta *</label>
+            <label for="pla-nombre" class="fld-label">{{ 'plantas.nombre_de_la_planta' | translate }}</label>
             <input
               id="pla-nombre"
               type="text"
@@ -76,19 +78,19 @@ interface MaquinaForm {
             />
             @if (f.nombre().touched() && f.nombre().invalid()) {
               <p id="pla-nombre-err" role="alert" class="fld-error" data-testid="error-nombre">
-                {{ f.nombre().errors()[0]?.message }}
+                {{ f.nombre().errors()[0]?.message | translate }}
               </p>
             }
           </div>
 
           <div class="md:col-span-2">
-            <label for="pla-ubicacion" class="fld-label">Ubicación</label>
+            <label for="pla-ubicacion" class="fld-label">{{ 'plantas.ubicacion' | translate }}</label>
             <input
               id="pla-ubicacion"
               type="text"
               class="fld-input"
               data-testid="planta-ubicacion"
-              placeholder="Ciudad, región…"
+              [attr.placeholder]="'plantas.ciudad_region' | translate"
               [formField]="f.ubicacion"
             />
           </div>
@@ -97,15 +99,15 @@ interface MaquinaForm {
           <!-- Disciplinas -->
           <fieldset class="md:col-span-2 rounded-control border border-borde p-4">
             <legend class="px-2 text-sm font-semibold text-tinta-suave">
-              Disciplinas
+              {{ 'plantas.disciplinas' | translate }}
             </legend>
             <p class="mb-3 text-sm text-tinta-suave">
-              Se reutilizan si la empresa ya las tiene; sólo se crean las que falten.
+              {{ 'plantas.se_reutilizan_si_la' | translate }}
             </p>
 
             @if (disciplinas().length === 0) {
               <p class="mb-3 text-sm text-tinta-suave" data-testid="sin-disciplinas">
-                Sin disciplinas. Puedes crearlas después.
+                {{ 'plantas.sin_disciplinas_puedes_crearla' | translate }}
               </p>
             }
 
@@ -115,7 +117,7 @@ interface MaquinaForm {
                   type="text"
                   class="fld-input"
                   data-testid="disciplina-input"
-                  placeholder="Mecánica, Eléctrica…"
+                  [attr.placeholder]="'plantas.mecanica_electrica' | translate"
                   [value]="d"
                   (input)="cambiarDisciplina($index, $any($event.target).value)"
                 />
@@ -124,7 +126,7 @@ interface MaquinaForm {
                   class="rounded-control border border-borde px-3 py-2 text-sm text-tinta hover:bg-superficie"
                   data-testid="quitar-disciplina"
                   (click)="quitarDisciplina($index)"
-                  [attr.aria-label]="'Quitar disciplina ' + (d || $index + 1)"
+                  [attr.aria-label]="'plantas.quitar_disciplina' | translate: { v0: d || $index + 1 }"
                 >
                   ✕
                 </button>
@@ -137,19 +139,19 @@ interface MaquinaForm {
               data-testid="agregar-disciplina"
               (click)="agregarDisciplina()"
             >
-              + Agregar disciplina
+              {{ 'plantas.agregar_disciplina' | translate }}
             </button>
           </fieldset>
 
           <!-- Máquinas -->
           <fieldset class="md:col-span-2 rounded-control border border-borde p-4">
             <legend class="px-2 text-sm font-semibold text-tinta-suave">
-              Máquinas
+              {{ 'plantas.maquinas' | translate }}
             </legend>
 
             @if (maquinas().length === 0) {
               <p class="mb-3 text-sm text-tinta-suave" data-testid="sin-maquinas">
-                Sin máquinas. Puedes agregarlas después.
+                {{ 'plantas.sin_maquinas_puedes_agregarlas' | translate }}
               </p>
             }
 
@@ -157,7 +159,7 @@ interface MaquinaForm {
               <div class="mb-3 rounded-control border border-borde p-3">
                 <div class="grid gap-2 md:grid-cols-4">
                   <div>
-                    <label class="fld-label" [attr.for]="'maq-nombre-' + $index">Nombre *</label>
+                    <label class="fld-label" [attr.for]="'maq-nombre-' + $index">{{ 'plantas.nombre' | translate }}</label>
                     <input
                       [id]="'maq-nombre-' + $index"
                       type="text"
@@ -168,7 +170,7 @@ interface MaquinaForm {
                     />
                   </div>
                   <div>
-                    <label class="fld-label" [attr.for]="'maq-codigo-' + $index">Código *</label>
+                    <label class="fld-label" [attr.for]="'maq-codigo-' + $index">{{ 'plantas.codigo_2' | translate }}</label>
                     <input
                       [id]="'maq-codigo-' + $index"
                       type="text"
@@ -180,7 +182,7 @@ interface MaquinaForm {
                     />
                   </div>
                   <div>
-                    <label class="fld-label" [attr.for]="'maq-disc-' + $index">Disciplina</label>
+                    <label class="fld-label" [attr.for]="'maq-disc-' + $index">{{ 'plantas.disciplina' | translate }}</label>
                     <select
                       [id]="'maq-disc-' + $index"
                       class="fld-input"
@@ -188,7 +190,7 @@ interface MaquinaForm {
                       [value]="m.disciplina"
                       (change)="cambiarMaquina($index, 'disciplina', $any($event.target).value)"
                     >
-                      <option value="">Sin disciplina</option>
+                      <option value="">{{ 'plantas.sin_disciplina' | translate }}</option>
                       @for (d of opcionesDisciplina(); track d) {
                         <option [value]="d">{{ d }}</option>
                       }
@@ -200,16 +202,16 @@ interface MaquinaForm {
                       class="w-full rounded-control border border-borde px-3 py-2 text-sm text-tinta hover:bg-superficie"
                       data-testid="quitar-maquina"
                       (click)="quitarMaquina($index)"
-                      [attr.aria-label]="'Quitar máquina ' + (m.nombre || $index + 1)"
+                      [attr.aria-label]="'plantas.quitar_maquina' | translate: { v0: m.nombre || $index + 1 }"
                     >
-                      ✕ Quitar
+                      {{ 'plantas.quitar' | translate }}
                     </button>
                   </div>
                 </div>
 
                 <div class="mt-2 grid gap-2 md:grid-cols-2">
                   <div>
-                    <label class="fld-label" [attr.for]="'maq-sla-' + $index">SLA (horas)</label>
+                    <label class="fld-label" [attr.for]="'maq-sla-' + $index">{{ 'plantas.sla_horas' | translate }}</label>
                     <input
                       [id]="'maq-sla-' + $index"
                       type="number"
@@ -222,7 +224,7 @@ interface MaquinaForm {
                     />
                   </div>
                   <div>
-                    <label class="fld-label" [attr.for]="'maq-costo-' + $index">Costo de inactividad (por minuto)</label>
+                    <label class="fld-label" [attr.for]="'maq-costo-' + $index">{{ 'plantas.costo_de_inactividad_por' | translate }}</label>
                     <input
                       [id]="'maq-costo-' + $index"
                       type="number"
@@ -236,7 +238,7 @@ interface MaquinaForm {
                   </div>
                 </div>
                 <p class="mt-1 text-sm text-tinta-suave">
-                  Vacío = usa el SLA y el costo generales de la empresa.
+                  {{ 'plantas.vacio_usa_el_sla' | translate }}
                 </p>
               </div>
             }
@@ -247,11 +249,11 @@ interface MaquinaForm {
               data-testid="agregar-maquina"
               (click)="agregarMaquina()"
             >
-              + Agregar máquina
+              {{ 'plantas.agregar_maquina' | translate }}
             </button>
 
             @if (errorMaquinas(); as err) {
-              <p role="alert" class="fld-error mt-2" data-testid="error-maquinas">{{ err }}</p>
+              <p role="alert" class="fld-error mt-2" data-testid="error-maquinas">{{ err | translate }}</p>
             }
           </fieldset>
           }
@@ -266,30 +268,30 @@ interface MaquinaForm {
               (click)="closed.emit()"
               class="rounded-control border border-borde px-4 py-2 text-sm text-tinta hover:bg-superficie focus:outline-none focus:ring-2 focus:ring-accion"
             >
-              Cancelar
+              {{ 'plantas.cancelar' | translate }}
             </button>
               <button type="submit" class="btn-primary" data-testid="continuar" [disabled]="submitting()">
-                {{ esEdicion() ? (submitting() ? 'Guardando…' : 'Guardar cambios') : 'Continuar' }}
+                {{ (esEdicion() ? (submitting() ? 'plantas.guardando' : 'plantas.guardar_cambios') : 'plantas.continuar') | translate }}
             </button>
           </div>
         </form>
       } @else {
         <div class="space-y-4">
           <p class="text-sm text-tinta" data-testid="confirmacion">
-            ¿Crear la planta <strong>{{ model().nombre.trim() }}</strong> con
+            {{ 'plantas.crear_la_planta' | translate }} <strong>{{ model().nombre.trim() }}</strong> {{ 'plantas.con' | translate }}
             <strong>{{ totalMaquinas() }}</strong>
-            {{ totalMaquinas() === 1 ? 'máquina' : 'máquinas' }} y
+            {{ (totalMaquinas() === 1 ? 'plantas.maquina_3' : 'plantas.maquinas_2') | translate }} {{ 'plantas.y' | translate }}
             <strong>{{ totalDisciplinas() }}</strong>
-            {{ totalDisciplinas() === 1 ? 'disciplina' : 'disciplinas' }}?
+            {{ (totalDisciplinas() === 1 ? 'plantas.disciplina_2' : 'plantas.disciplinas_2') | translate }}?
           </p>
 
           @if (model().ubicacion.trim()) {
-            <p class="text-sm text-tinta-suave">Ubicación: {{ model().ubicacion.trim() }}</p>
+            <p class="text-sm text-tinta-suave">{{ 'plantas.ubicacion_2' | translate: { v0: model().ubicacion.trim() } }}</p>
           }
 
           @if (totalDisciplinas() > 0) {
             <div>
-              <p class="text-sm font-semibold text-tinta-suave">Disciplinas</p>
+              <p class="text-sm font-semibold text-tinta-suave">{{ 'plantas.disciplinas' | translate }}</p>
               <ul class="mt-1 flex flex-wrap gap-2" data-testid="resumen-disciplinas">
                 @for (d of disciplinasLimpas(); track d) {
                   <li class="rounded-control bg-superficie px-2 py-1 text-sm text-tinta">{{ d }}</li>
@@ -300,7 +302,7 @@ interface MaquinaForm {
 
           @if (totalMaquinas() > 0) {
             <div>
-              <p class="text-sm font-semibold text-tinta-suave">Máquinas</p>
+              <p class="text-sm font-semibold text-tinta-suave">{{ 'plantas.maquinas' | translate }}</p>
               <ul class="mt-1 space-y-1" data-testid="resumen-maquinas">
                 @for (m of maquinasLimpias(); track m.codigo) {
                   <li class="flex items-center justify-between rounded-control border border-borde px-3 py-1.5 text-sm">
@@ -310,7 +312,7 @@ interface MaquinaForm {
                       @if (m.disciplina) {
                         <span>{{ m.disciplina }}</span>
                       } @else {
-                        <span>Sin disciplina</span>
+                        <span>{{ 'plantas.sin_disciplina' | translate }}</span>
                       }
                     </span>
                   </li>
@@ -331,7 +333,7 @@ interface MaquinaForm {
               (click)="volver()"
               [disabled]="submitting()"
             >
-              Volver
+              {{ 'plantas.volver' | translate }}
             </button>
             <button
               type="button"
@@ -340,7 +342,7 @@ interface MaquinaForm {
               (click)="guardar()"
               [disabled]="submitting()"
             >
-              {{ submitting() ? 'Creando…' : 'Crear planta' }}
+              {{ (submitting() ? 'plantas.creando' : 'plantas.crear_planta') | translate }}
             </button>
           </div>
         </div>
@@ -349,6 +351,7 @@ interface MaquinaForm {
   `,
 })
 export class PlantaFormModalComponent {
+  private readonly i18n = inject(I18nService);
   private readonly catalogo = inject(CatalogService);
   private readonly toast = inject(ToastService);
 
@@ -437,21 +440,21 @@ export class PlantaFormModalComponent {
   /** Primer problema de las máquinas, o null si están bien. */
   protected readonly errorMaquinas = computed<string | null>(() => {
     const filas = this.maquinas().filter((m) => m.nombre.trim() || m.codigo.trim());
-    if (filas.some((m) => !m.nombre.trim())) return 'Cada máquina necesita un nombre.';
-    if (filas.some((m) => !m.codigo.trim())) return 'Cada máquina necesita un código.';
+    if (filas.some((m) => !m.nombre.trim())) return 'plantas.cada_maquina_necesita_un';
+    if (filas.some((m) => !m.codigo.trim())) return 'plantas.cada_maquina_necesita_un_2';
 
     const codigos = filas.map((m) => m.codigo.trim().toLowerCase());
     if (new Set(codigos).size !== codigos.length) {
-      return 'Hay dos máquinas con el mismo código.';
+      return 'plantas.hay_dos_maquinas_con';
     }
 
     // Los numéricos son opcionales, pero si se escriben tienen que ser válidos: un SLA
     // negativo o un texto suelto no deben llegar al backend (que respondería 422).
     if (filas.some((m) => !this.slaValido(m.slaHoras))) {
-      return 'El SLA debe ser un número entre 0 y 8760 horas (o quedar vacío).';
+      return 'plantas.el_sla_debe_ser_2';
     }
     if (filas.some((m) => !this.costoValido(m.costoInactividad))) {
-      return 'El costo de inactividad debe ser un número mayor o igual a 0 (o quedar vacío).';
+      return 'plantas.el_costo_de_inactividad';
     }
     return null;
   });
@@ -527,12 +530,12 @@ export class PlantaFormModalComponent {
         .subscribe({
           next: (respuesta) => {
             this.submitting.set(false);
-            this.toast.success(`Planta «${respuesta.nombre}» actualizada.`);
+            this.toast.success(this.i18n.tr('plantas.planta_actualizada', { v0: respuesta.nombre }));
             this.saved.emit(respuesta);
           },
           error: (err) => {
             this.submitting.set(false);
-            const mensaje = apiErrorMessage(err, 'No se pudo actualizar la planta.');
+            const mensaje = apiErrorMessage(err, this.i18n.tr('plantas.no_se_pudo_actualizar_2'));
             this.errorGeneral.set(mensaje);
             this.toast.error(mensaje);
           },
@@ -554,16 +557,16 @@ export class PlantaFormModalComponent {
         const reutilizadas = respuesta.disciplinas.length - creadas;
         const detalle =
           respuesta.disciplinas.length > 0
-            ? ` ${creadas} disciplina(s) nueva(s), ${reutilizadas} reutilizada(s).`
+            ? ' ' + this.i18n.tr('plantas.disciplina_s_nueva_s', { v0: creadas, v1: reutilizadas })
             : '';
-        this.toast.success(`Planta «${respuesta.nombre}» creada.${detalle}`);
+        this.toast.success(this.i18n.tr('plantas.planta_creada', { v0: respuesta.nombre }) + detalle);
         this.saved.emit(respuesta);
       },
       error: (err) => {
         this.submitting.set(false);
         // 409 (nombre de planta o código de máquina repetido) se muestra tal cual lo
         // explica el backend: es más útil que un mensaje genérico.
-        const mensaje = apiErrorMessage(err, 'No se pudo crear la planta.');
+        const mensaje = apiErrorMessage(err, this.i18n.tr('plantas.no_se_pudo_crear'));
         this.errorGeneral.set(mensaje);
         this.toast.error(mensaje);
       },

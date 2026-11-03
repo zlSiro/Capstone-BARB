@@ -15,9 +15,11 @@ import { I18nService } from '../../core/i18n/i18n.service';
 import { TopologyService } from '../../core/services/topology.service';
 import { OtDetailSheetComponent } from '../work-orders/components/ot-detail-sheet/ot-detail-sheet.component';
 import { PlantasComponent } from '../plantas/plantas.component';
+import { textoActual } from '../../core/i18n/i18n.service';
 import { PermissionsService } from '../../core/permissions/permissions.service';
 import { filterGroup } from '../work-orders/utils/work-order-labels';
 
+import { TranslatePipe } from '../../core/i18n/translate.pipe';
 /** Dimensiones de la tarjeta de cada nodo, en unidades del viewBox. */
 const NODE_W = 130;
 const NODE_H = 85;
@@ -118,13 +120,14 @@ const CLAVE_GRUPO: Record<string, GrupoOt> = {
 };
 
 /** Etiqueta por estado, para el badge de cada tarjeta. */
+// Con `get`: el texto se calcula al leerlo y sigue el idioma elegido.
 const ETIQUETA_OT: Record<string, string> = {
-  pending: 'Pendiente',
-  assigned: 'Asignada',
-  in_progress: 'En curso',
-  overdue: 'Vencida',
-  completed: 'Cerrada',
-  cancelled: 'Cancelada',
+  get pending() { return textoActual('ot.pendiente'); },
+  get assigned() { return textoActual('ot.asignada'); },
+  get in_progress() { return textoActual('ot.en_curso'); },
+  get overdue() { return textoActual('ot.vencida'); },
+  get completed() { return textoActual('ot.cerrada'); },
+  get cancelled() { return textoActual('ot.cancelada'); },
 };
 
 /** Color del badge por estado, coherente con `work-order-labels.ts`. */
@@ -153,7 +156,7 @@ interface GrupoEnPanel {
 @Component({
   selector: 'app-topology',
   standalone: true,
-  imports: [OtDetailSheetComponent, PlantasComponent],
+  imports: [OtDetailSheetComponent, PlantasComponent, TranslatePipe],
   // El hover de las aristas no se puede expresar con atributos: cambiar el grosor, el
   // color y la punta de flecha a la vez pide CSS.
   styles: `
@@ -218,7 +221,7 @@ interface GrupoEnPanel {
               data-testid="gestionar-activos"
               (click)="alternarVista()"
               class="inline-flex min-h-11 items-center justify-center rounded-control border border-borde-control bg-superficie px-3 text-sm hover:bg-superficie-2"
-            >{{ vistaActivos() ? 'Volver al mapa' : 'Gestionar activos' }}</button>
+            >{{ (vistaActivos() ? 'sistema.volver_al_mapa' : 'sistema.gestionar_activos') | translate }}</button>
           }
           <!-- Los controles de cámara solo tienen sentido sobre el mapa. -->
           @if (!vistaActivos()) {

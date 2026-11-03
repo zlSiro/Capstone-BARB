@@ -1,6 +1,10 @@
 import { Pipe, PipeTransform, inject } from '@angular/core';
-import { I18nService } from './i18n.service';
+import { I18nService, ParamsTexto } from './i18n.service';
 
+/**
+ * `{{ 'seccion.clave' | translate }}` o con parámetros: `{{ 'usuarios.titulo' | translate: { n: lista().length } }}`
+ * (el texto lleva `{n}`). Es impuro a propósito: vuelve a evaluarse al cambiar de idioma.
+ */
 @Pipe({
   name: 'translate',
   standalone: true,
@@ -9,32 +13,12 @@ import { I18nService } from './i18n.service';
 export class TranslatePipe implements PipeTransform {
   private i18n = inject(I18nService);
 
-  transform(path: string): string {
+  transform(path: string | null | undefined, params?: ParamsTexto): string {
     if (!path) return '';
 
-    const parts = path.split('.');
-    if (parts.length !== 2) {
-      console.warn(`[TranslatePipe] Path inválido: "${path}". Formato esperado: "seccion.clave"`);
-      return path;
-    }
-
-    const section = parts[0] as string;
-    const key = parts[1] as string;
-
-    const sectionTree = (this.i18n.tree() as Record<string, Record<string, unknown>>)[section];
-
-    if (!sectionTree) {
-      console.warn(`[TranslatePipe] Sección no encontrada: "${section}"`);
-      return path;
-    }
-
-    const value = sectionTree[key];
-
-    if (value === undefined) {
+    if (!this.i18n.has(path)) {
       console.warn(`[TranslatePipe] Clave no encontrada: "${path}"`);
-      return path;
     }
-
-    return String(value);
+    return this.i18n.tr(path, params);
   }
 }

@@ -11,6 +11,8 @@ import { TenantContextService } from '../../core/services/tenant-context.service
 import { ToastService } from '../../core/services/toast.service';
 import { apiErrorMessage } from '../../core/utils/http-error';
 
+import { TranslatePipe } from '../../core/i18n/translate.pipe';
+import { I18nService } from '../../core/i18n/i18n.service';
 const MAX_BYTES = 15 * 1024 * 1024; // mismo límite que el backend
 const ACCEPT = '.pdf,.docx,.txt,.md,.csv,.json,.log';
 const ALLOWED_EXT = ACCEPT.split(',');
@@ -27,123 +29,136 @@ interface UploadModel {
  */
 @Component({
   selector: 'app-documentos',
-  imports: [DatePipe, FormField],
+  imports: [DatePipe, FormField, TranslatePipe],
   template: `
     <section class="flex flex-col gap-4" aria-labelledby="docs-title">
       <div>
         <h1 id="docs-title" class="text-2xl font-bold text-tinta ">
-          Documentación ({{ documentos().length }})
+          {{ 'documentos.documentacion' | translate: { v0: documentos().length } }}
         </h1>
         <p class="text-sm text-tinta-suave ">
           @if (tenant.isSuper() && !tenant.empresaId()) {
-            Documentos de todas las empresas.
+            {{ 'documentos.documentos_de_todas_las' | translate }}
           } @else {
-            Documentos de {{ empresaNombre() }}.
+            {{ 'documentos.documentos_de' | translate: { v0: empresaNombre() } }}
           }
         </p>
       </div>
 
       <div class="rounded-control border border-accion bg-accion-suave px-4 py-3 text-sm text-accion" role="note">
-        <strong>Cómo se usa:</strong> el asistente de IA responde <em>únicamente</em> con la información de los documentos
-        <strong>activos</strong> de la empresa. Si un tema no está documentado, la IA lo indicará en lugar de inventar.
-        Formatos: PDF, DOCX, TXT, MD, CSV, JSON, LOG (máx. 15 MB; los PDF escaneados sin texto no se pueden indexar).
+        <strong>{{ 'documentos.como_se_usa' | translate }}</strong> {{ 'documentos.el_asistente_de_ia' | translate }} <em>{{ 'documentos.unicamente' | translate }}</em> {{ 'documentos.con_la_informacion_de' | translate }}
+        <strong>{{ 'documentos.activos' | translate }}</strong> {{ 'documentos.de_la_empresa_si' | translate }}
       </div>
 
       @if (permissions.canPerform('subir_documentos')) {
         <form class="grid gap-3 rounded-control border border-borde bg-superficie p-4 md:grid-cols-2"
-              (submit)="$event.preventDefault(); upload()" novalidate aria-label="Subir documento">
+              (submit)="$event.preventDefault(); upload()" novalidate [attr.aria-label]="'documentos.subir_documento' | translate">
           @if (tenant.isSuper()) {
             <div class="md:col-span-2">
-              <label for="doc-empresa" class="fld-label">Empresa *</label>
+              <label for="doc-empresa" class="fld-label">{{ 'documentos.empresa_2' | translate }}</label>
               <select id="doc-empresa" class="fld-input" [formField]="f.empresa_id">
-                <option value="">Selecciona una empresa</option>
+                <option value="">{{ 'documentos.selecciona_una_empresa' | translate }}</option>
                 @for (e of empresas(); track e.empresa_id) {
                   <option [value]="e.empresa_id">{{ e.nombre }}</option>
                 }
               </select>
               @if (f.empresa_id().touched() && f.empresa_id().invalid()) {
-                <p role="alert" class="fld-error">{{ f.empresa_id().errors()[0]?.message }}</p>
+                <p role="alert" class="fld-error">{{ f.empresa_id().errors()[0]?.message | translate }}</p>
               }
             </div>
           }
           <div>
-            <label for="doc-file" class="fld-label">Archivo *</label>
-            <input id="doc-file" type="file" [accept]="accept" (change)="onFile($event)"
-                   class="fld-input file:mr-3 file:rounded file:border-0 file:bg-accion file:px-3 file:py-1 file:text-sobre-accion" />
+            <span id="doc-file-titulo" class="fld-label">{{ 'documentos.archivo' | translate }}</span>
+            <!--
+              El texto del <input type="file"> nativo («Seleccionar archivo», «Ningún archivo seleccionado») lo pone el
+              navegador en SU idioma y no sigue el de la página. Por eso el input queda oculto (pero enfocable y accesible)
+              y el botón y el nombre del archivo son propios, traducidos.
+            -->
+            <div class="flex flex-wrap items-center gap-3">
+              <input id="doc-file" type="file" class="peer sr-only" [accept]="accept" (change)="onFile($event)"
+                     aria-labelledby="doc-file-titulo doc-file-boton" [attr.aria-describedby]="fileError() ? 'doc-file-error' : null" />
+              <label id="doc-file-boton" for="doc-file" data-testid="doc-elegir"
+                     class="btn-secondary cursor-pointer peer-focus-visible:outline-3 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accion">
+                {{ 'documentos.seleccionar_archivo' | translate }}
+              </label>
+              <span class="min-w-0 break-all text-sm text-tinta-suave" data-testid="doc-nombre-archivo" aria-live="polite">
+                {{ file()?.name ?? ('documentos.ningun_archivo_seleccionado' | translate) }}
+              </span>
+            </div>
             @if (fileError()) {
-              <p role="alert" class="fld-error">{{ fileError() }}</p>
+              <p id="doc-file-error" role="alert" class="fld-error">{{ fileError() }}</p>
             }
           </div>
           <div>
-            <label for="doc-title" class="fld-label">Título</label>
-            <input id="doc-title" type="text" class="fld-input" [formField]="f.title" placeholder="Por defecto: nombre del archivo" />
+            <label for="doc-title" class="fld-label">{{ 'documentos.titulo' | translate }}</label>
+            <input id="doc-title" type="text" class="fld-input" [formField]="f.title" [attr.placeholder]="'documentos.por_defecto_nombre_del' | translate" />
           </div>
           <div class="md:col-span-2">
-            <label for="doc-notes" class="fld-label">Notas</label>
-            <input id="doc-notes" type="text" class="fld-input" [formField]="f.notes" placeholder="Ej. Manual del fabricante, rev. 3" />
+            <label for="doc-notes" class="fld-label">{{ 'documentos.notas' | translate }}</label>
+            <input id="doc-notes" type="text" class="fld-input" [formField]="f.notes" [attr.placeholder]="'documentos.ej_manual_del_fabricante' | translate" />
           </div>
           <div class="md:col-span-2 flex justify-end">
             <button type="submit" class="btn-primary" [disabled]="uploading()">
-              {{ uploading() ? 'Subiendo e indexando…' : 'Subir documento' }}
+              {{ (uploading() ? 'documentos.subiendo_e_indexando' : 'documentos.subir_documento') | translate }}
             </button>
           </div>
         </form>
       }
 
       @if (loading()) {
-        <div class="py-10 text-center text-tinta-suave" role="status">Cargando documentos…</div>
+        <div class="py-10 text-center text-tinta-suave" role="status">{{ 'documentos.cargando_documentos' | translate }}</div>
       } @else if (error()) {
         <div class="rounded-control border border-peligro bg-peligro-suave px-4 py-3 text-sm text-peligro" role="alert">
-          {{ error() }} <button type="button" class="ml-2 underline" (click)="load()">Reintentar</button>
+          {{ error() }} <button type="button" class="ml-2 underline" (click)="load()">{{ 'documentos.reintentar' | translate }}</button>
         </div>
       } @else {
         <div class="overflow-x-auto rounded-control border border-borde bg-superficie ">
           <table class="tabla-apilada w-full text-sm text-tinta">
-            <caption class="sr-only">Documentos disponibles para la IA</caption>
+            <caption class="sr-only">{{ 'documentos.documentos_disponibles_para_la' | translate }}</caption>
             <thead class="bg-superficie-2 text-sm text-tinta-suave">
               <tr>
-                <th scope="col" class="px-4 py-2 text-left">Documento</th>
+                <th scope="col" class="px-4 py-2 text-left">{{ 'documentos.documento' | translate }}</th>
                 @if (tenant.isSuper()) {
-                  <th scope="col" class="px-4 py-2 text-left">Empresa</th>
+                  <th scope="col" class="px-4 py-2 text-left">{{ 'documentos.empresa' | translate }}</th>
                 }
-                <th scope="col" class="px-4 py-2 text-left">Subido por</th>
-                <th scope="col" class="px-4 py-2 text-right">Tamaño</th>
-                <th scope="col" class="px-4 py-2 text-right">Fragmentos</th>
-                <th scope="col" class="px-4 py-2 text-left">Fecha</th>
-                <th scope="col" class="px-4 py-2 text-left">Uso por la IA</th>
-                <th scope="col" class="px-4 py-2 text-left">Acciones</th>
+                <th scope="col" class="px-4 py-2 text-left">{{ 'documentos.subido_por' | translate }}</th>
+                <th scope="col" class="px-4 py-2 text-right">{{ 'documentos.tamano' | translate }}</th>
+                <th scope="col" class="px-4 py-2 text-right">{{ 'documentos.fragmentos' | translate }}</th>
+                <th scope="col" class="px-4 py-2 text-left">{{ 'documentos.fecha' | translate }}</th>
+                <th scope="col" class="px-4 py-2 text-left">{{ 'documentos.uso_por_la_ia' | translate }}</th>
+                <th scope="col" class="px-4 py-2 text-left">{{ 'documentos.acciones' | translate }}</th>
               </tr>
             </thead>
             <tbody>
               @for (d of documentos(); track d.id) {
                 <tr class="border-t border-borde hover:bg-superficie-2" [class.opacity-70]="!d.activo">
-                  <td class="px-4 py-2" data-label="Documento">
+                  <td class="px-4 py-2" [attr.data-label]="'documentos.documento' | translate">
                     <div class="font-medium">{{ d.title }}</div>
                     <div class="text-sm text-tinta-suave">{{ d.original_name }}@if (d.notes) { · {{ d.notes }} }</div>
                   </td>
                   @if (tenant.isSuper()) {
-                    <td class="px-4 py-2" data-label="Empresa">{{ d.empresa_nombre }}</td>
+                    <td class="px-4 py-2" [attr.data-label]="'documentos.empresa' | translate">{{ d.empresa_nombre }}</td>
                   }
-                  <td class="px-4 py-2" data-label="Subido por">{{ d.subido_por ?? '—' }}</td>
-                  <td class="px-4 py-2 text-right" data-label="Tamaño">{{ size(d.size_bytes) }}</td>
-                  <td class="px-4 py-2 text-right" data-label="Fragmentos">{{ d.chunks_indexed }}</td>
-                  <td class="px-4 py-2" data-label="Fecha">{{ d.created_at ? (d.created_at | date: 'dd-MM-yyyy') : '—' }}</td>
-                  <td class="px-4 py-2" data-label="Uso por la IA">
+                  <td class="px-4 py-2" [attr.data-label]="'documentos.subido_por' | translate">{{ d.subido_por ?? '—' }}</td>
+                  <td class="px-4 py-2 text-right" [attr.data-label]="'documentos.tamano' | translate">{{ size(d.size_bytes) }}</td>
+                  <td class="px-4 py-2 text-right" [attr.data-label]="'documentos.fragmentos' | translate">{{ d.chunks_indexed }}</td>
+                  <td class="px-4 py-2" [attr.data-label]="'documentos.fecha' | translate">{{ d.created_at ? (d.created_at | date: 'dd-MM-yyyy') : '—' }}</td>
+                  <td class="px-4 py-2" [attr.data-label]="'documentos.uso_por_la_ia' | translate">
                     <span class="rounded-control px-2 py-1 text-sm font-medium"
                           [class]="d.activo ? 'bg-ok-suave text-ok' : 'bg-borde text-tinta'">
-                      {{ d.activo ? 'Activo' : 'Excluido' }}
+                      {{ (d.activo ? 'documentos.activo' : 'documentos.excluido') | translate }}
                     </span>
                   </td>
-                  <td class="px-4 py-2" data-label="Acciones">
+                  <td class="px-4 py-2" [attr.data-label]="'documentos.acciones' | translate">
                     <div class="flex flex-wrap gap-1">
                       @if (permissions.canPerform('subir_documentos')) {
                         <button type="button" class="btn-secondary" (click)="toggle(d)"
-                                [attr.aria-label]="(d.activo ? 'Excluir de la IA ' : 'Incluir en la IA ') + d.title">
-                          {{ d.activo ? 'Excluir de la IA' : 'Incluir en la IA' }}
+                                [attr.aria-label]="(d.activo ? 'documentos.excluir_de_la_ia' : 'documentos.incluir_en_la_ia') | translate: { v0: d.title }">
+                          {{ (d.activo ? 'documentos.excluir_de_la_ia_2' : 'documentos.incluir_en_la_ia_2') | translate }}
                         </button>
                       }
                       @if (permissions.canPerform('eliminar_documentos')) {
-                        <button type="button" class="btn-danger" (click)="remove(d)" [attr.aria-label]="'Eliminar ' + d.title">Eliminar</button>
+                        <button type="button" class="btn-danger" (click)="remove(d)" [attr.aria-label]="'documentos.eliminar_2' | translate: { v0: d.title }">{{ 'documentos.eliminar' | translate }}</button>
                       }
                     </div>
                   </td>
@@ -151,7 +166,7 @@ interface UploadModel {
               } @empty {
                 <tr>
                   <td [attr.colspan]="tenant.isSuper() ? 8 : 7" class="py-6 text-center text-tinta-suave">
-                    Aún no hay documentos. La IA no podrá responder hasta que se suba documentación.
+                    {{ 'documentos.aun_no_hay_documentos' | translate }}
                   </td>
                 </tr>
               }
@@ -163,6 +178,7 @@ interface UploadModel {
   `,
 })
 export class DocumentosComponent {
+  private readonly i18n = inject(I18nService);
   protected readonly permissions = inject(PermissionsService);
   protected readonly tenant = inject(TenantContextService);
   private readonly auth = inject(AuthService);
@@ -191,7 +207,7 @@ export class DocumentosComponent {
   });
   protected readonly f = form(this.model, (p) => {
     validate(p.empresa_id, ({ value }) =>
-      this.tenant.isSuper() && !value() ? { kind: 'required', message: 'Selecciona la empresa dueña del documento.' } : undefined);
+      this.tenant.isSuper() && !value() ? { kind: 'required', message: 'documentos.selecciona_la_empresa_duena' } : undefined);
   });
 
   constructor() {
@@ -215,7 +231,7 @@ export class DocumentosComponent {
         this.loading.set(false);
       },
       error: (err) => {
-        this.error.set(apiErrorMessage(err, 'No se pudieron cargar los documentos.'));
+        this.error.set(apiErrorMessage(err, this.i18n.tr('documentos.no_se_pudieron_cargar')));
         this.loading.set(false);
       },
     });
@@ -230,10 +246,10 @@ export class DocumentosComponent {
 
     const ext = picked.name.slice(picked.name.lastIndexOf('.')).toLowerCase();
     if (!ALLOWED_EXT.includes(ext)) {
-      this.fileError.set(`Formato no soportado. Usa: ${ALLOWED_EXT.join(', ')}.`);
+      this.fileError.set(this.i18n.tr('documentos.formato_no_soportado_usa', { v0: ALLOWED_EXT.join(', ') }));
       input.value = '';
     } else if (picked.size > MAX_BYTES) {
-      this.fileError.set('El archivo supera el máximo de 15 MB.');
+      this.fileError.set(this.i18n.tr('documentos.el_archivo_supera_el'));
       input.value = '';
     } else {
       this.file.set(picked);
@@ -245,7 +261,7 @@ export class DocumentosComponent {
     this.f().markAsTouched();
     const file = this.file();
     if (!file) {
-      this.fileError.set('Selecciona un archivo.');
+      this.fileError.set(this.i18n.tr('documentos.selecciona_un_archivo'));
       return;
     }
     if (!this.f().valid()) return;
@@ -271,7 +287,7 @@ export class DocumentosComponent {
       },
       error: (err) => {
         this.uploading.set(false);
-        this.toast.error(apiErrorMessage(err, 'No se pudo subir el documento.'));
+        this.toast.error(apiErrorMessage(err, this.i18n.tr('documentos.no_se_pudo_subir')));
       },
     });
   }
@@ -280,20 +296,20 @@ export class DocumentosComponent {
     this.service.update(d.id, { activo: !d.activo }).subscribe({
       next: (updated) => {
         this.documentos.update(list => list.map(x => (x.id === updated.id ? updated : x)));
-        this.toast.success(updated.activo ? 'La IA volverá a usar este documento.' : 'La IA dejará de usar este documento.');
+        this.toast.success(this.i18n.tr(updated.activo ? 'documentos.la_ia_volvera_a' : 'documentos.la_ia_dejara_de'));
       },
-      error: (err) => this.toast.error(apiErrorMessage(err, 'No se pudo actualizar el documento.')),
+      error: (err) => this.toast.error(apiErrorMessage(err, this.i18n.tr('documentos.no_se_pudo_actualizar'))),
     });
   }
 
   protected remove(d: Documento): void {
-    if (!confirm(`¿Eliminar "${d.title}"? La IA dejará de poder responder con su contenido.`)) return;
+    if (!confirm(this.i18n.tr('documentos.eliminar_la_ia_dejara', { v0: d.title }))) return;
     this.service.delete(d.id).subscribe({
       next: () => {
         this.documentos.update(list => list.filter(x => x.id !== d.id));
-        this.toast.success('Documento eliminado.');
+        this.toast.success(this.i18n.tr('documentos.documento_eliminado'));
       },
-      error: (err) => this.toast.error(apiErrorMessage(err, 'No se pudo eliminar el documento.')),
+      error: (err) => this.toast.error(apiErrorMessage(err, this.i18n.tr('documentos.no_se_pudo_eliminar'))),
     });
   }
 }

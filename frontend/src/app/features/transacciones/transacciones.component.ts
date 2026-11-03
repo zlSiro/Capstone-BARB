@@ -10,6 +10,8 @@ import {
 } from '../../core/models';
 import { TransaccionesService } from '../../core/services/transacciones.service';
 import { apiErrorMessage } from '../../core/utils/http-error';
+import { TranslatePipe } from '../../core/i18n/translate.pipe';
+import { I18nService } from '../../core/i18n/i18n.service';
 import {
   OPERACION_LABEL,
   OPERACION_STYLE,
@@ -23,21 +25,21 @@ import {
 /** Vista del super_usuario con todo lo que hacen los usuarios de las empresas (INSERT/UPDATE/DELETE). */
 @Component({
   selector: 'app-transacciones',
-  imports: [DatePipe],
+  imports: [DatePipe, TranslatePipe],
   template: `
     <section class="flex flex-col gap-4" aria-labelledby="trx-title">
       <div>
-        <h1 id="trx-title" class="text-2xl font-bold text-tinta ">Transacciones</h1>
+        <h1 id="trx-title" class="text-2xl font-bold text-tinta ">{{ 'trx.transacciones' | translate }}</h1>
         <p class="text-sm text-tinta-suave ">
-          Cambios realizados por los usuarios de las empresas en la plataforma. Solo se muestran los que tienen un usuario identificado.
+          {{ 'trx.cambios_realizados_por_los' | translate }}
         </p>
       </div>
 
-      <form class="grid gap-3 rounded-control border border-borde bg-superficie p-4 sm:grid-cols-2 lg:grid-cols-4" (submit)="$event.preventDefault()" aria-label="Filtros de transacciones">
+      <form class="grid gap-3 rounded-control border border-borde bg-superficie p-4 sm:grid-cols-2 lg:grid-cols-4" (submit)="$event.preventDefault()" [attr.aria-label]="'trx.filtros_de_transacciones' | translate">
         <div class="flex flex-col gap-1">
-          <label for="trx-empresa" class="text-sm font-medium text-tinta">Empresa</label>
+          <label for="trx-empresa" class="text-sm font-medium text-tinta">{{ 'trx.empresa' | translate }}</label>
           <select id="trx-empresa" class="fld-input" [value]="empresaId() ?? ''" (change)="onEmpresa($any($event.target).value)">
-            <option value="">Todas las empresas</option>
+            <option value="">{{ 'trx.todas_las_empresas' | translate }}</option>
             @for (e of opciones().empresas; track e.empresa_id) {
               <option [value]="e.empresa_id">{{ e.nombre }}</option>
             }
@@ -45,9 +47,9 @@ import {
         </div>
 
         <div class="flex flex-col gap-1">
-          <label for="trx-rol" class="text-sm font-medium text-tinta">Rol</label>
+          <label for="trx-rol" class="text-sm font-medium text-tinta">{{ 'trx.rol' | translate }}</label>
           <select id="trx-rol" class="fld-input" [value]="rol()" (change)="onRol($any($event.target).value)">
-            <option value="">Todos los roles</option>
+            <option value="">{{ 'trx.todos_los_roles' | translate }}</option>
             @for (r of opciones().roles; track r) {
               <option [value]="r">{{ rolLabel(r) }}</option>
             }
@@ -55,9 +57,9 @@ import {
         </div>
 
         <div class="flex flex-col gap-1">
-          <label for="trx-usuario" class="text-sm font-medium text-tinta">Usuario</label>
+          <label for="trx-usuario" class="text-sm font-medium text-tinta">{{ 'trx.usuario' | translate }}</label>
           <select id="trx-usuario" class="fld-input" [value]="usuarioId() ?? ''" (change)="onUsuario($any($event.target).value)">
-            <option value="">Todos los usuarios</option>
+            <option value="">{{ 'trx.todos_los_usuarios' | translate }}</option>
             @for (u of usuariosDisponibles(); track u.usuario_id) {
               <option [value]="u.usuario_id">{{ u.nombre }} ({{ rolLabel(u.rol) }})</option>
             }
@@ -65,7 +67,7 @@ import {
         </div>
 
         <div class="flex flex-col gap-1">
-          <label for="trx-rango" class="text-sm font-medium text-tinta">Período</label>
+          <label for="trx-rango" class="text-sm font-medium text-tinta">{{ 'trx.periodo' | translate }}</label>
           <select id="trx-rango" class="fld-input" [value]="rango()" (change)="onRango($any($event.target).value)">
             @for (r of rangos; track r.value) {
               <option [value]="r.value">{{ r.label }}</option>
@@ -75,15 +77,15 @@ import {
 
         @if (rango() === 'custom') {
           <div class="flex flex-col gap-1">
-            <label for="trx-desde" class="text-sm font-medium text-tinta">Desde</label>
+            <label for="trx-desde" class="text-sm font-medium text-tinta">{{ 'trx.desde' | translate }}</label>
             <input id="trx-desde" type="date" class="fld-input" [value]="desde()" [max]="hasta() || null" (change)="onDesde($any($event.target).value)" />
           </div>
           <div class="flex flex-col gap-1">
-            <label for="trx-hasta" class="text-sm font-medium text-tinta">Hasta</label>
+            <label for="trx-hasta" class="text-sm font-medium text-tinta">{{ 'trx.hasta' | translate }}</label>
             <input id="trx-hasta" type="date" class="fld-input" [value]="hasta()" [min]="desde() || null" (change)="onHasta($any($event.target).value)" />
           </div>
           @if (!customListo()) {
-            <p class="self-end text-sm text-tinta-suave sm:col-span-2" role="status">Ingresa ambas fechas para aplicar el filtro.</p>
+            <p class="self-end text-sm text-tinta-suave sm:col-span-2" role="status">{{ 'trx.ingresa_ambas_fechas_para' | translate }}</p>
           }
         }
       </form>
@@ -91,39 +93,39 @@ import {
       @if (error()) {
         <div class="rounded-control border border-peligro bg-peligro-suave px-4 py-3 text-sm text-peligro" role="alert">
           {{ error() }}
-          <button type="button" class="ml-2 underline" (click)="load()">Reintentar</button>
+          <button type="button" class="ml-2 underline" (click)="load()">{{ 'trx.reintentar' | translate }}</button>
         </div>
       } @else {
         <div class="flex flex-wrap items-center justify-between gap-2 text-sm text-tinta " aria-live="polite">
-          <span>{{ loading() ? 'Cargando transacciones…' : total() + ' transacciones' }}</span>
+          <span>{{ loading() ? ('trx.cargando_transacciones' | translate) : ('trx.transacciones_2' | translate: { v0: total() }) }}</span>
           @if (total() > 0) {
-            <span>Mostrando {{ desdeN() }}–{{ hastaN() }}</span>
+            <span>{{ 'trx.mostrando' | translate: { v0: desdeN(), v1: hastaN() } }}</span>
           }
         </div>
 
         <div class="overflow-x-auto rounded-control border border-borde bg-superficie " [class.opacity-60]="loading()">
           <table class="tabla-apilada w-full text-sm text-tinta">
-            <caption class="sr-only">Transacciones realizadas por los usuarios</caption>
+            <caption class="sr-only">{{ 'trx.transacciones_realizadas_por_l' | translate }}</caption>
             <thead class="bg-superficie-2 text-sm text-tinta-suave">
               <tr>
-                <th scope="col" class="px-4 py-2 text-left">Fecha</th>
-                <th scope="col" class="px-4 py-2 text-left">Empresa</th>
-                <th scope="col" class="px-4 py-2 text-left">Usuario</th>
-                <th scope="col" class="px-4 py-2 text-left">Rol</th>
-                <th scope="col" class="px-4 py-2 text-left">Acción</th>
+                <th scope="col" class="px-4 py-2 text-left">{{ 'trx.fecha' | translate }}</th>
+                <th scope="col" class="px-4 py-2 text-left">{{ 'trx.empresa' | translate }}</th>
+                <th scope="col" class="px-4 py-2 text-left">{{ 'trx.usuario' | translate }}</th>
+                <th scope="col" class="px-4 py-2 text-left">{{ 'trx.rol' | translate }}</th>
+                <th scope="col" class="px-4 py-2 text-left">{{ 'trx.accion' | translate }}</th>
               </tr>
             </thead>
             <tbody>
               @for (t of items(); track t.transaccion_id) {
                 <tr class="border-t border-borde align-top hover:bg-superficie-2">
-                  <td class="whitespace-nowrap px-4 py-2" data-label="Fecha">{{ t.fecha | date: 'dd-MM-yyyy HH:mm:ss' }}</td>
-                  <td class="px-4 py-2" data-label="Empresa">{{ t.empresa_nombre || '—' }}</td>
-                  <td class="px-4 py-2" data-label="Usuario">
+                  <td class="whitespace-nowrap px-4 py-2" [attr.data-label]="'trx.fecha' | translate">{{ t.fecha | date: 'dd-MM-yyyy HH:mm:ss' }}</td>
+                  <td class="px-4 py-2" [attr.data-label]="'trx.empresa' | translate">{{ t.empresa_nombre || '—' }}</td>
+                  <td class="px-4 py-2" [attr.data-label]="'trx.usuario' | translate">
                     <div class="font-medium">{{ t.usuario_nombre }}</div>
                     <div class="text-sm text-tinta-suave">{{ t.usuario_email }}</div>
                   </td>
-                  <td class="px-4 py-2" data-label="Rol">{{ rolLabel(t.perfil) }}</td>
-                  <td class="px-4 py-2" data-label="Acción">
+                  <td class="px-4 py-2" [attr.data-label]="'trx.rol' | translate">{{ rolLabel(t.perfil) }}</td>
+                  <td class="px-4 py-2" [attr.data-label]="'trx.accion' | translate">
                     @if (t.operacion) {
                       <span class="mr-1 rounded-control px-2 py-1 text-sm font-medium" [class]="operacionStyle(t.operacion)">{{ operacionLabel(t.operacion) }}</span>
                     }
@@ -133,7 +135,7 @@ import {
                     }
                     @if (columnas(t).length) {
                       <details class="mt-1 text-sm text-tinta">
-                        <summary class="cursor-pointer focus:outline-none focus:ring-2 focus:ring-accion">Ver detalle</summary>
+                        <summary class="cursor-pointer focus:outline-none focus:ring-2 focus:ring-accion">{{ 'trx.ver_detalle' | translate }}</summary>
                         <ul class="mt-1 list-disc pl-5">
                           @for (c of columnas(t); track c.nombre) {
                             <li><span class="font-medium">{{ c.nombre }}</span>: {{ c.valor }}</li>
@@ -146,7 +148,7 @@ import {
               } @empty {
                 @if (!loading()) {
                   <tr>
-                    <td colspan="5" class="py-6 text-center text-tinta-suave">No hay transacciones para los filtros elegidos.</td>
+                    <td colspan="5" class="py-6 text-center text-tinta-suave">{{ 'trx.no_hay_transacciones_para' | translate }}</td>
                   </tr>
                 }
               }
@@ -155,9 +157,9 @@ import {
         </div>
 
         @if (total() > pageSize) {
-          <nav class="flex items-center justify-end gap-2" aria-label="Paginación">
-            <button type="button" class="btn-secondary" [disabled]="offset() === 0 || loading()" (click)="paginar(-1)">Anterior</button>
-            <button type="button" class="btn-secondary" [disabled]="hastaN() >= total() || loading()" (click)="paginar(1)">Siguiente</button>
+          <nav class="flex items-center justify-end gap-2" [attr.aria-label]="'trx.paginacion' | translate">
+            <button type="button" class="btn-secondary" [disabled]="offset() === 0 || loading()" (click)="paginar(-1)">{{ 'trx.anterior' | translate }}</button>
+            <button type="button" class="btn-secondary" [disabled]="hastaN() >= total() || loading()" (click)="paginar(1)">{{ 'trx.siguiente' | translate }}</button>
           </nav>
         }
       }
@@ -165,6 +167,7 @@ import {
   `,
 })
 export class TransaccionesComponent {
+  private readonly i18n = inject(I18nService);
   private readonly service = inject(TransaccionesService);
   private pendiente?: Subscription;
 
@@ -199,7 +202,7 @@ export class TransaccionesComponent {
   constructor() {
     this.service.getFiltros().subscribe({
       next: (o) => this.opciones.set(o),
-      error: (err) => this.error.set(apiErrorMessage(err, 'No se pudieron cargar los filtros.')),
+      error: (err) => this.error.set(apiErrorMessage(err, this.i18n.tr('trx.no_se_pudieron_cargar'))),
     });
     this.load();
   }
@@ -290,7 +293,7 @@ export class TransaccionesComponent {
           this.loading.set(false);
         },
         error: (err) => {
-          this.error.set(apiErrorMessage(err, 'No se pudieron cargar las transacciones.'));
+          this.error.set(apiErrorMessage(err, this.i18n.tr('trx.no_se_pudieron_cargar_2')));
           this.loading.set(false);
         },
       });

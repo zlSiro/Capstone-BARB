@@ -2,23 +2,23 @@
   <div class="flex flex-wrap items-start justify-between gap-3">
     <div class="min-w-0">
       <h1 id="avisos-title" class="text-3xl font-bold leading-tight">
-        {{ puedeGestionar() ? 'Avisos de falla' : 'Mis avisos de falla' }} ({{ conteos().todos }})
+        {{ (puedeGestionar() ? 'avisos.avisos_de_falla' : 'avisos.mis_avisos_de_falla') | translate }} ({{ conteos().todos }})
       </h1>
       <p class="mt-1 max-w-prose text-base text-tinta-suave">
         @if (puedeGestionar()) {
-          Fallas reportadas desde planta. Para cada aviso decides si se genera una orden de trabajo o si se descarta con un motivo.
+          {{ 'avisos.fallas_reportadas_desde_planta' | translate }}
         } @else {
-          Reporta una falla y sigue en qué quedó: el supervisor decide si se genera una orden de trabajo.
+          {{ 'avisos.reporta_una_falla_y' | translate }}
         }
       </p>
     </div>
     <button type="button" class="btn-secondary" (click)="load()" [disabled]="loading()">
       <app-icon name="refrescar" [size]="20" />
-      Actualizar
+      {{ 'avisos.actualizar' | translate }}
     </button>
   </div>
 
-  <div class="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:flex-wrap md:overflow-visible md:px-0" role="group" aria-label="Filtrar avisos por estado">
+  <div class="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:flex-wrap md:overflow-visible md:px-0" role="group" [attr.aria-label]="'avisos.filtrar_avisos_por_estado' | translate">
     @for (f of filtros; track f.value) {
       <button type="button" class="pill shrink-0" [attr.aria-pressed]="filtro() === f.value" (click)="setFiltro(f.value)">
         {{ f.label }} ({{ conteos()[f.value] }})
@@ -27,40 +27,40 @@
   </div>
 
   @if (loading()) {
-    <div class="grid gap-3" role="status" aria-label="Cargando avisos">
+    <div class="grid gap-3" role="status" [attr.aria-label]="'avisos.cargando_avisos' | translate">
       @for (n of [1, 2, 3]; track n) {
         <div class="h-36 animate-pulse rounded-control bg-superficie-2"></div>
       }
-      <span class="sr-only">Cargando avisos…</span>
+      <span class="sr-only">{{ 'avisos.cargando_avisos_2' | translate }}</span>
     </div>
   } @else if (error()) {
     <div class="flex flex-wrap items-center gap-3 rounded-control border border-peligro bg-peligro-suave px-4 py-3 text-base text-peligro" role="alert">
       <app-icon name="alerta" [size]="22" />
       <span class="flex-1">{{ error() }}</span>
-      <button type="button" class="btn-secondary" (click)="load()">Reintentar</button>
+      <button type="button" class="btn-secondary" (click)="load()">{{ 'avisos.reintentar' | translate }}</button>
     </div>
   } @else if (visibles().length === 0) {
     <div class="grid justify-items-center gap-3 rounded-control border border-dashed border-borde-control px-4 py-12 text-center">
       <span class="text-tinta-suave"><app-icon name="etiqueta" [size]="48" /></span>
       @if (filtro() === 'pendiente') {
-        <p class="text-lg font-semibold">No hay avisos pendientes de decisión.</p>
-        <p class="text-tinta-suave">Cuando alguien reporte una falla, aparecerá aquí.</p>
+        <p class="text-lg font-semibold">{{ 'avisos.no_hay_avisos_pendientes' | translate }}</p>
+        <p class="text-tinta-suave">{{ 'avisos.cuando_alguien_reporte_una' | translate }}</p>
       } @else if (conteos().todos === 0) {
-        <p class="text-lg font-semibold">Todavía no hay avisos.</p>
+        <p class="text-lg font-semibold">{{ 'avisos.todavia_no_hay_avisos' | translate }}</p>
         @if (puedeReportar()) {
-          <p class="max-w-sm text-tinta-suave">Si ves una máquina con una falla, repórtala: el supervisor decide si se genera una orden de trabajo.</p>
+          <p class="max-w-sm text-tinta-suave">{{ 'avisos.si_ves_una_maquina' | translate }}</p>
           <button type="button" class="btn-senal" (click)="reportarUi.abrir()">
             <app-icon name="alerta" [size]="20" />
-            Reportar una falla
+            {{ 'avisos.reportar_una_falla' | translate }}
           </button>
         }
       } @else {
-        <p class="text-lg font-semibold">No hay avisos para este filtro.</p>
+        <p class="text-lg font-semibold">{{ 'avisos.no_hay_avisos_para' | translate }}</p>
       }
     </div>
   } @else {
     <div class="grid items-start gap-4 lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)]" [class.lg:grid-cols-1]="!puedeGestionar()">
-      <ul class="grid gap-3" aria-label="Lista de avisos">
+      <ul class="grid gap-3" [attr.aria-label]="'avisos.lista_de_avisos' | translate">
         @for (a of visibles(); track a.aviso_id) {
           <li>
             <article
@@ -86,24 +86,24 @@
                 <p class="line-clamp-3 text-base" [title]="a.descripcion">{{ a.descripcion }}</p>
 
                 @if (puedeGestionar()) {
-                  <p class="text-sm text-tinta-suave">Reportó {{ a.reportado_por.nombre }} ({{ rol(a.reportado_por.rol) }})</p>
+                  <p class="text-sm text-tinta-suave">{{ 'avisos.reporto' | translate: { v0: a.reportado_por.nombre, v1: rol(a.reportado_por.rol) } }}</p>
                 }
 
                 @switch (a.estado) {
                   @case ('con_ot') {
                     <p class="text-base">
-                      Se generó la OT
+                      {{ 'avisos.se_genero_la_ot' | translate }}
                       <a routerLink="/work-orders" class="codigo text-lg text-accion underline">{{ a.numero_ot }}</a>
                       @if (a.resuelto_por) {
-                        <span class="text-sm text-tinta-suave">, por {{ a.resuelto_por }}</span>
+                        <span class="text-sm text-tinta-suave">{{ 'avisos.por' | translate: { v0: a.resuelto_por } }}</span>
                       }
                     </p>
                   }
                   @case ('descartado') {
                     <p class="text-base">
-                      <span class="font-semibold">Motivo del descarte:</span> {{ a.motivo_descarte }}
+                      <span class="font-semibold">{{ 'avisos.motivo_del_descarte' | translate }}</span> {{ a.motivo_descarte }}
                       @if (a.resuelto_por) {
-                        <span class="text-sm text-tinta-suave">, por {{ a.resuelto_por }}</span>
+                        <span class="text-sm text-tinta-suave">{{ 'avisos.por' | translate: { v0: a.resuelto_por } }}</span>
                       }
                     </p>
                   }
@@ -116,25 +116,25 @@
 
                 <div class="flex flex-wrap gap-2 pt-1" [class.lg:hidden]="puedeGestionar()">
                   @if (a.foto) {
-                    <button type="button" class="btn-secondary" [attr.aria-label]="'Ver foto del aviso ' + a.numero_aviso" (click)="viendoFoto.set(a)">
+                    <button type="button" class="btn-secondary" [attr.aria-label]="'avisos.ver_foto_del_aviso' | translate: { v0: a.numero_aviso }" (click)="viendoFoto.set(a)">
                       <app-icon name="imagen" [size]="20" />
-                      Ver foto
+                      {{ 'avisos.ver_foto' | translate }}
                     </button>
                   }
                   @if (puedeGestionar() && a.estado === 'pendiente') {
-                    <button type="button" class="btn-primary" [attr.aria-label]="'Generar OT desde el aviso ' + a.numero_aviso" (click)="generando.set(a)">
+                    <button type="button" class="btn-primary" [attr.aria-label]="'avisos.generar_ot_desde_el_2' | translate: { v0: a.numero_aviso }" (click)="generando.set(a)">
                       <app-icon name="orden" [size]="20" />
-                      Generar OT
+                      {{ 'avisos.generar_ot' | translate }}
                     </button>
-                    <button type="button" class="btn-danger" [attr.aria-label]="'Descartar aviso ' + a.numero_aviso" (click)="descartando.set(a)">
-                      Descartar
+                    <button type="button" class="btn-danger" [attr.aria-label]="'avisos.descartar_aviso_2' | translate: { v0: a.numero_aviso }" (click)="descartando.set(a)">
+                      {{ 'avisos.descartar' | translate }}
                     </button>
                   }
                 </div>
 
                 @if (puedeGestionar()) {
-                  <button type="button" class="btn-ghost hidden justify-start lg:inline-flex" [attr.aria-label]="'Ver detalle del aviso ' + a.numero_aviso" (click)="elegir(a)">
-                    Ver detalle
+                  <button type="button" class="btn-ghost hidden justify-start lg:inline-flex" [attr.aria-label]="'avisos.ver_detalle_del_aviso' | translate: { v0: a.numero_aviso }" (click)="elegir(a)">
+                    {{ 'avisos.ver_detalle' | translate }}
                   </button>
                 }
               </div>
@@ -144,11 +144,11 @@
       </ul>
 
       @if (puedeGestionar() && detalle(); as d) {
-        <aside class="panel sticky top-0 hidden gap-4 p-5 lg:grid" aria-label="Detalle del aviso" data-testid="aviso-detalle">
+        <aside class="panel sticky top-0 hidden gap-4 p-5 lg:grid" [attr.aria-label]="'avisos.detalle_del_aviso' | translate" data-testid="aviso-detalle">
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p class="codigo text-3xl">{{ d.numero_aviso }}</p>
-              <p class="text-sm text-tinta-suave">{{ d.created_at | date: 'dd/MM/yyyy HH:mm' }}, reportó {{ d.reportado_por.nombre }}</p>
+              <p class="text-sm text-tinta-suave">{{ 'avisos.reporto_2' | translate: { v0: (d.created_at | date: 'dd/MM/yyyy HH:mm'), v1: d.reportado_por.nombre } }}</p>
             </div>
             <div class="grid justify-items-end gap-2">
               <app-gravedad [severidad]="d.severidad" />
@@ -166,21 +166,21 @@
             <div class="flex flex-wrap gap-2 border-b border-borde pb-4">
               <button type="button" class="btn-primary" (click)="generando.set(d)">
                 <app-icon name="orden" [size]="20" />
-                Generar OT
+                {{ 'avisos.generar_ot' | translate }}
               </button>
-              <button type="button" class="btn-danger" (click)="descartando.set(d)">Descartar</button>
+              <button type="button" class="btn-danger" (click)="descartando.set(d)">{{ 'avisos.descartar' | translate }}</button>
             </div>
           } @else if (d.estado === 'con_ot') {
             <p class="border-b border-borde pb-4 text-base">
-              Se generó la OT <a routerLink="/work-orders" class="codigo text-lg text-accion underline">{{ d.numero_ot }}</a>
+              {{ 'avisos.se_genero_la_ot' | translate }} <a routerLink="/work-orders" class="codigo text-lg text-accion underline">{{ d.numero_ot }}</a>
             </p>
           } @else {
-            <p class="border-b border-borde pb-4 text-base"><span class="font-semibold">Motivo del descarte:</span> {{ d.motivo_descarte }}</p>
+            <p class="border-b border-borde pb-4 text-base"><span class="font-semibold">{{ 'avisos.motivo_del_descarte' | translate }}</span> {{ d.motivo_descarte }}</p>
           }
           @if (d.foto) {
             <app-foto-aviso [aviso]="d" />
           } @else {
-            <p class="rounded-control bg-superficie-2 px-3 py-6 text-center text-tinta-suave">Este aviso no tiene foto.</p>
+            <p class="rounded-control bg-superficie-2 px-3 py-6 text-center text-tinta-suave">{{ 'avisos.este_aviso_no_tiene' | translate }}</p>
           }
 
         </aside>

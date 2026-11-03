@@ -9,6 +9,8 @@ import { apiErrorMessage } from '../../core/utils/http-error';
 import { MaquinaFormModalComponent } from './maquina-form-modal.component';
 import { PlantaFormModalComponent } from './planta-form-modal.component';
 
+import { TranslatePipe } from '../../core/i18n/translate.pipe';
+import { I18nService } from '../../core/i18n/i18n.service';
 /** Una planta con lo que el listado necesita mostrar. */
 interface PlantaFila {
   planta: Plant;
@@ -28,29 +30,29 @@ interface PlantaFila {
  */
 @Component({
   selector: 'app-plantas',
-  imports: [PlantaFormModalComponent, MaquinaFormModalComponent],
+  imports: [PlantaFormModalComponent, MaquinaFormModalComponent, TranslatePipe],
   template: `
     <section class="flex flex-col gap-4" aria-labelledby="plantas-title">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 id="plantas-title" class="text-xl font-bold text-tinta ">
-            Plantas ({{ plantas().length }})
+            {{ 'plantas.plantas' | translate: { v0: plantas().length } }}
           </h2>
           <p class="text-sm text-tinta-suave ">
-            Plantas de tu empresa con sus máquinas. El alta crea la planta, sus disciplinas y sus máquinas de una vez.
+            {{ 'plantas.plantas_de_tu_empresa' | translate }}
           </p>
         </div>
         <button type="button" class="btn-primary" data-testid="nueva-planta" (click)="openCreate()">
-          + Nueva planta
+          {{ 'plantas.nueva_planta' | translate }}
         </button>
       </div>
 
       <div>
-        <label for="planta-filtro" class="sr-only">Buscar planta</label>
+        <label for="planta-filtro" class="sr-only">{{ 'plantas.buscar_planta' | translate }}</label>
         <input
           id="planta-filtro"
           type="search"
-          placeholder="Buscar por nombre o ubicación…"
+          [attr.placeholder]="'plantas.buscar_por_nombre_o' | translate"
           class="w-full max-w-sm rounded-control border border-borde-control bg-superficie px-3 py-2 text-sm text-tinta focus:outline-none focus:ring-2 focus:ring-accion "
           [value]="filtro()"
           (input)="filtro.set($any($event.target).value)" />
@@ -58,30 +60,30 @@ interface PlantaFila {
 
       @if (loading()) {
         <div class="py-10 text-center text-tinta-suave " role="status" data-testid="cargando">
-          Cargando plantas…
+          {{ 'plantas.cargando_plantas' | translate }}
         </div>
       } @else if (error()) {
         <div class="rounded-control border border-peligro bg-peligro-suave px-4 py-3 text-sm text-peligro" role="alert" data-testid="error">
           {{ error() }}
-          <button type="button" class="ml-2 underline" (click)="load()">Reintentar</button>
+          <button type="button" class="ml-2 underline" (click)="load()">{{ 'plantas.reintentar' | translate }}</button>
         </div>
       } @else {
         <div class="overflow-x-auto rounded-control border border-borde bg-superficie ">
           <table class="tabla-apilada w-full text-sm text-tinta ">
-            <caption class="sr-only">Listado de plantas</caption>
+            <caption class="sr-only">{{ 'plantas.listado_de_plantas' | translate }}</caption>
             <thead class="bg-superficie-2 text-sm text-tinta-suave ">
               <tr>
-                <th scope="col" class="px-4 py-2 text-left">Planta</th>
-                <th scope="col" class="px-4 py-2 text-left">Ubicación</th>
-                <th scope="col" class="px-4 py-2 text-right">Máquinas</th>
-                <th scope="col" class="px-4 py-2 text-left">Disciplinas</th>
-                <th scope="col" class="px-4 py-2 text-right">Acciones</th>
+                <th scope="col" class="px-4 py-2 text-left">{{ 'plantas.planta' | translate }}</th>
+                <th scope="col" class="px-4 py-2 text-left">{{ 'plantas.ubicacion' | translate }}</th>
+                <th scope="col" class="px-4 py-2 text-right">{{ 'plantas.maquinas' | translate }}</th>
+                <th scope="col" class="px-4 py-2 text-left">{{ 'plantas.disciplinas' | translate }}</th>
+                <th scope="col" class="px-4 py-2 text-right">{{ 'plantas.acciones' | translate }}</th>
               </tr>
             </thead>
             <tbody>
               @for (fila of filtradas(); track fila.planta.id) {
                 <tr class="border-t border-borde hover:bg-superficie-2 " data-testid="fila-planta">
-                  <td class="px-4 py-2" data-label="Planta">
+                  <td class="px-4 py-2" [attr.data-label]="'plantas.planta' | translate">
                     <div class="flex items-center gap-1">
                       <button
                         type="button"
@@ -90,21 +92,20 @@ interface PlantaFila {
                         (click)="togglePlanta(fila.planta.id)"
                         [attr.aria-expanded]="expandida(fila.planta.id)"
                         [attr.aria-label]="
-                          (expandida(fila.planta.id) ? 'Ocultar' : 'Ver') +
-                          ' las máquinas de ' + fila.planta.name
+                          (expandida(fila.planta.id) ? 'plantas.ocultar_las_maquinas_de' : 'plantas.ver_las_maquinas_de') | translate: { v0: fila.planta.name }
                         "
                       >{{ expandida(fila.planta.id) ? '▾' : '▸' }}</button>
                       <span class="font-medium" data-testid="planta-celda-nombre">{{ fila.planta.name }}</span>
                     </div>
                     @if (fila.maquinas.length === 0) {
-                      <div class="text-sm text-tinta-suave ">Sin máquinas</div>
+                      <div class="text-sm text-tinta-suave ">{{ 'plantas.sin_maquinas' | translate }}</div>
                     }
                   </td>
-                  <td class="px-4 py-2" data-label="Ubicación" data-testid="planta-celda-ubicacion">{{ fila.planta.ubicacion || '—' }}</td>
-                  <td class="px-4 py-2 text-right font-medium" data-label="Máquinas" data-testid="planta-celda-maquinas">
+                  <td class="px-4 py-2" [attr.data-label]="'plantas.ubicacion' | translate" data-testid="planta-celda-ubicacion">{{ fila.planta.ubicacion || '—' }}</td>
+                  <td class="px-4 py-2 text-right font-medium" [attr.data-label]="'plantas.maquinas' | translate" data-testid="planta-celda-maquinas">
                     {{ fila.maquinas.length }}
                   </td>
-                  <td class="px-4 py-2" data-label="Disciplinas">
+                  <td class="px-4 py-2" [attr.data-label]="'plantas.disciplinas' | translate">
                     @if (disciplinasDe(fila).length) {
                       <div class="flex flex-wrap gap-1">
                         @for (d of disciplinasDe(fila); track d) {
@@ -115,22 +116,22 @@ interface PlantaFila {
                       <span class="text-tinta-suave">—</span>
                     }
                   </td>
-                  <td class="px-4 py-2" data-label="Acciones">
+                  <td class="px-4 py-2" [attr.data-label]="'plantas.acciones' | translate">
                     <div class="flex justify-end gap-1">
                       <button
                         type="button"
                         class="btn-secondary"
                         data-testid="editar-planta"
                         (click)="openEdit(fila.planta)"
-                        [attr.aria-label]="'Editar ' + fila.planta.name"
-                      >Editar</button>
+                        [attr.aria-label]="'plantas.editar_2' | translate: { v0: fila.planta.name }"
+                      >{{ 'plantas.editar' | translate }}</button>
                       <button
                         type="button"
                         class="btn-secondary"
                         data-testid="agregar-maquina"
                         (click)="openMaquina(fila.planta)"
-                        [attr.aria-label]="'Agregar máquina a ' + fila.planta.name"
-                      >+ Máquina</button>
+                        [attr.aria-label]="'plantas.agregar_maquina_a' | translate: { v0: fila.planta.name }"
+                      >{{ 'plantas.maquina' | translate }}</button>
                     </div>
                   </td>
                 </tr>
@@ -140,19 +141,19 @@ interface PlantaFila {
                     <td colspan="5" class="px-4 py-3">
                       @if (fila.maquinas.length === 0) {
                         <p class="text-sm text-tinta-suave " data-testid="sin-maquinas-planta">
-                          Esta planta no tiene máquinas. Agrégalas con «+ Máquina».
+                          {{ 'plantas.esta_planta_no_tiene' | translate }}
                         </p>
                       } @else {
                         <table class="w-full text-sm">
-                          <caption class="sr-only">Máquinas de {{ fila.planta.name }}</caption>
+                          <caption class="sr-only">{{ 'plantas.maquinas_de' | translate: { v0: fila.planta.name } }}</caption>
                           <thead class="text-sm text-tinta-suave ">
                             <tr>
-                              <th scope="col" class="py-1 pr-3 text-left">Máquina</th>
-                              <th scope="col" class="py-1 pr-3 text-left">Código</th>
-                              <th scope="col" class="py-1 pr-3 text-left">Disciplina</th>
+                              <th scope="col" class="py-1 pr-3 text-left">{{ 'plantas.maquina_2' | translate }}</th>
+                              <th scope="col" class="py-1 pr-3 text-left">{{ 'plantas.codigo' | translate }}</th>
+                              <th scope="col" class="py-1 pr-3 text-left">{{ 'plantas.disciplina' | translate }}</th>
                               <th scope="col" class="py-1 pr-3 text-right">SLA</th>
-                              <th scope="col" class="py-1 pr-3 text-right">Costo inactividad / min</th>
-                              <th scope="col" class="py-1 text-right">Acciones</th>
+                              <th scope="col" class="py-1 pr-3 text-right">{{ 'plantas.costo_inactividad_min' | translate }}</th>
+                              <th scope="col" class="py-1 text-right">{{ 'plantas.acciones' | translate }}</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -171,8 +172,8 @@ interface PlantaFila {
                                     class="btn-secondary"
                                     data-testid="editar-maquina"
                                     (click)="openEditarMaquina(fila.planta, maquina)"
-                                    [attr.aria-label]="'Editar ' + maquina.name"
-                                  >Editar</button>
+                                    [attr.aria-label]="'plantas.editar_2' | translate: { v0: maquina.name }"
+                                  >{{ 'plantas.editar' | translate }}</button>
                                 </td>
                               </tr>
                             }
@@ -185,7 +186,7 @@ interface PlantaFila {
               } @empty {
                 <tr>
                   <td colspan="5" class="py-6 text-center text-tinta-suave " data-testid="vacio">
-                    No hay plantas todavía. Crea la primera con «Nueva planta».
+                    {{ 'plantas.no_hay_plantas_todavia' | translate }}
                   </td>
                 </tr>
               }
@@ -211,6 +212,7 @@ interface PlantaFila {
   `,
 })
 export class PlantasComponent {
+  private readonly i18n = inject(I18nService);
   private readonly catalogo = inject(CatalogService);
   private readonly toast = inject(ToastService);
 
@@ -260,13 +262,13 @@ export class PlantasComponent {
 
   /** SLA de la máquina; si es null hereda el de la empresa, y se dice explícitamente. */
   protected slaDe(maquina: Machine): string {
-    return maquina.sla_horas != null ? `${maquina.sla_horas} h` : '— (gral)';
+    return maquina.sla_horas != null ? `${maquina.sla_horas} h` : this.i18n.tr('plantas.gral');
   }
 
   /** Costo de inactividad por minuto; sin dato por equipo se muestra «— (gral)». */
   protected costoDe(maquina: Machine): string {
     const valor = maquina.costo_inactividad_minuto;
-    return valor != null ? valor.toLocaleString('es-CL') : '— (gral)';
+    return valor != null ? valor.toLocaleString('es-CL') : this.i18n.tr('plantas.gral');
   }
 
   /**
@@ -315,7 +317,7 @@ export class PlantasComponent {
         this.loading.set(false);
       },
       error: (err) => {
-        this.error.set(apiErrorMessage(err, 'No se pudieron cargar las plantas.'));
+        this.error.set(apiErrorMessage(err, this.i18n.tr('plantas.no_se_pudieron_cargar')));
         this.loading.set(false);
       },
     });

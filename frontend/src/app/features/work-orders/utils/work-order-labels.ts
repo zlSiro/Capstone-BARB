@@ -1,6 +1,10 @@
 import { WorkOrderStatus } from '../../../core/models';
+import { textoActual } from '../../../core/i18n/i18n.service';
 
-/** Presentación de cada estado de OT: etiqueta en español, colores (AA sobre fondo claro) y qué implica. */
+/**
+ * Presentación de cada estado de OT: etiqueta, colores (AA sobre fondo claro) y qué implica.
+ * Los textos salen de `textoActual()` (reactiva al idioma), por eso estas funciones se evalúan en cada llamada.
+ */
 export interface StatusMeta {
   label: string;
   badge: string;
@@ -11,61 +15,54 @@ export interface StatusMeta {
   final: boolean;
 }
 
-const STATUS_META: Record<string, StatusMeta> = {
-  pending: {
-    label: 'Pendiente',
+const STATUS_META: Record<string, () => StatusMeta> = {
+  pending: () => ({
+    label: textoActual('ot.pendiente'),
     badge: 'bg-media-suave text-media',
     dot: 'bg-media',
-    effect: 'La OT queda a la espera de iniciarse.',
+    effect: textoActual('ot.la_ot_queda_a'),
     final: false,
-  },
-  assigned: {
-    label: 'Asignada',
+  }),
+  assigned: () => ({
+    label: textoActual('ot.asignada'),
     badge: 'bg-accion-suave text-accion',
     dot: 'bg-accion',
-    effect: 'La OT queda asignada a un técnico.',
+    effect: textoActual('ot.la_ot_queda_asignada'),
     final: false,
-  },
-  in_progress: {
-    label: 'En curso',
+  }),
+  in_progress: () => ({
+    label: textoActual('ot.en_curso'),
     badge: 'bg-accion-suave text-accion',
     dot: 'bg-accion',
-    effect: 'Se registrará la fecha de inicio de los trabajos.',
+    effect: textoActual('ot.se_registrara_la_fecha'),
     final: false,
-  },
-  completed: {
-    label: 'Cerrada',
+  }),
+  completed: () => ({
+    label: textoActual('ot.cerrada'),
     badge: 'bg-ok-suave text-ok',
     dot: 'bg-ok',
-    effect: 'Se registrará la fecha de cierre. Es un estado final: la OT no podrá volver a modificarse.',
+    effect: textoActual('ot.se_registrara_la_fecha_2'),
     final: true,
-  },
-  cancelled: {
-    label: 'Cancelada',
+  }),
+  cancelled: () => ({
+    label: textoActual('ot.cancelada'),
     badge: 'bg-borde text-tinta',
     dot: 'bg-neutro',
-    effect: 'Es un estado final: la OT no podrá volver a modificarse.',
+    effect: textoActual('ot.es_un_estado_final'),
     final: true,
-  },
-  overdue: {
-    label: 'Vencida',
+  }),
+  overdue: () => ({
+    label: textoActual('ot.vencida'),
     badge: 'bg-peligro-suave text-peligro',
     dot: 'bg-peligro',
-    effect: 'La OT superó su fecha de vencimiento.',
+    effect: textoActual('ot.la_ot_supero_su'),
     final: false,
-  },
-};
-
-const FALLBACK: StatusMeta = {
-  label: 'Desconocido',
-  badge: 'bg-superficie-2 text-tinta',
-  dot: 'bg-neutro',
-  effect: '',
-  final: false,
+  }),
 };
 
 export function statusMeta(estado: WorkOrderStatus | null | undefined): StatusMeta {
-  return (estado && STATUS_META[estado]) || FALLBACK;
+  const meta = estado ? STATUS_META[estado] : undefined;
+  return meta ? meta() : { label: textoActual('ot.desconocido'), badge: 'bg-superficie-2 text-tinta', dot: 'bg-neutro', effect: '', final: false };
 }
 
 /** Orden en que se muestran los estados en filtros: sigue el ciclo de vida de la OT. */
@@ -76,39 +73,40 @@ export function filterGroup(estado: WorkOrderStatus): WorkOrderStatus {
   return estado === 'assigned' || estado === 'overdue' ? 'pending' : estado;
 }
 
-const PRIORITY_META: Record<string, { label: string; badge: string }> = {
-  low: { label: 'Baja', badge: 'bg-superficie-2 text-tinta' },
-  medium: { label: 'Media', badge: 'bg-accion-suave text-accion' },
-  high: { label: 'Alta', badge: 'bg-alerta-suave text-alerta' },
-  urgent: { label: 'Urgente', badge: 'bg-peligro-suave text-peligro' },
+const PRIORITY_META: Record<string, { clave: string; badge: string }> = {
+  low: { clave: 'ot.baja', badge: 'bg-superficie-2 text-tinta' },
+  medium: { clave: 'ot.media', badge: 'bg-accion-suave text-accion' },
+  high: { clave: 'ot.alta', badge: 'bg-alerta-suave text-alerta' },
+  urgent: { clave: 'ot.urgente', badge: 'bg-peligro-suave text-peligro' },
 };
 
 export function priorityMeta(priority: string | null | undefined) {
-  return (priority && PRIORITY_META[priority]) || { label: priority || '—', badge: 'bg-superficie-2 text-tinta' };
+  const meta = priority ? PRIORITY_META[priority] : undefined;
+  return meta ? { label: textoActual(meta.clave), badge: meta.badge } : { label: priority || '—', badge: 'bg-superficie-2 text-tinta' };
 }
 
-const TIPO_LABEL: Record<string, string> = {
-  corrective: 'Correctivo',
-  preventive: 'Preventivo',
-  predictive: 'Predictivo',
-  inspection: 'Inspección',
+const TIPO_CLAVE: Record<string, string> = {
+  corrective: 'ot.correctivo',
+  preventive: 'ot.preventivo',
+  predictive: 'ot.predictivo',
+  inspection: 'ot.inspeccion',
 };
 
 export function tipoLabel(tipo: string | null | undefined): string {
-  return (tipo && TIPO_LABEL[tipo]) || tipo || '—';
+  return (tipo && TIPO_CLAVE[tipo] && textoActual(TIPO_CLAVE[tipo])) || tipo || '—';
 }
 
-const ROLE_LABEL: Record<string, string> = {
-  operador: 'Operador',
-  tecnico: 'Técnico',
-  supervisor: 'Supervisor',
-  engineer: 'Ingeniero',
-  gerente: 'Gerente',
-  admin: 'Administrador',
-  visitante: 'Visitante',
-  super_usuario: 'Super usuario',
+const ROLE_CLAVE: Record<string, string> = {
+  operador: 'ot.operador',
+  tecnico: 'ot.tecnico',
+  supervisor: 'ot.supervisor',
+  engineer: 'ot.ingeniero',
+  gerente: 'ot.gerente',
+  admin: 'ot.administrador',
+  visitante: 'ot.visitante',
+  super_usuario: 'ot.super_usuario',
 };
 
 export function roleLabel(role: string | null | undefined): string {
-  return (role && ROLE_LABEL[role]) || role || '';
+  return (role && ROLE_CLAVE[role] && textoActual(ROLE_CLAVE[role])) || role || '';
 }
