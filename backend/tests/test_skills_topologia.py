@@ -96,7 +96,7 @@ async def _planta_con_dos_maquinas(client, ctx) -> int:
 
 @pytest.mark.parametrize(
     "nombre_tool",
-    ["listar_maquinas_planta", "actualizar_parametros_maquina", "proponer_planta_completa"],
+    ["listar_maquinas_planta", "actualizar_parametros_maquina", "proponer_planta_completa", "proponer_aviso_falla"],
 )
 def test_las_tools_no_exponen_identificadores(nombre_tool):
     """El modelo no debe poder escribir ni la empresa ni el usuario ni un id suelto."""
@@ -288,6 +288,7 @@ async def test_proponer_planta_completa_no_escribe_nada(db_pool):
     salida = await HERRAMIENTAS["proponer_planta_completa"].ainvoke(
         {
             "nombre": "Planta Propuesta",
+            "ubicacion": "Quilicura",
             "maquinas": [
                 {"nombre": "Turbina 1", "codigo": "TUR-1", "disciplina": "Mecánica"},
                 {"nombre": "Turbina 2", "codigo": "TUR-2", "disciplina": "Mecánica"},
@@ -376,6 +377,89 @@ async def test_crear_planta_aprobada_revalida_la_propuesta(db_pool):
     despues = await fetch_one("SELECT COUNT(*) AS n FROM planta")
     assert antes["n"] == despues["n"], "una propuesta inválida no crea nada"
     assert "no creé nada" in salida
+
+
+# =============================================================================
+# Endurecimiento de la Skill de plantas (HU-20 / CGBIDA-514, QA prod 05-11)
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_proponer_planta_exige_ubicacion(db_pool):
+    """QA 05-11: se creó una planta sin ubicación. En el chat la ubicación va ANTES de
+    la propuesta (la regla del service/BD queda como propuesta al equipo)."""
+    salida = await HERRAMIENTAS["proponer_planta_completa"].ainvoke(
+        {"nombre": "Planta Sin Lugar", "maquinas": [{"nombre": "Turbina", "codigo": "TUR-9"}]}
+    )
+    assert "ubicación" in salida
+    assert not salida.startswith(_PREFIJO_PROPUESTA_PLANTA)
+
+
+@pytest.mark.asyncio
+async def test_proponer_planta_rechaza_ubicacion_duplicada(client, ctx):
+    """QA 05-11: dos plantas se quisieron crear en la misma comuna. La tool avisa con la
+    planta que ya la ocupa (a nivel chat; la regla dura es propuesta a Samuel/JP)."""
+    ubicacion = f"Comuna {ctx['marca']}"
+    r = await client.post(
+        "/api/plantas/completa",
+        headers=ctx["tokens"]["gerente"],
+        json={"nombre": f"Planta Original {ctx['marca']}", "ubicacion": ubicacion},
+    )
+    assert r.status_code == 201, r.text
+
+    salida = await HERRAMIENTAS["proponer_planta_completa"].ainvoke(
+        {"nombre": f"Planta Otra {ctx['marca']}", "ubicacion": ubicacion, "maquinas": []}
+    )
+    assert "no se permiten dos plantas" in salida
+    assert ubicacion in salida
+    assert not salida.startswith(_PREFIJO_PROPUESTA_PLANTA)
+
+
+@pytest.mark.asyncio
+async def test_proponer_planta_rechaza_disciplina_compuesta(db_pool):
+    """QA 05-11: «Neumática / Mecánica» contaminó el catálogo de disciplinas. Una máquina
+    pertenece a UNA disciplina; la secundaria va en el nombre."""
+    salida = await HERRAMIENTAS["proponer_planta_completa"].ainvoke(
+        {
+            "nombre": "Planta Compuesta",
+            "ubicacion": "San Miguel",
+            "maquinas": [{"nombre": "Compresor híbrido", "codigo": "CB-1", "disciplina": "Neumática / Mecánica"}],
+        }
+    )
+    assert "UNA sola" in salida
+    assert "Neumática / Mecánica" in salida
+    assert not salida.startswith(_PREFIJO_PROPUESTA_PLANTA)
+
+
+@pytest.mark.asyncio
+async def test_proponer_planta_cubre_quince_y_rechaza_dieceseis(db_pool):
+    """QA 05-11: el tope por alta se subió de 8 a 15 (validado con el equipo). En 15 va,
+    en 16 pide tandas."""
+    lote = [{"nombre": f"Equipo {i}", "codigo": f"EQ-{i:02d}", "disciplina": "Mecánica"} for i in range(1, 16)]
+
+    en_quince = await HERRAMIENTAS["proponer_planta_completa"].ainvoke(
+        {"nombre": "Planta Grande", "ubicacion": "Chile", "maquinas": lote}
+    )
+    assert en_quince.startswith(_PREFIJO_PROPUESTA_PLANTA), "15 máquinas ES el tope: la propuesta va"
+
+    lote.append({"nombre": "Equipo 16", "codigo": "EQ-16", "disciplina": "Mecánica"})
+    en_dieceseis = await HERRAMIENTAS["proponer_planta_completa"].ainvoke(
+        {"nombre": "Planta Grande", "ubicacion": "Chile", "maquinas": lote}
+    )
+    assert "el máximo por alta es 15" in en_dieceseis
+    assert not en_dieceseis.startswith(_PREFIJO_PROPUESTA_PLANTA)
+
+    planta = await fetch_one("SELECT planta_id FROM planta WHERE nombre = 'Planta Grande'")
+    assert planta is None, "el tope es de propuesta: no se escribió nada acá"
+
+
+def test_la_propuesta_planta_sin_maquinas_avisada():
+    """QA 05-11: crear planta vacía es posible (el service lo permite), pero el usuario
+    debe verlo explícito ANTES de confirmar."""
+    texto = _texto_propuesta_planta("Planta Solo Casco", "Talagante", [])
+    assert "SIN MÁQUINAS" in texto
+    datos = _parsear_propuesta_planta(texto)
+    assert datos is not None and datos["maquinas"] == []
 
 
 # =============================================================================

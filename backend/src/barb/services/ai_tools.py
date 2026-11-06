@@ -34,8 +34,8 @@ from langchain_core.tools import BaseTool, tool
 from pydantic import BaseModel, Field, ValidationError
 
 from barb.core.config import settings
-from barb.core.db import fetch_all, fetch_one
-from barb.core.permissions import puede_acceder_ruta, puede_ejecutar_accion
+from barb.core.db import fetch_all, fetch_one, transaction
+from barb.core.permissions import ACCIONES, RUTAS, puede_acceder_ruta, puede_ejecutar_accion
 from barb.core.work_order_states import ESTADOS_FINALES, TRANSICIONES
 from barb.schemas.plantas import MaquinaCreate, PlantaCompletaCreate
 from barb.services import catalog_service
@@ -476,6 +476,8 @@ def propuesta_pendiente(messages: list[BaseMessage]) -> dict | None:
         return _parsear_propuesta_planta(texto)  # ya lleva "tipo": "planta"
     if texto.startswith(_PREFIJO_PROPUESTA_PARAMETROS):
         return _parsear_propuesta_parametros(texto)  # ya lleva "tipo": "parametros"
+    if texto.startswith(_PREFIJO_PROPUESTA_AVISO):
+        return _parsear_propuesta_aviso(texto)  # ya lleva "tipo": "aviso"
     if texto.startswith(_PREFIJO_PROPUESTA):
         datos = _parsear_propuesta(texto)
         return {"tipo": "ot", **datos} if datos else None
@@ -611,7 +613,61 @@ async def crear_ot_aprobada(
 # El mantenedor es de gerente/admin (misma matriz que `require_route("plantas")`). Se
 # replica acá porque las tools no pasan por las dependencias de FastAPI: el Depends del
 # router nunca se ejecuta cuando la escritura la hace una tool.
-PERMISO_DENEGADO = "No tengo permiso para modificar el mantenedor con tu rol. Pídeselo a un gerente o administrador."
+# ---------------------------------------------------------------------------
+# Mensaje de permisos unificado (pedido Alloxentrin, 05-11): cuando el rol no puede
+# ejecutar una acción, el mensaje SIEMPRE dice qué role(s) lo pueden hacer, para que el
+# usuario sepa a quién pedirle. Los responsables se DERIVAN de la matriz (`core/
+# permissions.py`, única fuente): si el negocio cambia la matriz, el mensaje cambia
+# con ella, no queda desalineado.
+# ---------------------------------------------------------------------------
+_ETIQUETA_ROL = {
+    "operador": "operador",
+    "tecnico": "técnico",
+    "supervisor": "supervisor",
+    "engineer": "ingeniero",
+    "gerente": "gerente",
+    "admin": "administrador",
+    "super_usuario": "super usuario",
+}
+
+DESCRIPCION_ACCIONES = {
+    "crear_ot": "crear órdenes de trabajo directas (sin aviso de falla previo)",
+    "reportar_falla": "registrar avisos de falla",
+    "gestionar_avisos": "generar la OT desde un aviso de falla o descartarlo",
+    "subir_documentos": "subir documentación",
+    "plantas": "gestionar el mantenedor de plantas, disciplinas y máquinas",
+}
+
+
+def _lista_en_espanol(items: list[str]) -> str:
+    if not items:
+        return ""
+    if len(items) == 1:
+        return items[0]
+    return ", ".join(items[:-1]) + f" o {items[-1]}"
+
+
+def _responsables_de(accion: str) -> str:
+    """Roles que SÍ pueden `accion`, leídos de la matriz de permisos (no escritos aquí).
+
+    Las acciones viven en `ACCIONES`; las rutas (plantas, documentos…) en `RUTAS` — un
+    valor `"ver"` de RUTAS no es acceso total, así que solo cuenta el `True` exacto.
+    """
+    matriz = ACCIONES.get(accion) if accion in ACCIONES else RUTAS.get(accion, {})
+    roles = [_ETIQUETA_ROL.get(r, r) for r, tiene in matriz.items() if tiene is True]
+    return _lista_en_espanol(sorted(roles))
+
+
+def _mensaje_sin_permiso(accion: str) -> str:
+    lo_que = DESCRIPCION_ACCIONES.get(accion, accion)
+    responsables = _responsables_de(accion)
+    return (
+        f"No te está permitido {lo_que} con tu rol. "
+        f"Esto lo hace un {responsables} de la empresa; pídeselo a esa persona o contacta al encargado para más información."
+    )
+
+
+PERMISO_DENEGADO = _mensaje_sin_permiso("plantas")
 
 
 def _puede_gestionar(rol: str | None) -> bool:
@@ -702,6 +758,14 @@ def _texto_propuesta_planta(nombre: str, ubicacion: str | None, maquinas: list[d
         + " con estas máquinas:",
         "",
     ]
+    if not maquinas:
+        # QA del 05-11: se puede crear una planta vacía (el service lo permite), pero el
+        # usuario debe verlo explicíto antes de confirmar, no descubrirlo después.
+        lineas += [
+            "⚠️ La propuesta va SIN MÁQUINAS: la planta quedará vacía y podrás "
+            "agregarle equipos después desde el mantenedor o pidiéndomelo.",
+            "",
+        ]
     for m in maquinas:
         lineas.append(
             f"- MAQ codigo={_sin_separadores(m.get('codigo', ''))} "
@@ -769,7 +833,7 @@ class _MaquinaPlanta(BaseModel):
     costo_inactividad_minuto: float | None = Field(default=None, ge=0, description="Costo por minuto detenida (opcional)")
 
 
-_MAX_MAQUINAS_ALTA = 8
+_MAX_MAQUINAS_ALTA = 15
 
 
 async def crear_planta_aprobada(
@@ -1012,6 +1076,186 @@ async def actualizar_parametros_aprobada(
     )
 
 
+# ---------------------------------------------------------------------------
+# Propuesta de aviso de falla (HU-20 / CGBIDA-512): tercer candado, misma mecánica.
+#
+# La lógica de avisos de Samuel (HU-23, migración 0012) ya escribe y ya tiene permisos
+# (`reportar_falla`); el chat respeta EXACTO eso: la tool solo redacta la propuesta y el
+# write (`registrar_aviso_aprobada`, no-tool) lo ejecuta el gate tras el «sí», revalidando
+# permiso, severidad y re-resolviendo la máquina por CÓDIGO EXACTO. Un aviso NO es una OT:
+# queda `pendiente` en la bandeja hasta que el supervisor decida.
+# ---------------------------------------------------------------------------
+
+_PREFIJO_PROPUESTA_AVISO = "PROPUESTA DE AVISO DE FALLA"
+
+_PREFIJO_AVISO = "AV-"  # espejo de routers.avisos.PREFIJO (importarlo traería la capa HTTP)
+
+# Una sola línea con separador "|", misma disciplina que las otras propuestas.
+_RE_LINEA_AVISO = re.compile(
+    r"^- AVISO codigo=(?P<codigo>[^|]+?) \| severidad=(?P<severidad>[^|]+?) \| descripcion=(?P<descripcion>.+)$"
+)
+
+_SEVERIDADES_VALIDAS = ("low", "medium", "high", "critical")
+
+_SEVERIDAD_A_CLAVE = {
+    "low": "low",
+    "baja": "low",
+    "medium": "medium",
+    "media": "medium",
+    "high": "high",
+    "alta": "high",
+    "critical": "critical",
+    "critica": "critical",
+    "crítica": "critical",
+    "criteriosa": "critical",
+    "severa": "critical",
+}
+_ETIQUETA_SEVERIDAD = {"low": "baja", "medium": "media", "high": "alta", "critical": "crítica"}
+
+
+def _normalizar_severidad(valor: str | None) -> tuple[str, bool]:
+    """Devuelve (severidad_valida_en_ingles, era_reconocida). Sin dato → media."""
+    clave = _normalizar(valor or "media")
+    if clave in _SEVERIDAD_A_CLAVE:
+        return _SEVERIDAD_A_CLAVE[clave], True
+    return "medium", False
+
+
+def _texto_propuesta_aviso(maquina: dict, descripcion: str, severidad: str) -> str:
+    """Texto exacto que el asistente muestra (y persiste) al proponer registrar una falla."""
+    return (
+        f"{_PREFIJO_PROPUESTA_AVISO}\n\n"
+        f"Voy a registrar un aviso de falla de «{_sin_separadores(maquina['nombre'])}» "
+        f"[{_sin_separadores(maquina['codigo'])}]"
+        + (f" en {_sin_separadores(maquina['planta'])}" if maquina.get("planta") else "")
+        + ":\n\n"
+        f"- AVISO codigo={_sin_separadores(maquina['codigo'])} "
+        f"| severidad={_ETIQUETA_SEVERIDAD[severidad]} "
+        f"| descripcion={_sin_separadores(descripcion)}\n\n"
+        "La falla queda pendiente para el supervisor (no se crea una OT al instante).\n"
+        "¿Confirmas el registro? (responde sí o no)"
+    )
+
+
+def _parsear_propuesta_aviso(texto: str) -> dict | None:
+    """Datos del aviso propuesto, o None si el formato no cierra (fallo cerrado)."""
+    if not texto.startswith(_PREFIJO_PROPUESTA_AVISO):
+        return None
+    for linea in texto.splitlines():
+        m = _RE_LINEA_AVISO.match(linea.strip())
+        if not m:
+            continue
+        clave = _normalizar(m.group("severidad"))
+        if clave not in _SEVERIDAD_A_CLAVE:
+            return None  # severidad que no cierra: la propuesta se descarta entera
+        descripcion = m.group("descripcion").strip()
+        if len(descripcion) < 5:
+            return None
+        return {
+            "tipo": "aviso",
+            "codigo": m.group("codigo").strip(),
+            "severidad": _SEVERIDAD_A_CLAVE[clave],
+            "descripcion": descripcion,
+        }
+    return None
+
+
+async def registrar_aviso_aprobada(
+    codigo: str,
+    descripcion: str,
+    severidad: str,
+    empresa_id: int,
+    usuario_id: int | None = None,
+    rol: str | None = None,
+) -> str:
+    """
+    Registra el aviso de falla YA CONFIRMADO por el usuario.
+
+    NO es una tool: el modelo no la ve ni puede llamarla. La invoca el gate del grafo
+    tras validar el «sí». Se revalida TODO: permiso `reportar_falla` (misma matriz del
+    endpoint de Samuel), severidad y la máquina se re-resuelve por CÓDIGO EXACTO. El
+    INSERT es la MISMA lógica del endpoint (`AvisoCreateRequest`): numero temporal que se
+    reemplaza por `AV-año-id`, dentro de UNA transacción.
+    """
+    try:
+        puede = puede_ejecutar_accion(rol or "", "reportar_falla")
+    except Exception:  # noqa: BLE001 — rol desconocido: el fallo cerrado no registra
+        puede = False
+    if not puede:
+        return _mensaje_sin_permiso("reportar_falla")
+
+    desc = " ".join((descripcion or "").split())
+    if len(desc) < 5:
+        return "La propuesta no tenía descripción utilizable, así que no registré nada."
+    if len(desc) > 5000:
+        return "La descripción supera el máximo de 5000 caracteres; acórtala y lo volvemos a registrar."
+    sev, reconocida = _normalizar_severidad(severidad)
+    if not reconocida:
+        return f"La severidad «{severidad}» no es válida (baja, media, alta o crítica); no registré nada."
+
+    # Re-resolución por código EXACTO: igual que en los parámetros, nada de adivinar.
+    try:
+        objetivo = await fetch_one(
+            """
+            SELECT m.maquina_id, m.nombre, m.codigo, p.nombre AS planta
+              FROM maquina m
+              JOIN planta p ON p.planta_id = m.planta_id
+             WHERE lower(m.codigo) = lower(%(c)s) AND p.empresa_id = %(e)s
+             LIMIT 1
+            """,
+            {"c": (codigo or "").strip(), "e": empresa_id},
+        )
+    except Exception:  # noqa: BLE001 — el gate no debe tumbar el turno
+        logger.exception("registrar_aviso_aprobada: fallo buscando %r", codigo)
+        return "No pude validar la máquina. No registré nada."
+    if not objetivo:
+        return (
+            f"No encontré la máquina con código «{codigo}» en tu empresa "
+            "(¿se borró o cambió de planta desde la propuesta?). No registré nada."
+        )
+
+    try:
+        async with transaction() as cur:
+            await cur.execute(
+                """
+                INSERT INTO aviso_falla (numero_aviso, maquina_id, reportado_por, descripcion, severidad)
+                VALUES (%(numero)s, %(maquina_id)s, %(usuario_id)s, %(descripcion)s, %(severidad)s)
+                RETURNING aviso_falla_id
+                """,
+                {
+                    "numero": f"{_PREFIJO_AVISO}TEMP-{datetime.now(UTC).strftime('%H%M%S%f')}",
+                    "maquina_id": objetivo["maquina_id"],
+                    "usuario_id": usuario_id,
+                    "descripcion": desc,
+                    "severidad": sev,
+                },
+            )
+            aviso_id = int((await cur.fetchone())["aviso_falla_id"])
+            numero = f"{_PREFIJO_AVISO}{datetime.now(UTC).year}-{aviso_id:04d}"
+            await cur.execute(
+                "UPDATE aviso_falla SET numero_aviso = %(numero)s WHERE aviso_falla_id = %(id)s",
+                {"numero": numero, "id": aviso_id},
+            )
+    except Exception as e:  # noqa: BLE001
+        logger.exception("registrar_aviso_aprobada: fallo registrando para %r", objetivo["nombre"])
+        return f"No pude registrar el aviso ({type(e).__name__}). No se guardó nada."
+
+    logger.info(
+        "registrar_aviso_aprobada: empresa=%s usuario=%s maquina=%s aviso=%s severidad=%s",
+        empresa_id,
+        usuario_id,
+        objetivo["maquina_id"],
+        numero,
+        sev,
+    )
+    return (
+        f"Aviso {numero} registrado para «{objetivo['nombre']}» "
+        f"[{_sin_separadores(objetivo['codigo'])}] con gravedad {_ETIQUETA_SEVERIDAD[sev]}.\n"
+        "Queda pendiente en la bandeja de avisos: el supervisor decidirá si se genera la OT. "
+        "Puedes seguirlo en Avisos > mis avisos."
+    )
+
+
 def crear_tools(empresa_id: int, usuario_id: int | None = None, rol: str | None = None) -> list[BaseTool]:
     """
     Tools disponibles para una empresa concreta y su usuario.
@@ -1250,8 +1494,9 @@ def crear_tools(empresa_id: int, usuario_id: int | None = None, rol: str | None 
 
         Args:
             nombre: Nombre de la planta (2 a 120 caracteres).
-            maquinas: Equipos a crear. Máximo 8 por alta.
-            ubicacion: Comuna o dirección (opcional).
+            maquinas: Equipos a crear. Máximo 15 por alta.
+            ubicacion: Comuna o dirección. Obligatoria y única: no puede repetir la
+                ubicación de otra planta de la empresa.
         """
         if not _puede_gestionar(rol):
             return PERMISO_DENEGADO
@@ -1259,6 +1504,25 @@ def crear_tools(empresa_id: int, usuario_id: int | None = None, rol: str | None 
         nombre_limpio = " ".join((nombre or "").split())
         if len(nombre_limpio) < 2:
             return "Necesito un nombre de planta de al menos 2 caracteres."
+
+        # Ubicación obligatoria y única (QA del 05-11 en prod: «Puente Alto» quedó sin
+        # ubicación, y luego dos plantas se quisieron crear en la misma comuna). El
+        # schema del endpoint la sigue dejando opcional; acá la exigimos para que el
+        # «sí» del usuario siempre nazca con la planta bien catalogada. La regla
+        # autoritativa en el service/BD queda como propuesta al equipo (HU-20).
+        ubicacion_limpia = " ".join((ubicacion or "").split())
+        if len(ubicacion_limpia) < 2:
+            return "Necesito la ubicación de la planta (comuna o dirección) antes de proponer el alta."
+
+        repetida = await fetch_one(
+            "SELECT nombre FROM planta WHERE empresa_id = %(e)s AND lower(ubicacion) = lower(%(u)s)",
+            {"e": empresa_id, "u": ubicacion_limpia},
+        )
+        if repetida:
+            return (
+                f"La ubicación «{ubicacion_limpia}» ya la tiene la planta «{repetida['nombre']}»: "
+                "no se permiten dos plantas en la misma ubicación. Cambia la ubicación, o el alta va por el mantenedor."
+            )
 
         equipos = [m.model_dump() for m in (maquinas or [])]
         if len(equipos) > _MAX_MAQUINAS_ALTA:
@@ -1278,7 +1542,70 @@ def crear_tools(empresa_id: int, usuario_id: int | None = None, rol: str | None 
                 return f"Hay un código repetido en la lista: «{m.get('codigo')}»."
             vistos.add(codigo)
 
-        return _texto_propuesta_planta(nombre_limpio, ubicacion, equipos)
+        # Disciplinas simples (QA del 05-11: «Neumática / Mecánica» creó disciplinas
+        # basura en el catálogo). Una máquina pertenece a UNA disciplina; el equipo
+        # secundario se menciona en el nombre, no en el catálogo.
+        compuestas = [
+            str(m["disciplina"]).strip()
+            for m in equipos
+            if m.get("disciplina") and ("/" in str(m["disciplina"]) or "," in str(m["disciplina"]) or ";" in str(m["disciplina"]))
+        ]
+        if compuestas:
+            ejemplo = ", ".join(sorted(set(compuestas))[:3])
+            return (
+                "La disciplina debe ser UNA sola (Mecánica, Eléctrica, Neumática, Hidráulica…); "
+                f"no acepto compuestas como «{ejemplo}». "
+                "Ponle la principal a cada máquina y menciona la otra en el nombre."
+            )
+
+        return _texto_propuesta_planta(nombre_limpio, ubicacion_limpia, equipos)
+
+    @tool("proponer_aviso_falla")
+    async def proponer_aviso_falla(
+        nombre_maquina: str,
+        descripcion: str,
+        severidad: str = "media",
+    ) -> str:
+        """Registra la propuesta de un aviso de falla y le pide confirmación al usuario.
+
+        NO registra nada: el aviso se crea solo si el usuario responde que sí. Úsala
+        cuando alguien en planta reporta una falla («esta máquina se está defectando»,
+        «reporta esta falla») y quiere que quede en el sistema para el supervisor. El
+        aviso NO es una orden de trabajo: el supervisor decidirá si se genera la OT.
+
+        Args:
+            nombre_maquina: Nombre o código del equipo con la falla ("Compressor A1").
+                Se admite coincidencia parcial.
+            descripcion: Qué pasa y desde cuándo; la nota que leerá el supervisor
+                (es literal, no la reformules ni resumas).
+            severidad: baja, media, alta o crítica (por defecto, media).
+        """
+        try:
+            puede = puede_ejecutar_accion(rol or "", "reportar_falla")
+        except Exception:  # noqa: BLE001 — una tool no debe tumbar el grafo
+            puede = False
+        if not puede:
+            return _mensaje_sin_permiso("reportar_falla")
+
+        desc = " ".join((descripcion or "").split())
+        if len(desc) < 10:
+            return "Necesito una descripción concreta de la falla (mínimo 10 caracteres): qué pasa, dónde y desde cuándo."
+        if len(desc) > 2000:
+            return "La descripción es demasiado larga para el chat (máximo 2000); resumela y lo propongo."
+
+        consulta = (nombre_maquina or "").strip()
+        if not consulta:
+            return "Necesito el nombre o el código de la máquina con la falla."
+
+        sev, reconocida = _normalizar_severidad(severidad)
+        if not reconocida:
+            return f"La severidad «{severidad}» no la reconocí: usa baja, media, alta o crítica."
+
+        maquina, error = await _resolver_maquina(empresa_id, consulta, "registro una falla")
+        if error:
+            return error
+
+        return _texto_propuesta_aviso(maquina, desc, sev)
 
     return [
         consultar_ots_maquina,
@@ -1286,4 +1613,5 @@ def crear_tools(empresa_id: int, usuario_id: int | None = None, rol: str | None 
         listar_maquinas_planta,
         actualizar_parametros_maquina,
         proponer_planta_completa,
+        proponer_aviso_falla,
     ]

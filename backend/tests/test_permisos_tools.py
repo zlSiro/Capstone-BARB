@@ -167,6 +167,7 @@ def test_no_existe_una_tool_de_creacion_directa():
         "listar_maquinas_planta",
         "actualizar_parametros_maquina",
         "proponer_planta_completa",
+        "proponer_aviso_falla",
     }
     assert "crear_ot" not in nombres
     assert "crear_ot_aprobada" not in nombres
