@@ -63,6 +63,8 @@ async def test_contrato_del_endpoint_tiene_las_claves_exactas(client):
     ordenes vencidas o demoradas).
     ACTUALIZADO A PROPOSITO en CGBIDA-438: se agrego la clave `salud_operacional` (indice
     compuesto de SLA, MTBF y backlog para el semaforo).
+    ACTUALIZADO A PROPOSITO en el rediseno del dashboard (CGBIDA-516/517): se agregaron
+    `top_5_peor_mttr` y `top_5_peor_mtbf`, y el semaforo paso a la forma simplificada.
 
     Esta asercion es un guardarrail: se toca cuando el contrato cambia a proposito, nunca
     para que una prueba pase.
@@ -71,6 +73,7 @@ async def test_contrato_del_endpoint_tiene_las_claves_exactas(client):
     assert set(d) == {
         "financials", "trend14Days", "machines", "machines_por_costo", "impacto_anual",
         "por_tipo", "estancadas", "salud_operacional",
+        "top_5_peor_mttr", "top_5_peor_mtbf",
     }, sorted(d)
 
 

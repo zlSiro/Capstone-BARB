@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import calendar
 import logging
+from datetime import datetime
 
 import psycopg
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -38,121 +40,222 @@ def _mtbf_visible(days: int | None) -> bool:
     return days is None or days >= MTBF_VENTANA_DIAS
 
 
-# --- Índice de Salud Operacional (CGBIDA-438) ---------------------------------
-# Umbrales industriales acordados con el equipo. Van como constantes de módulo y no como
-# literales dentro de la consulta, por la convención del proyecto (docs/DASHBOARD_KPIS.md,
-# anexo A.4): así se pueden ajustar sin tocar la lógica.
-SALUD_SLA_VERDE = 95.0     # % de cumplimiento
-SALUD_SLA_ROJO = 85.0
-SALUD_MTBF_VERDE_H = 730.0  # horas (≈ 1 falla por mes)
-SALUD_MTBF_ROJO_H = 365.0
-SALUD_BACKLOG_VERDE_SEM = 4.0   # semanas de trabajo acumulado
-SALUD_BACKLOG_ROJO_SEM = 8.0
+# --- Semáforo Operacional simplificado (CGBIDA-520) --------------------------
+# Antes el semáforo combinaba SLA + MTBF + backlog. El rediseño del dashboard lo
+# reduce a dos señales, que son las que el supervisor puede accionar HOY:
+#   - OTs estancadas (vencidas o demoradas), y
+#   - cumplimiento de SLA.
+# Se devuelve un estado simple ("verde" | "amarillo" | "rojo") y el motivo, para que
+# la tarjeta del dashboard muestre POR QUÉ está en ese color.
+SALUD_SLA_VERDE = 95.0     # % de cumplimiento objetivo
+SALUD_SLA_ROJO = 85.0      # % de cumplimiento piso
 
-VERDE, AMARILLO, ROJO, INSUFICIENTE = "verde", "amarillo", "rojo", "insuficiente"
+VERDE, AMARILLO, ROJO = "verde", "amarillo", "rojo"
 
 
-def _semanas_backlog(abiertas: int, completadas: int, dias_periodo: int) -> float | None:
-    """Semanas que tardaría en vaciarse el backlog al ritmo de cierre del período.
+def _semaforo_operacional(*, sla: float, estancadas: int, vencidas: int) -> dict:
+    """Semáforo de dos señales. `estancadas` incluye a las `vencidas`.
 
-    Fórmula aprobada: OTs abiertas divididas por el ritmo de cierre semanal. Si no hubo
-    ningún cierre en el período el ritmo es cero y no se puede estimar: devuelve None en
-    vez de infinito, para que la interfaz muestre "sin datos" y no un número inventado.
+    Reglas, de peor a mejor:
+      rojo     -> al menos una OT vencida, o SLA por debajo del piso.
+      amarillo -> OTs demoradas, o SLA por debajo del objetivo.
+      verde    -> ninguna de las dos cosas.
+
+    El motivo va en texto porque un color sin explicación no es accionable.
     """
-    if dias_periodo <= 0:
-        return None
-    ritmo_semanal = completadas / (dias_periodo / 7.0)
-    if ritmo_semanal <= 0:
-        return None
-    return round(abiertas / ritmo_semanal, 1)
-
-
-def _estado_por_umbral(valor: float, verde: float, rojo: float, mayor_es_mejor: bool) -> str:
-    """Clasifica un valor en verde/amarillo/rojo según dos umbrales."""
-    if mayor_es_mejor:
-        if valor >= verde:
-            return VERDE
-        return ROJO if valor < rojo else AMARILLO
-    if valor <= verde:
-        return VERDE
-    return ROJO if valor > rojo else AMARILLO
-
-
-def _score_sla(sla: float) -> float:
-    """El SLA ya viene en 0-100: el score es el propio porcentaje, acotado."""
-    return round(max(0.0, min(100.0, sla)), 1)
-
-
-def _score_mtbf(mtbf_horas: float) -> float:
-    """Lineal de 0 a 730 h: 365 h (el umbral rojo) puntúa 50."""
-    return round(max(0.0, min(100.0, mtbf_horas / SALUD_MTBF_VERDE_H * 100.0)), 1)
-
-
-def _score_backlog(semanas: float) -> float:
-    """Lineal e invertido: 4 semanas puntúa 100 y 8 semanas puntúa 0."""
-    rango = SALUD_BACKLOG_ROJO_SEM - SALUD_BACKLOG_VERDE_SEM
-    return round(max(0.0, min(100.0, (SALUD_BACKLOG_ROJO_SEM - semanas) / rango * 100.0)), 1)
-
-
-def _salud_operacional(
-    *, sla: float, mtbf_horas: float | None, abiertas: int, completadas: int, dias_periodo: int
-) -> dict:
-    """Índice de Salud Operacional compuesto por SLA, MTBF y backlog.
-
-    Reglas, en este orden:
-      1. Si falta CUALQUIER componente, el estado es `insuficiente` y el índice es None.
-         Nunca se pinta verde por defecto: un semáforo que no puede medir no debe
-         tranquilizar a nadie.
-      2. Si no, el estado global es el PEOR de los tres. Es la semántica de un tablero de
-         operaciones: una señal crítica hace crítica la planta entera.
-      3. El índice 0-100 es la media simple de los tres scores. No se ponderan porque el
-         peso relativo de cada señal es una decisión de negocio que nadie tomó; con la
-         media, el número es reproducible y se puede explicar.
-    """
-    semanas = _semanas_backlog(abiertas, completadas, dias_periodo)
-
-    componentes = {
-        "sla": {
-            "valor": round(sla, 1),
-            "estado": _estado_por_umbral(sla, SALUD_SLA_VERDE, SALUD_SLA_ROJO, True),
-            "score": _score_sla(sla),
-        },
-        "mtbf": {
-            "valor": mtbf_horas,
-            "estado": (
-                _estado_por_umbral(mtbf_horas, SALUD_MTBF_VERDE_H, SALUD_MTBF_ROJO_H, True)
-                if mtbf_horas is not None
-                else INSUFICIENTE
-            ),
-            "score": _score_mtbf(mtbf_horas) if mtbf_horas is not None else None,
-        },
-        "backlog": {
-            "valor": semanas,
-            "estado": (
-                _estado_por_umbral(
-                    semanas, SALUD_BACKLOG_VERDE_SEM, SALUD_BACKLOG_ROJO_SEM, False
-                )
-                if semanas is not None
-                else INSUFICIENTE
-            ),
-            "score": _score_backlog(semanas) if semanas is not None else None,
-        },
+    base = {
+        "sla": round(sla, 1),
+        "estancadas": int(estancadas),
+        "vencidas": int(vencidas),
+    }
+    if vencidas >= 1:
+        return {**base, "estado": ROJO, "motivo": f"{int(vencidas)} OT(s) vencida(s) sin cerrar."}
+    if sla < SALUD_SLA_ROJO:
+        return {
+            **base,
+            "estado": ROJO,
+            "motivo": f"SLA {sla:.1f}% por debajo del piso de {SALUD_SLA_ROJO:.0f}%.",
+        }
+    if estancadas >= 1:
+        return {
+            **base,
+            "estado": AMARILLO,
+            "motivo": f"{int(estancadas)} OT(s) demorada(s) en curso.",
+        }
+    if sla < SALUD_SLA_VERDE:
+        return {
+            **base,
+            "estado": AMARILLO,
+            "motivo": f"SLA {sla:.1f}% por debajo del objetivo de {SALUD_SLA_VERDE:.0f}%.",
+        }
+    return {
+        **base,
+        "estado": VERDE,
+        "motivo": "Sin OTs vencidas ni demoradas y SLA sobre el objetivo.",
     }
 
-    scores = [c["score"] for c in componentes.values()]
-    if any(s is None for s in scores):
-        return {"indice": None, "estado": INSUFICIENTE, "componentes": componentes}
 
-    estados = {c["estado"] for c in componentes.values()}
-    if ROJO in estados:
-        estado = ROJO
-    elif AMARILLO in estados:
-        estado = AMARILLO
+# --- Disponibilidad de planta (CGBIDA-519) -----------------------------------
+def _disponibilidad(horas_totales: float, downtime_min: float) -> float:
+    """(horas totales - horas de inactividad) / horas totales * 100, acotado a [0, 100].
+
+    Es la métrica que reemplaza a "Ahorro Generado" en la tarjeta del dashboard: no
+    depende de un costo por minuto supuesto, así que no puede dar cero por falta de
+    tarifa. Se acota porque un downtime registrado mayor que el período (dato sucio)
+    no debe producir una disponibilidad negativa.
+    """
+    if horas_totales <= 0:
+        return 100.0
+    disponible = (horas_totales - (downtime_min / 60.0)) / horas_totales * 100.0
+    return round(max(0.0, min(100.0, disponible)), 1)
+
+
+# --- Series históricas (CGBIDA-515, 516, 517) --------------------------------
+GRANULARIDADES = ("month", "semester", "year")
+
+
+def _periodo_sql(granularity: str) -> str:
+    """Expresión SQL que trunca `fecha_creacion` al período pedido.
+
+    Postgres no tiene `semester`: se trunca al año y se le suman 0 o 6 meses según si
+    el mes cae en el primer o el segundo semestre.
+    """
+    if granularity == "month":
+        return "date_trunc('month', ot.fecha_creacion)"
+    if granularity == "semester":
+        return (
+            "date_trunc('year', ot.fecha_creacion) + make_interval(months => "
+            "((EXTRACT(MONTH FROM ot.fecha_creacion)::int - 1) / 6) * 6)"
+        )
+    return "date_trunc('year', ot.fecha_creacion)"
+
+
+def _horas_del_periodo(inicio: datetime, granularity: str) -> float:
+    """Horas calendario del período que empieza en `inicio` (denominador del MTBF)."""
+    if granularity == "month":
+        dias = calendar.monthrange(inicio.year, inicio.month)[1]
+    elif granularity == "semester":
+        dias = sum(
+            calendar.monthrange(inicio.year, ((inicio.month - 1 + i) % 12) + 1)[1]
+            for i in range(6)
+        )
     else:
-        estado = VERDE
+        dias = 366 if calendar.isleap(inicio.year) else 365
+    return float(dias * 24)
 
-    indice = round(sum(scores) / len(scores), 1)
-    return {"indice": indice, "estado": estado, "componentes": componentes}
+
+def _etiqueta_periodo(inicio: datetime, granularity: str) -> str:
+    """Etiqueta corta para el eje X del gráfico: 2026-03, 2026-S1 o 2026."""
+    if granularity == "month":
+        return inicio.strftime("%Y-%m")
+    if granularity == "semester":
+        return inicio.strftime("%Y") + ("-S1" if inicio.month <= 6 else "-S2")
+    return inicio.strftime("%Y")
+
+
+@router.get(
+    "/api/stats/historical",
+    dependencies=[Depends(require_route("dashboard", solo_lectura=True))],
+)
+async def get_historical(
+    granularity: str = Query(default="month"),
+    days: int | None = Query(default=None, ge=1),
+    empresa_id: int | None = Query(default=None),
+    sesion: dict = Depends(get_sesion_actual),
+):
+    """Serie histórica por período para los gráficos de línea del dashboard.
+
+    No toca el esquema: agrupa `orden_trabajo` por `DATE_TRUNC` y calcula por período
+    SLA (%), MTTR (min), MTBF (h), disponibilidad (%) y volumen de OTs.
+
+    `granularity`: `month` | `semester` | `year`. Con `days` se acota la ventana; sin
+    `days` se devuelve todo el histórico disponible.
+    """
+    if granularity not in GRANULARIDADES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"granularity debe ser uno de: {', '.join(GRANULARIDADES)}.",
+        )
+
+    params: dict = {"days": days} if days else {}
+    params["empresa_id"] = resolver_empresa(sesion, empresa_id)
+    date_filter = (
+        "AND ot.fecha_creacion >= NOW() - (%(days)s || ' days')::interval" if days else ""
+    )
+    ot_scope = """AND ot.maquina_id IN (
+        SELECT m2.maquina_id FROM maquina m2 JOIN planta p2 ON p2.planta_id = m2.planta_id
+        WHERE (%(empresa_id)s::int IS NULL OR p2.empresa_id = %(empresa_id)s))"""
+
+    sla_target = settings.sla_target_minutes
+    en_sla = (
+        "(ot.fecha_vencimiento IS NOT NULL AND ot.fecha_cierre IS NOT NULL "
+        "AND ot.fecha_cierre <= ot.fecha_vencimiento) "
+        f"OR (ot.fecha_vencimiento IS NULL AND ot.tiempo_reparacion_min <= {sla_target})"
+    )
+    periodo = _periodo_sql(granularity)
+
+    query = f"""
+        SELECT
+            {periodo} AS periodo,
+            COUNT(*) AS total_ots,
+            COUNT(*) FILTER (WHERE ot.estado = 'completed') AS completadas,
+            COUNT(*) FILTER (WHERE ot.estado = 'completed' AND ({en_sla})) AS en_sla,
+            COALESCE(AVG(ot.tiempo_reparacion_min) FILTER (WHERE ot.estado = 'completed'), 0) AS mttr,
+            COUNT(*) FILTER (WHERE ot.tipo = 'corrective' AND ot.estado != 'cancelled') AS fallas,
+            COALESCE(SUM(ot.downtime_minutes) FILTER (
+                WHERE ot.tipo = 'corrective' AND ot.estado != 'cancelled'), 0) AS downtime_fallas,
+            COALESCE(SUM(ot.downtime_minutes) FILTER (WHERE ot.estado != 'cancelled'), 0) AS downtime_total
+        FROM orden_trabajo ot
+        WHERE 1=1 {date_filter} {ot_scope}
+        GROUP BY periodo
+        ORDER BY periodo
+    """
+
+    try:
+        async with pool.connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(query, params)
+                filas = await cur.fetchall()
+    except (psycopg.OperationalError, PoolTimeout) as e:
+        logger.warning("Stats histórico: base de datos inalcanzable: %s", e)
+        raise HTTPException(
+            status_code=503,
+            detail="No se pudo calcular el histórico: la base de datos no está disponible.",
+        ) from e
+    except Exception as e:
+        logger.exception("Error calculando el histórico")
+        raise HTTPException(
+            status_code=500,
+            detail="Error interno al calcular el histórico del dashboard.",
+        ) from e
+
+    periodos = []
+    for r in filas:
+        inicio = r["periodo"]
+        horas = _horas_del_periodo(inicio, granularity)
+        completadas = int(r["completadas"])
+        fallas = int(r["fallas"])
+        # MTBF del período con la misma regla que el global: ventana del período menos
+        # la inactividad de las correctivas, dividido por las fallas; mínimo 2.
+        mtbf = None
+        if fallas >= MTBF_FALLAS_MINIMAS:
+            mtbf = round((horas - (float(r["downtime_fallas"]) / 60.0)) / fallas, 1)
+        periodos.append(
+            {
+                "periodo": inicio.isoformat(),
+                "etiqueta": _etiqueta_periodo(inicio, granularity),
+                "total_ots": int(r["total_ots"]),
+                "completadas": completadas,
+                "sla": round(100.0 * int(r["en_sla"]) / completadas, 1) if completadas else 0.0,
+                "mttr": round(float(r["mttr"]), 1),
+                "mtbf_hours": mtbf,
+                "fallas": fallas,
+                "horas_periodo": round(horas, 1),
+                "disponibilidad": _disponibilidad(horas, float(r["downtime_total"])),
+            }
+        )
+
+    return {"granularity": granularity, "periods": periodos}
 
 
 # ---------------------------------------------------------------------------
@@ -290,7 +393,9 @@ async def get_financial_impact(
             ) AS completadas_en_sla,
             COUNT(*) AS total_ots,
             -- Para el semáforo de salud (CGBIDA-438): backlog vivo del período.
-            COUNT(*) FILTER (WHERE ot.estado NOT IN ('completed', 'cancelled')) AS abiertas
+            COUNT(*) FILTER (WHERE ot.estado NOT IN ('completed', 'cancelled')) AS abiertas,
+            -- Inactividad de las OT no canceladas: denominador de Disponibilidad (CGBIDA-519).
+            COALESCE(SUM(ot.downtime_minutes) FILTER (WHERE ot.estado != 'cancelled'), 0) AS downtime_total_min
         FROM orden_trabajo ot
         {join_maquina}
         WHERE 1=1 {date_filter} {ot_scope}
@@ -445,6 +550,42 @@ async def get_financial_impact(
         WHERE ot.tipo = 'corrective' AND ot.estado != 'cancelled' {impacto_fecha} {ot_scope}
         """
 
+    # Top 5 "peores" por maquina (CGBIDA-516 y 517). Van como dos listas y no como un
+    # parametro de orden: el frontend muestra las dos y no vuelve a pedir datos.
+    peor_mttr_query = f"""
+        SELECT m.maquina_id AS id, m.nombre AS name,
+               AVG(ot.tiempo_reparacion_min) AS mttr,
+               COUNT(*) AS completadas
+          FROM maquina m
+          JOIN planta p ON p.planta_id = m.planta_id
+          JOIN orden_trabajo ot ON ot.maquina_id = m.maquina_id
+         WHERE ot.estado = 'completed' AND ot.tiempo_reparacion_min IS NOT NULL
+           {date_filter}
+           AND (%(empresa_id)s::int IS NULL OR p.empresa_id = %(empresa_id)s)
+         GROUP BY m.maquina_id, m.nombre
+         ORDER BY mttr DESC, completadas DESC
+         LIMIT 5
+        """
+
+    # MTBF bajo = maquina mas propensa a fallar. Ventana fija de 365 dias (igual que el
+    # MTBF global) y minimo de dos fallas para que el promedio exista.
+    peor_mtbf_query = f"""
+        SELECT m.maquina_id AS id, m.nombre AS name,
+               COUNT(*) AS n_correctivas,
+               COALESCE(SUM(ot.downtime_minutes), 0) AS downtime_min
+          FROM maquina m
+          JOIN planta p ON p.planta_id = m.planta_id
+          JOIN orden_trabajo ot ON ot.maquina_id = m.maquina_id
+         WHERE ot.tipo = 'corrective'
+           AND ot.estado != 'cancelled'
+           AND ot.fecha_creacion >= NOW() - INTERVAL '{MTBF_VENTANA_DIAS} days'
+           AND (%(empresa_id)s::int IS NULL OR p.empresa_id = %(empresa_id)s)
+         GROUP BY m.maquina_id, m.nombre
+        HAVING COUNT(*) >= {MTBF_FALLAS_MINIMAS}
+         ORDER BY ({MTBF_VENTANA_HORAS} - COALESCE(SUM(ot.downtime_minutes), 0) / 60.0) / COUNT(*) ASC
+         LIMIT 5
+        """
+
     try:
         visible = _mtbf_visible(days)
         impacto_visible = _impacto_visible(days)
@@ -482,6 +623,16 @@ async def get_financial_impact(
                     await cur.execute(impacto_query, params)
                     impacto_row = await cur.fetchone()
 
+                # Top 5 peores por maquina (CGBIDA-516/517).
+                await cur.execute(peor_mttr_query, params)
+                peor_mttr_rows = await cur.fetchall()
+                # El Top 5 por MTBF comparte la regla del MTBF global: con un rango corto
+                # el promedio no es significativo, asi que ni se consulta.
+                peor_mtbf_rows = []
+                if visible:
+                    await cur.execute(peor_mtbf_query, {"empresa_id": params["empresa_id"]})
+                    peor_mtbf_rows = await cur.fetchall()
+
         mttr = float(f["mttr"])
         costo_total = float(f["costo_total_acumulado"])
         downtime_evitado = float(f["downtime_evitado_min"])
@@ -490,6 +641,13 @@ async def get_financial_impact(
 
         # El ahorro ya viene valorizado con el costo de cada máquina desde SQL.
         ahorro_generado = float(f["ahorro_inactividad"])
+
+        # Disponibilidad de planta (CGBIDA-519): pasa a ser la metrica principal de la
+        # tarjeta. No depende de una tarifa supuesta, asi que no puede dar cero por falta
+        # de costo configurado. Horas totales = dias del periodo elegido x 24.
+        disponibilidad = _disponibilidad(
+            float(dias_periodo) * 24.0, float(f["downtime_total_min"])
+        )
         efficiency = round(100.0 * completadas_en_sla / total_completadas, 1) if total_completadas > 0 else 0.0
 
         # MTBF = tiempo de operación / número de fallas.
@@ -550,20 +708,20 @@ async def get_financial_impact(
                     "supuestos_incompletos": incompletos,
                 })
 
-        # --- Índice de Salud Operacional (CGBIDA-438) ---------------------------
-        # Combina SLA, MTBF y backlog. El MTBF entra solo si es visible: con un rango
-        # corto no hay MTBF y el estado debe ser "insuficiente", no verde.
-        salud = _salud_operacional(
+        # --- Semaforo operacional simplificado (CGBIDA-520) ---------------------
+        # Solo dos senales: OTs estancadas/vencidas y cumplimiento de SLA.
+        salud = _semaforo_operacional(
             sla=efficiency,
-            mtbf_horas=mtbf_hours if visible else None,
-            abiertas=int(f["abiertas"]),
-            completadas=total_completadas,
-            dias_periodo=dias_periodo,
+            estancadas=int(estancadas_row["total"]),
+            vencidas=int(estancadas_row["vencidas"]),
         )
 
         return {
             "financials": {
                 "ahorro_generado": round(ahorro_generado, 2),
+                # Metrica nueva del rediseno (CGBIDA-519). `ahorro_generado` se mantiene
+                # por compatibilidad hasta que el frontend migre (subtarea 519).
+                "disponibilidad_planta": disponibilidad,
                 "mttr": round(mttr, 1),
                 "efficiency": efficiency,
                 "costo_total_acumulado": round(costo_total, 2),
@@ -575,6 +733,29 @@ async def get_financial_impact(
             "impacto_anual": impacto,
             # Semáforo de Salud Operacional (CGBIDA-438). Lo pinta el frontend en la Sub D.
             "salud_operacional": salud,
+            # Top 5 por maquina (CGBIDA-516 y 517).
+            "top_5_peor_mttr": [
+                {
+                    "id": str(row["id"]),
+                    "name": row["name"],
+                    "mttr": round(float(row["mttr"]), 1),
+                    "completadas": int(row["completadas"]),
+                }
+                for row in peor_mttr_rows
+            ],
+            "top_5_peor_mtbf": [
+                {
+                    "id": str(row["id"]),
+                    "name": row["name"],
+                    "mtbf_hours": round(
+                        (MTBF_VENTANA_HORAS - float(row["downtime_min"]) / 60.0)
+                        / int(row["n_correctivas"]),
+                        1,
+                    ),
+                    "fallas": int(row["n_correctivas"]),
+                }
+                for row in peor_mtbf_rows
+            ],
             "trend14Days": [
                 {"date": row["date"].isoformat(), "abiertas": int(row["abiertas"]), "cerradas": int(row["cerradas"])}
                 for row in trend_rows
