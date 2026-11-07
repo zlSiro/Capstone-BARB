@@ -74,10 +74,12 @@ function setup(respuesta: FinancialStats | Error = stats(), lang: 'es' | 'en' = 
   const getFinancialImpact = vi.fn(() =>
     respuesta instanceof Error ? throwError(() => respuesta) : of(respuesta)
   );
+  // El grafico historico (CGBIDA-515) es hijo y pide sus propios datos.
+  const getHistorical = vi.fn(() => of({ granularity: 'month' as const, periods: [] }));
 
   TestBed.configureTestingModule({
     imports: [DashboardComponent],
-    providers: [{ provide: StatsService, useValue: { getFinancialImpact } }],
+    providers: [{ provide: StatsService, useValue: { getFinancialImpact, getHistorical } }],
   });
   const fixture = TestBed.createComponent(DashboardComponent);
   fixture.detectChanges();
@@ -152,6 +154,33 @@ describe('dashboard: semaforo simplificado (CGBIDA-520)', () => {
     const resumen = el.querySelector('[data-testid="resumen-salud"]')!.textContent ?? '';
     expect(resumen).toContain('97.7%');
     expect(resumen).toContain('13');
+  });
+});
+
+describe('dashboard: graficos nuevos (CGBIDA-515, 516, 517)', () => {
+  it('integra el historico de SLA y el top 5 sin romper las tarjetas', () => {
+    const { el } = setup();
+    expect(el.querySelector('app-sla-historico')).not.toBeNull();
+    expect(el.querySelector('app-top-maquinas')).not.toBeNull();
+    expect(clavesKpi(el)).toHaveLength(5);
+  });
+
+  it('el top 5 de MTTR usa la lista de la respuesta', () => {
+    const conTop = stats();
+    conTop.top_5_peor_mttr = [{ id: 'x1', name: 'Pump E4', mttr: 289.8, completadas: 5 }];
+    const { el } = setup(conTop);
+    const filas = el.querySelectorAll('[data-testid="top-mttr-fila"]');
+    expect(filas).toHaveLength(1);
+    expect(filas[0].textContent).toContain('Pump E4');
+  });
+
+  it('el top 5 de MTBF usa la lista de la respuesta', () => {
+    const conTop = stats();
+    conTop.top_5_peor_mtbf = [{ id: 'x2', name: 'Press B3', mtbf_hours: 2920, fallas: 3 }];
+    const { el } = setup(conTop);
+    const filas = el.querySelectorAll('[data-testid="top-mtbf-fila"]');
+    expect(filas).toHaveLength(1);
+    expect(filas[0].textContent).toContain('Press B3');
   });
 });
 

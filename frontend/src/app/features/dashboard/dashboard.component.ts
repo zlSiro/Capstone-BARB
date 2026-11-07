@@ -10,6 +10,8 @@ import { MachineRankingComponent } from './components/machine-ranking/machine-ra
 import { TipoDonutComponent } from './components/tipo-donut/tipo-donut.component';
 import { AlertaEstancadasComponent } from './components/alerta-estancadas/alerta-estancadas.component';
 import { CostoDetalleComponent } from './components/costo-detalle/costo-detalle.component';
+import { SlaHistoricoComponent } from './components/sla-historico/sla-historico.component';
+import { TopMaquinasComponent } from './components/top-maquinas/top-maquinas.component';
 
 /** Rangos del selector temporal (CGBIDA-397). `'all'` = histórico completo. */
 export type RangoTemporal = 7 | 30 | 90 | 'all';
@@ -30,7 +32,7 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, MachineRankingComponent, TipoDonutComponent, AlertaEstancadasComponent, CostoDetalleComponent, SaludOperacionalComponent],
+  imports: [CommonModule, MachineRankingComponent, TipoDonutComponent, AlertaEstancadasComponent, CostoDetalleComponent, SaludOperacionalComponent, SlaHistoricoComponent, TopMaquinasComponent],
   template: `
     <!--
       max-w-screen-2xl (1536px) + mx-auto: sin esto el dashboard se estiraba al 100% del
@@ -228,9 +230,11 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
           porque su contenido (dona de 200 px + leyenda de 214 px) es angosto y se centra.
         -->
         <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <!-- Salud Operacional (CGBIDA-435): el indicador como heroe de la tarjeta, con
-               el anillo y el desglose de SLA, MTBF y backlog. Sin la tendencia al pie, que
-               se quito por ruidosa. -->
+          <!-- Evolucion del SLA (CGBIDA-515). Ocupa las dos columnas: el eje X necesita
+               ancho para las etiquetas de periodo y la linea se lee mejor. -->
+          <app-sla-historico class="min-w-0 lg:col-span-2" />
+
+          <!-- Salud Operacional (CGBIDA-520): semaforo simplificado con el motivo. -->
           <app-salud-operacional class="min-w-0" [salud]="salud()" />
 
           <!-- El ranking muestra su propio estado vacío si no hay equipos. -->
@@ -240,10 +244,11 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
             [maquinasPorCosto]="equiposPorCosto()"
           />
 
-          <!-- Dona por tipo de intervencion (CGBIDA-395). Se auto-oculta sin datos.
-               Ocupa las dos columnas: es angosta y se centra, y al quedar 3 graficos en
-               el grid de 2 columnas el hueco de la derecha se veia como un error. -->
-          <app-tipo-donut class="min-w-0 lg:col-span-2" [datos]="porTipo()" />
+          <!-- Top 5 por maquina (CGBIDA-516 y 517): peor MTTR y peor MTBF. -->
+          <app-top-maquinas class="min-w-0" [mttr]="peorMttr()" [mtbf]="peorMtbf()" />
+
+          <!-- Dona por tipo de intervencion (CGBIDA-395). Se auto-oculta sin datos. -->
+          <app-tipo-donut class="min-w-0" [datos]="porTipo()" />
         </div>
 
         <!-- Modal de costos desglosados (CGBIDA-518). -->
@@ -320,6 +325,12 @@ export class DashboardComponent implements OnInit {
 
   /** Top 5 por costo real, que no coincide con el top 5 por volumen (CGBIDA-435). */
   protected readonly equiposPorCosto = computed(() => this.stats()?.machines_por_costo ?? []);
+
+  /** Top 5 con peor MTTR: las que mas tardan en repararse (CGBIDA-516). */
+  protected readonly peorMttr = computed(() => this.stats()?.top_5_peor_mttr ?? []);
+
+  /** Top 5 con peor MTBF: las que menos aguantan sin fallar (CGBIDA-517). */
+  protected readonly peorMtbf = computed(() => this.stats()?.top_5_peor_mtbf ?? []);
 
   /** Distribucion por tipo de intervencion, para la dona. */
   protected readonly porTipo = computed(() => this.stats()?.por_tipo ?? []);

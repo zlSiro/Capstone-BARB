@@ -168,6 +168,32 @@ export interface TopMtbfData {
   fallas: number;
 }
 
+/** Un período de la serie histórica (CGBIDA-515). */
+export interface PeriodoHistorico {
+  /** Fecha ISO del inicio del período (YYYY-MM-DD). */
+  periodo: string;
+  /** Etiqueta corta para el eje X: `2026-03`, `2026-S1` o `2026`. */
+  etiqueta: string;
+  total_ots: number;
+  completadas: number;
+  /** Cumplimiento de SLA del período, en %. */
+  sla: number;
+  /** MTTR del período, en minutos. */
+  mttr: number;
+  /** MTBF del período en horas; `null` cuando hay menos de 2 fallas. */
+  mtbf_hours: number | null;
+  fallas: number;
+  horas_periodo: number;
+  /** Disponibilidad de planta del período, en %. */
+  disponibilidad: number;
+}
+
+/** Respuesta de `GET /api/stats/historical`. */
+export interface HistoricoRespuesta {
+  granularity: 'month' | 'semester' | 'year';
+  periods: PeriodoHistorico[];
+}
+
 /** Respuesta completa del endpoint. */
 export interface FinancialStats {
   financials: Financials;
