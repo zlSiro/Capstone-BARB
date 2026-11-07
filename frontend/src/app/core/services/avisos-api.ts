@@ -25,7 +25,9 @@ export class AvisosApi {
     const body = new FormData();
     body.append('maquina_id', String(payload.maquina_id));
     body.append('descripcion', payload.descripcion);
-    body.append('severidad', payload.severidad);
+    // La gravedad es opcional desde que la define el supervisor: si no viene, el backend
+    // aplica `medium` y el campo no viaja.
+    if (payload.severidad) body.append('severidad', payload.severidad);
     if (foto) body.append('foto', foto);
     return this.http.post<Aviso>(this.url, body);
   }
