@@ -9,7 +9,7 @@ import { SaludOperacionalComponent } from './components/salud-operacional/salud-
 import { MachineRankingComponent } from './components/machine-ranking/machine-ranking.component';
 import { TipoDonutComponent } from './components/tipo-donut/tipo-donut.component';
 import { AlertaEstancadasComponent } from './components/alerta-estancadas/alerta-estancadas.component';
-import { ImpactoEscenariosComponent } from './components/impacto-escenarios/impacto-escenarios.component';
+import { CostoDetalleComponent } from './components/costo-detalle/costo-detalle.component';
 
 /** Rangos del selector temporal (CGBIDA-397). `'all'` = histórico completo. */
 export type RangoTemporal = 7 | 30 | 90 | 'all';
@@ -30,7 +30,7 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, MachineRankingComponent, TipoDonutComponent, AlertaEstancadasComponent, ImpactoEscenariosComponent, SaludOperacionalComponent],
+  imports: [CommonModule, MachineRankingComponent, TipoDonutComponent, AlertaEstancadasComponent, CostoDetalleComponent, SaludOperacionalComponent],
   template: `
     <!--
       max-w-screen-2xl (1536px) + mx-auto: sin esto el dashboard se estiraba al 100% del
@@ -197,6 +197,21 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
               </div>
               <p class="mt-1 text-2xl font-bold" [class]="kpi.color">{{ kpi.valor }}</p>
               <p class="mt-1 text-sm text-tinta-suave ">{{ kpi.descripcion }}</p>
+              <!--
+                Detalle de costos (CGBIDA-518). El boton vive SOLO en la tarjeta de Costo
+                Directo y abre un modal con el desglose por maquina.
+              -->
+              @if (kpi.clave === 'costo') {
+                <button
+                  type="button"
+                  (click)="abrirCostos()"
+                  class="mt-2 inline-flex items-center gap-1 rounded-control border
+                         border-borde-control px-2 py-1 text-sm font-semibold text-accion
+                         transition-colors hover:border-accion focus:border-accion
+                         focus:outline-none"
+                  data-testid="ver-detalle-costos"
+                >{{ t().costDetailButton }}</button>
+              }
             </div>
           }
         </div>
@@ -225,13 +240,18 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
             [maquinasPorCosto]="equiposPorCosto()"
           />
 
-          <!-- Dona por tipo de intervencion (CGBIDA-395). Se auto-oculta sin datos. -->
-          <app-tipo-donut class="min-w-0" [datos]="porTipo()" />
-
-          <!-- Escenarios de Impacto Anual (CGBIDA-436). Reemplaza al de resolucion,
-               que duplicaba el ranking en su metrica MTTR. -->
-          <app-impacto-escenarios class="min-w-0" [impacto]="impacto()" />
+          <!-- Dona por tipo de intervencion (CGBIDA-395). Se auto-oculta sin datos.
+               Ocupa las dos columnas: es angosta y se centra, y al quedar 3 graficos en
+               el grid de 2 columnas el hueco de la derecha se veia como un error. -->
+          <app-tipo-donut class="min-w-0 lg:col-span-2" [datos]="porTipo()" />
         </div>
+
+        <!-- Modal de costos desglosados (CGBIDA-518). -->
+        <app-costo-detalle
+          [abierto]="modalCostos()"
+          [maquinas]="equiposPorCosto()"
+          (cerrar)="cerrarCostos()"
+        />
       }
     </div>
   `
@@ -304,11 +324,11 @@ export class DashboardComponent implements OnInit {
   /** Distribucion por tipo de intervencion, para la dona. */
   protected readonly porTipo = computed(() => this.stats()?.por_tipo ?? []);
 
-  /** Impacto anual, para el grafico de escenarios (CGBIDA-436). */
-  protected readonly impacto = computed(() => this.stats()?.impacto_anual ?? null);
-
-  /** Semaforo compuesto de salud operacional (CGBIDA-435). */
+  /** Semaforo simplificado de salud operacional (CGBIDA-520). */
   protected readonly salud = computed(() => this.stats()?.salud_operacional ?? null);
+
+  /** Visibilidad del modal de costos desglosados (CGBIDA-518). */
+  protected readonly modalCostos = signal(false);
 
   /** Ordenes estancadas para el banner. Un total de 0 lo oculta. */
   protected readonly estancadas = computed(
@@ -328,7 +348,6 @@ export class DashboardComponent implements OnInit {
     const s = this.stats();
     if (!s) return [];
     const f = s.financials;
-    const imp = s.impacto_anual;
     const tx = this.t();
     const mtbfOk = f.mtbf_visible && f.mtbfHours !== null;
 
@@ -336,30 +355,36 @@ export class DashboardComponent implements OnInit {
     // Leer `formatear` dentro del computed lo hace reactivo al toggle.
     const cifra = (v: number) => this.currency.formatear(v);
 
-    // Supuestos del modelo, tal como los entrega el backend. No se hardcodean: si manana
-    // cambian en config.py, el tooltip sigue diciendo la verdad.
-    // La cifra va en la MONEDA ACTIVA (CGBIDA-435): antes decia "CLP" fijo aunque el
-    // toggle estuviera en dolares.
-    const costoMin = imp.supuestos?.costo_por_minuto ?? 2000;
-    const supuesto = this.currency.formatearDetalle(costoMin);
+    // La nota de moneda sigue viva en el tooltip del Costo Directo (CGBIDA-435).
     const notaMoneda =
       this.currency.moneda() === 'USD' && !this.currency.sinTasa() ? ` ${tx.kpiUsdNote}` : '';
 
     return [
-      {
-        clave: 'mttr',
-        etiqueta: tx.mttrGlobal,
-        valor: `${f.mttr}m`,
-        descripcion: tx.mttrSub,
-        color: 'text-tinta ',
-        tooltip: ''
-      },
+      // Orden pedido en el rediseno (CGBIDA-515): el SLA primero, que es el indicador
+      // que el supervisor mira al entrar. Despues la Disponibilidad, que reemplaza al
+      // Ahorro Generado (CGBIDA-519) por no depender de una tarifa supuesta.
       {
         clave: 'sla',
         etiqueta: tx.efficiency,
         valor: `${f.efficiency}%`,
         descripcion: tx.efficiencySub,
         color: 'text-ok ',
+        tooltip: ''
+      },
+      {
+        clave: 'disponibilidad',
+        etiqueta: tx.disponibilidadPlanta,
+        valor: `${(f.disponibilidad_planta ?? 0).toFixed(1)}%`,
+        descripcion: tx.disponibilidadSub,
+        color: 'text-ok ',
+        tooltip: ''
+      },
+      {
+        clave: 'mttr',
+        etiqueta: tx.mttrGlobal,
+        valor: `${f.mttr}m`,
+        descripcion: tx.mttrSub,
+        color: 'text-tinta ',
         tooltip: ''
       },
       {
@@ -383,14 +408,6 @@ export class DashboardComponent implements OnInit {
           ? 'text-tinta '
           : 'text-sm font-medium text-media ',
         tooltip: ''
-      },
-      {
-        clave: 'ahorro',
-        etiqueta: tx.savingsGenerated,
-        valor: cifra(f.ahorro_generado),
-        descripcion: tx.savingsSub,
-        color: 'text-alerta ',
-        tooltip: `${tx.kpiAhorroTooltip} Supuesto: ${supuesto} por minuto.${notaMoneda}`
       }
     ];
   });
@@ -405,6 +422,16 @@ export class DashboardComponent implements OnInit {
   /** Cambia la moneda de presentación (CGBIDA-432). */
   protected cambiarMoneda(moneda: Moneda): void {
     this.currency.setMoneda(moneda);
+  }
+
+  /** Abre el modal de costos desglosados (CGBIDA-518). */
+  protected abrirCostos(): void {
+    this.modalCostos.set(true);
+  }
+
+  /** Cierra el modal (X, ESC o clic en el overlay). */
+  protected cerrarCostos(): void {
+    this.modalCostos.set(false);
   }
 
   /** Cambia la unidad del MTBF. El semáforo la refleja porque comparte el servicio. */

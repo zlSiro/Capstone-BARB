@@ -14,6 +14,13 @@
 export interface Financials {
   /** Inactividad evitada por las OTs completadas, valorizada. */
   ahorro_generado: number;
+  /**
+   * Disponibilidad de planta en % (CGBIDA-519): `(horas - downtime) / horas * 100`.
+   *
+   * Es la métrica que reemplaza al ahorro en la tarjeta del dashboard porque no depende
+   * de una tarifa supuesta: no puede dar cero por falta de costo configurado.
+   */
+  disponibilidad_planta: number;
   /** Tiempo medio de reparacion de las OTs completadas, en minutos. */
   mttr: number;
   /**
@@ -120,33 +127,45 @@ export interface EstancadasData {
   umbral_dias: number;
 }
 
-/** Estados posibles de un componente del semáforo (CGBIDA-438). */
+/** Estados posibles del semáforo operacional (CGBIDA-520). */
 export type EstadoSalud = 'verde' | 'amarillo' | 'rojo' | 'insuficiente';
 
-/** Un componente del Índice de Salud Operacional. */
-export interface ComponenteSalud {
-  /** Valor medido. `null` cuando no se puede calcular (por ejemplo MTBF sin historial). */
-  valor: number | null;
-  estado: EstadoSalud;
-  /** Puntaje 0-100 con el que entra al índice. `null` si no se pudo medir. */
-  score: number | null;
-}
-
 /**
- * Índice de Salud Operacional (CGBIDA-438).
+ * Semáforo operacional simplificado (CGBIDA-520).
  *
- * Combina SLA, MTBF y semanas de backlog. Si falta cualquier componente, `indice` es
- * `null` y el estado es `insuficiente`: el backend no pinta verde lo que no puede medir.
+ * El backend lo redujo a dos señales: OTs estancadas/vencidas y cumplimiento de SLA.
+ * `motivo` explica POR QUÉ está en ese color, que es lo que vuelve accionable al semáforo.
  */
 export interface SaludOperacionalData {
-  /** 0-100. Es la media de los tres scores. */
-  indice: number | null;
   estado: EstadoSalud;
-  componentes: {
-    sla: ComponenteSalud;
-    mtbf: ComponenteSalud;
-    backlog: ComponenteSalud;
-  };
+  /** Frase corta con la causa del estado (ej. "13 OT(s) vencida(s) sin cerrar."). */
+  motivo: string;
+  /** Cumplimiento de SLA del período, en % (el mismo que el KPI). */
+  sla: number;
+  /** OTs estancadas: unión de vencidas y demoradas, sin doble conteo. */
+  estancadas: number;
+  /** Subconjunto vencido: vencimiento pasado y estado no final. */
+  vencidas: number;
+}
+
+/** Una fila del Top 5 con peor MTTR (CGBIDA-516). */
+export interface TopMttrData {
+  id: string;
+  name: string;
+  /** Tiempo medio de reparación, en minutos. */
+  mttr: number;
+  /** OTs completadas con tiempo medido: la base del promedio. */
+  completadas: number;
+}
+
+/** Una fila del Top 5 con peor MTBF (CGBIDA-517): menos tiempo entre fallas. */
+export interface TopMtbfData {
+  id: string;
+  name: string;
+  /** Horas entre fallas en la ventana de 365 días. Menor = más propensa a fallar. */
+  mtbf_hours: number;
+  /** Fallas correctivas consideradas (mínimo 2). */
+  fallas: number;
 }
 
 /** Respuesta completa del endpoint. */
@@ -166,6 +185,13 @@ export interface FinancialStats {
   por_tipo: PorTipoData[];
   /** Ordenes estancadas, para el banner de alerta. */
   estancadas: EstancadasData;
-  /** Semaforo compuesto de salud operacional. */
+  /** Semaforo simplificado de salud operacional (CGBIDA-520). */
   salud_operacional: SaludOperacionalData;
+  /**
+   * Top 5 con PEOR MTTR (más minutos de reparación promedio) — CGBIDA-516.
+   * Opcional: si el backend viejo no la manda, la UI simplemente no la pinta.
+   */
+  top_5_peor_mttr?: TopMttrData[];
+  /** Top 5 con peor MTBF (menos tiempo entre fallas) — CGBIDA-517. */
+  top_5_peor_mtbf?: TopMtbfData[];
 }
