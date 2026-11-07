@@ -207,10 +207,34 @@ export class SlaHistoricoComponent {
     this.cargar();
   }
 
-  /** Guías horizontales del eje Y (0, 25, 50, 75, 100). */
-  protected readonly guias = computed(() =>
-    [0, 25, 50, 75, 100].map((valor) => ({ valor, y: this.yDe(valor) }))
-  );
+  /**
+   * Piso del eje Y (CGBIDA-515).
+   *
+   * Con el eje fijo en 0-100 y datos entre 83 y 96 la línea se veía plana y no comunicaba
+   * nada. El piso se calcula desde el dato más bajo: se deja un margen de 5 puntos y se
+   * redondea a múltiplos de 5, con dos topes:
+   *   - nunca baja de 0 (no tiene sentido un eje negativo), y
+   *   - nunca sube de 90, para que el eje siempre abarque al menos 10 puntos y un
+   *     99-100 no se dibuje como una catástrofe. El techo queda siempre en 100.
+   */
+  protected readonly piso = computed(() => {
+    const valores = this.periodos().map((p) => p.sla);
+    if (valores.length === 0) return 0;
+    const minimo = Math.min(...valores);
+    return Math.min(90, Math.max(0, Math.floor((minimo - 5) / 5) * 5));
+  });
+
+  /** Guías horizontales del eje Y, desde el piso hasta el 100 %, en pasos redondos. */
+  protected readonly guias = computed(() => {
+    const piso = this.piso();
+    const rango = 100 - piso;
+    // Paso en 5, 10 o 25 según el rango: nunca más de 6 líneas ni números quebrados.
+    const paso = rango <= 25 ? 5 : rango <= 50 ? 10 : 25;
+    const valores: number[] = [];
+    for (let v = piso; v <= 100; v += paso) valores.push(v);
+    if (valores[valores.length - 1] !== 100) valores.push(100);
+    return valores.map((valor) => ({ valor, y: this.yDe(valor) }));
+  });
 
   /** Puntos proyectados a coordenadas del SVG. */
   protected readonly puntos = computed<Punto[]>(() => {
@@ -241,11 +265,14 @@ export class SlaHistoricoComponent {
     return i % paso === 0 || i === n - 1;
   }
 
-  /** SLA (0-100) -> coordenada Y invertida del lienzo. */
+  /** SLA (entre el piso y 100) -> coordenada Y invertida del lienzo. */
   private yDe(sla: number): number {
+    const piso = this.piso();
     const altoUtil = this.ALTO - this.PAD_SUP - this.PAD_INF;
-    const acotado = Math.max(0, Math.min(100, sla));
-    return this.PAD_SUP + (1 - acotado / 100) * altoUtil;
+    const acotado = Math.max(piso, Math.min(100, sla));
+    const rango = 100 - piso;
+    const fraccion = rango === 0 ? 1 : (acotado - piso) / rango;
+    return this.ALTO - this.PAD_INF - fraccion * altoUtil;
   }
 
   private cargar(): void {

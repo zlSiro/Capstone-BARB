@@ -229,7 +229,7 @@ const base = {
       // CGBIDA-433: explicación de cada KPI. Las cifras del modelo están en CLP, así que
       // el supuesto se enuncia siempre en pesos, aunque el resto de la tarjeta esté en USD.
       kpiCostoTooltip:
-        'Suma del costo real de todas las OTs no canceladas del período. Las canceladas no suman: si el trabajo no se hizo, no hay costo que registrar.',
+        'Fórmula: suma del costo real —repuestos y servicios facturados— de todas las OTs no canceladas del período. Las canceladas no suman: si el trabajo no se hizo, no hay costo que registrar. «Ver detalle» abre el desglose por máquina.',
       kpiAhorroTooltip:
         'Inactividad evitada por las OTs completadas, valorizada al costo por minuto de inactividad. Solo cuentan las OTs completadas: las abiertas todavía no evitaron nada.',
       kpiImpactoTooltip:
@@ -258,6 +258,8 @@ const base = {
       stalledBody: 'Revisa el listado de ordenes para gestionar las intervenciones y evitar tiempos muertos en la planta.',
       stalledExpired: 'Vencidas',
       stalledDelayed: 'Demoradas',
+      // CGBIDA-396: aclara por que la suma del desglose supera al total del titulo.
+      stalledBoth: 'están en ambas categorías',
       stalledThresholdBefore: 'En curso hace mas de',
       stalledThresholdAfter: 'dias',
       costDeviationTitle: 'Desviación de Costos',
@@ -524,7 +526,7 @@ const base = {
       currencyRate: 'Observed exchange rate:',
       currencyNoRate: 'Could not fetch the exchange rate. Amounts are shown in CLP.',
       kpiCostoTooltip:
-        'Sum of the actual cost of all non-cancelled work orders in the period. Cancelled ones do not add: if the work was not done, there is no cost to record.',
+        'Formula: sum of the actual cost —parts and invoiced services— of all non-cancelled work orders in the period. Cancelled ones do not add: if the work was not done, there is no cost to record. "View detail" opens the per-machine breakdown.',
       kpiAhorroTooltip:
         'Downtime avoided by completed work orders, valued at the downtime cost per minute. Only completed work orders count: open ones have not avoided anything yet.',
       kpiImpactoTooltip:
@@ -552,6 +554,8 @@ const base = {
       stalledBody: 'Review the work order list to manage interventions and avoid plant downtime.',
       stalledExpired: 'Expired',
       stalledDelayed: 'Delayed',
+      // CGBIDA-396: explains why the breakdown adds up to more than the headline.
+      stalledBoth: 'are in both categories',
       stalledThresholdBefore: 'In progress for more than',
       stalledThresholdAfter: 'days',
       costDeviationTitle: 'Cost Deviation',

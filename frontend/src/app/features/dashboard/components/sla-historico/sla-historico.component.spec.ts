@@ -142,3 +142,38 @@ describe('sla-historico: sin datos', () => {
     expect(el.querySelector('[data-testid="hist-svg"]')).toBeNull();
   });
 });
+
+describe('sla-historico: escala dinamica del eje Y (UX)', () => {
+  it('con datos altos el eje arranca cerca del minimo y no en cero', () => {
+    const res: HistoricoRespuesta = {
+      granularity: 'month',
+      periods: [periodo('2026-01', 92), periodo('2026-02', 96)],
+    };
+    const { el } = setup(res);
+    const eje = el.querySelector('[data-testid="hist-svg"]')!.textContent ?? '';
+    // El minimo es 92 -> piso 85, asi la pendiente se nota.
+    expect(eje).toContain('85');
+    expect(eje).not.toContain('25');
+  });
+
+  it('el piso nunca sube de 90 aunque el SLA sea casi perfecto', () => {
+    const res: HistoricoRespuesta = {
+      granularity: 'month',
+      periods: [periodo('2026-01', 99), periodo('2026-02', 100)],
+    };
+    const { el } = setup(res);
+    const eje = el.querySelector('[data-testid="hist-svg"]')!.textContent ?? '';
+    // El eje siempre abarca al menos 10 puntos: no se dibuja un 99-100 como catastrofe.
+    expect(eje).toContain('90');
+  });
+
+  it('con datos bajos el piso baja para no exagerar la caida', () => {
+    const res: HistoricoRespuesta = {
+      granularity: 'month',
+      periods: [periodo('2026-01', 20), periodo('2026-02', 40)],
+    };
+    const { el } = setup(res);
+    const eje = el.querySelector('[data-testid="hist-svg"]')!.textContent ?? '';
+    expect(eje).toContain('15');
+  });
+});
