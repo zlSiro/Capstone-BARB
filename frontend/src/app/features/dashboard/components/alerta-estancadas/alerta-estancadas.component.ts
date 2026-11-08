@@ -72,6 +72,16 @@ import { I18nService } from '../../../../core/i18n/i18n.service';
                 <span class="font-medium">{{ t().stalledDelayed }}:</span> {{ datos().demoradas }}
               </li>
             }
+            <!--
+              Solapamiento (CGBIDA-396). El total es la UNION de vencidas y demoradas, asi
+              que su suma puede superar al titulo. Sin este chip el usuario ve 15 arriba
+              y 13 + 6 abajo, y cree que hay un error de calculo.
+            -->
+            @if (ambas() > 0) {
+              <li class="opacity-90" data-testid="banner-ambas">
+                {{ ambas() }} {{ t().stalledBoth }}
+              </li>
+            }
           </ul>
         </div>
       </div>
@@ -85,6 +95,18 @@ export class AlertaEstancadasComponent {
   readonly datos = input.required<EstancadasData>();
 
   protected readonly t = computed(() => this.i18n.tree().dashboard);
+
+  /**
+   * Órdenes que están en LAS DOS categorías a la vez.
+   *
+   * `total` es la unión de vencidas y demoradas, no su suma: por eso
+   * `vencidas + demoradas - total` es exactamente el solapamiento. Se muestra para que
+   * las cifras del banner cierren sin que el usuario tenga que deducirlo.
+   */
+  protected readonly ambas = computed(() => {
+    const d = this.datos();
+    return Math.max(0, d.vencidas + d.demoradas - d.total);
+  });
 
   /**
    * Explicación del umbral, armada con las partes de i18n y el número que manda el

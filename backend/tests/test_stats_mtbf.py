@@ -61,6 +61,7 @@ def _fila_financiera() -> _Fila:
     return _Fila(
         mttr=100, costo_total_acumulado=1000, downtime_evitado_min=0, ahorro_inactividad=0,
         total_completadas=4, completadas_en_sla=4, total_ots=10, abiertas=6,
+        downtime_total_min=120,
     )
 
 
@@ -263,7 +264,8 @@ async def test_con_rango_corto_ni_se_ejecuta_la_consulta_de_mtbf(client, monkeyp
     await _pedir(client, "?days=7")
     ejecutadas = p.conn.cursor_obj.ejecutadas
     assert not any(es_mtbf(s) for s in ejecutadas), "se ejecutó la consulta de MTBF"
-    assert len(ejecutadas) == 6, f"esperaba 6 consultas, hubo {len(ejecutadas)}"
+    # Subio de 6 a 7 por el Top 5 de peor MTTR (CGBIDA-516), que si usa el rango elegido.
+    assert len(ejecutadas) == 7, f"esperaba 7 consultas, hubo {len(ejecutadas)}"
 
 
 async def test_dias_365_muestra_el_mtbf(client, monkeypatch):
