@@ -39,7 +39,7 @@ from barb.routers.stats import (
     _semanas_backlog,
 )
 
-ADMIN_E1 = ("admin@barb.com", "admin123")
+GERENTE_E1 = ("gerente1@planta.com", "gerente123")
 RUTA = "/api/stats/financial-impact"
 
 
@@ -214,7 +214,7 @@ async def _login(client, creds) -> dict:
 
 
 async def _stats(client, qs: str = "") -> dict:
-    h = await _login(client, ADMIN_E1)
+    h = await _login(client, GERENTE_E1)
     r = await client.get(f"{RUTA}{qs}", headers=h)
     assert r.status_code == 200, r.text
     return r.json()

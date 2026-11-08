@@ -3,6 +3,7 @@ import { DatePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 
 import { Aviso, AvisoGenerarOtResponse, EstadoAviso } from '../../core/models';
+import { ROLES_REPOSITORIO_AVISOS } from '../../core/permissions/permissions';
 import { PermissionsService } from '../../core/permissions/permissions.service';
 import { AvisosApi } from '../../core/services/avisos-api';
 import { AvisosPendientes } from '../../core/services/avisos-pendientes';
@@ -48,6 +49,11 @@ export class Avisos {
   protected readonly reportarUi = inject(ReportarFallaUi);
 
   protected readonly puedeGestionar = computed(() => this.permisos.canPerform('gestionar_avisos'));
+  /** Supervisor y gerente ven el repositorio completo; solo quien puede gestionar decide (el gerente consulta). */
+  protected readonly veRepositorio = computed(() => {
+    const rol = this.permisos.role();
+    return rol !== null && ROLES_REPOSITORIO_AVISOS.includes(rol);
+  });
   protected readonly puedeReportar = computed(() => this.permisos.canPerform('reportar_falla'));
 
   protected readonly filtros = FILTROS;
@@ -55,7 +61,7 @@ export class Avisos {
   protected readonly loading = signal(true);
   protected readonly error = signal<string | null>(null);
   /** Quien decide parte de lo pendiente; quien solo reporta, de todo lo suyo. */
-  protected readonly filtro = signal<Filtro>(this.permisos.canPerform('gestionar_avisos') ? 'pendiente' : 'todos');
+  protected readonly filtro = signal<Filtro>(this.veRepositorio() ? 'pendiente' : 'todos');
 
   protected readonly generando = signal<Aviso | null>(null);
   protected readonly descartando = signal<Aviso | null>(null);
@@ -129,7 +135,7 @@ export class Avisos {
     if (this.avisos().some((a) => a.aviso_id === aviso.aviso_id)) return;
     this.avisos.update((lista) => [aviso, ...lista]);
     // Quien reporta quiere ver su aviso recién enviado, aunque estuviera filtrando otro estado.
-    if (!this.puedeGestionar()) this.filtro.set('todos');
+    if (!this.veRepositorio()) this.filtro.set('todos');
     this.sincronizarPendientes();
   }
 

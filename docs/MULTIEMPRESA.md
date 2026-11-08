@@ -28,9 +28,9 @@ dashboard, órdenes de trabajo, topología, DocChat ni documentos (matriz y endp
 | Clave | Quién | Uso |
 |---|---|---|
 | ruta `empresas` / acción `gestionar_empresas` | solo `super_usuario` | Mantenedor de empresas |
-| ruta `usuarios`, acciones `ver_usuarios` / `gestionar_usuarios` | `gerente` y `admin` (solo su empresa); `super_usuario` solo sobre gerentes | Mantenedor de perfiles |
-| ruta `documentos` | `engineer`, `gerente`, `admin` (operador/técnico/supervisor: solo ver) | Documentación de la empresa |
-| acciones `subir_documentos`, `eliminar_documentos` | `engineer`, `gerente`, `admin` | Subir / activar-excluir / eliminar |
+| ruta `usuarios`, acciones `ver_usuarios` / `gestionar_usuarios` | gestión **en cascada**, solo en su empresa: `super_usuario` → gerentes · `gerente` → administradores · `admin` → operador, técnico, supervisor e ingeniero | Mantenedor de perfiles |
+| ruta `documentos` | `engineer` y `admin` (operador/técnico/supervisor/gerente: solo ver) | Documentación de la empresa |
+| acciones `subir_documentos`, `eliminar_documentos` | `engineer`, `admin` | Subir / activar-excluir / eliminar |
 
 ## 3. Aislamiento por empresa (cómo se garantiza)
 
@@ -72,7 +72,7 @@ se rechazan al subir (422); los límites de rate/tokens siguen siendo en memoria
 ## 6. Frontend
 
 * `/empresas` (mantenedor, solo super): crear con gerente inicial, editar, suspender/reactivar, eliminar, atajo a los gerentes de la empresa.
-* `/usuarios`: alta/edición/activar/eliminar de perfiles (gerente y admin de empresa). Para el super solo lista y crea gerentes.
+* `/usuarios`: alta/edición/activar/eliminar de perfiles en cascada (el gerente gestiona administradores; el admin, los perfiles operativos). Para el super solo lista y crea gerentes. Cada empresa conserva al menos un supervisor activo (409).
 * `/documentos`: subir, excluir/incluir en la IA, eliminar (no disponible para el super).
 * Menú lateral y página inicial dependen del rol (super → `/empresas`, único ítem junto a `/usuarios`). La cabecera ya no tiene selector de empresa.
 

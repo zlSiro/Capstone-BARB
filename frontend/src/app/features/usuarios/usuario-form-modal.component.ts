@@ -31,6 +31,9 @@ const SUPER_ROLE_OPTIONS = ROLE_OPTIONS.filter(r => r.value === 'gerente');
  */
 const ADMIN_ROLE_OPTIONS = ROLE_OPTIONS.filter(r => ['operador', 'tecnico', 'supervisor', 'engineer'].includes(r.value));
 
+/** Gestión en cascada: el gerente solo crea y gestiona administradores (el backend también lo exige). */
+const GERENTE_ROLE_OPTIONS = ROLE_OPTIONS.filter(r => r.value === 'admin');
+
 interface UsuarioFormModel {
   nombre: string;
   email: string;
@@ -132,6 +135,8 @@ export class UsuarioFormModalComponent {
   readonly isSuper = input(false);
   /** El usuario que gestiona es un administrador de empresa: solo puede asignar roles operativos. */
   readonly soloOperativos = input(false);
+  /** El usuario que gestiona es un gerente: solo puede asignar el rol administrador. */
+  readonly soloAdmins = input(false);
   /** Empresas disponibles para el selector (solo super_usuario). */
   readonly empresas = input<Empresa[]>([]);
   /** Empresa preseleccionada (la que el super_usuario tiene activa en la cabecera). */
@@ -150,6 +155,7 @@ export class UsuarioFormModalComponent {
   protected readonly roles = computed(() => {
     if (this.isSuper()) return SUPER_ROLE_OPTIONS;
     if (this.soloOperativos()) return ADMIN_ROLE_OPTIONS;
+    if (this.soloAdmins()) return GERENTE_ROLE_OPTIONS;
     return ROLE_OPTIONS.filter(r => r.value !== 'super_usuario');
   });
 
@@ -159,7 +165,7 @@ export class UsuarioFormModalComponent {
       nombre: u?.nombre ?? '',
       email: u?.email ?? '',
       password: '',
-      rol: u?.rol ?? (this.isSuper() ? 'gerente' : 'tecnico'),
+      rol: u?.rol ?? (this.isSuper() ? 'gerente' : this.soloAdmins() ? 'admin' : 'tecnico'),
       activo: u?.activo ?? true,
       empresa_id: this.defaultEmpresaId() ? String(this.defaultEmpresaId()) : '',
     };

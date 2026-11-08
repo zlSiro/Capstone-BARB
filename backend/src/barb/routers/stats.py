@@ -8,7 +8,7 @@ from psycopg_pool import PoolTimeout
 
 from barb.core.config import settings
 from barb.core.db import fetch_one, pool
-from barb.core.permissions import get_sesion_actual, require_route, resolver_empresa
+from barb.core.permissions import get_sesion_actual, puede_ejecutar_accion, require_route, resolver_empresa
 
 logger = logging.getLogger("barb.stats")
 
@@ -227,6 +227,21 @@ def _impacto_visible(days: int | None) -> bool:
     Con rangos cortos la extrapolación ×365/dias es ruido, igual que en el MTBF.
     """
     return days is None or days >= IMPACTO_DIAS_MINIMOS
+
+
+def _sin_kpis_financieros(respuesta: dict) -> dict:
+    """
+    Quita de la respuesta todo lo que entrega costos o impacto económico (acción `ver_kpis_financieros`).
+
+    Los KPIs operativos (MTTR, SLA, MTBF, salud, tendencia, tipos, estancadas y el volumen/MTTR/SLA por máquina) no se
+    tocan. Los campos financieros se omiten, no se ponen en cero: un 0 se leería como «no hubo costos».
+    """
+    financials = {k: v for k, v in respuesta["financials"].items() if k not in ("ahorro_generado", "costo_total_acumulado")}
+    maquinas = [
+        {k: v for k, v in m.items() if k not in ("ahorroGenerado", "costo_total")} for m in respuesta["machines"]
+    ]
+    resto = {k: v for k, v in respuesta.items() if k not in ("impacto_anual", "machines_por_costo")}
+    return {**resto, "financials": financials, "machines": maquinas, "financieros_visibles": False}
 
 
 @router.get("/api/stats/financial-impact", dependencies=[Depends(require_route("dashboard", solo_lectura=True))])
@@ -561,7 +576,7 @@ async def get_financial_impact(
             dias_periodo=dias_periodo,
         )
 
-        return {
+        respuesta = {
             "financials": {
                 "ahorro_generado": round(ahorro_generado, 2),
                 "mttr": round(mttr, 1),
@@ -622,7 +637,12 @@ async def get_financial_impact(
                 "demoradas": int(estancadas_row["demoradas"]),
                 "umbral_dias": UMBRAL_ESTANCADA_DIAS,
             },
+            # Quién recibe los campos de costo: el frontend esconde sus tarjetas cuando es False.
+            "financieros_visibles": True,
         }
+        if not puede_ejecutar_accion(sesion["rol"], "ver_kpis_financieros"):
+            return _sin_kpis_financieros(respuesta)
+        return respuesta
     except HTTPException:
         # Errores deliberados (permisos, validación) no se enmascaran como fallo de BD.
         raise

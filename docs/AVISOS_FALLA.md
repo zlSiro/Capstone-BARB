@@ -19,7 +19,7 @@ Complementa a `WORK_ORDERS.md` (HU-07 y HU-09) y a `matriz_rol.md` (matriz compl
 ```
 
 - Quien reporta solo ve **sus** avisos y en qué quedaron (número de OT o motivo del descarte).
-- Supervisor y gerente ven el repositorio **completo de su empresa** y son los únicos que deciden.
+- Supervisor y gerente ven el repositorio **completo de su empresa**, pero **solo el supervisor decide** (el gerente consulta).
 - El administrador y el superusuario no reportan ni ven avisos.
 
 ## 2. Modelo de datos
@@ -57,8 +57,8 @@ No migra filas de `reporte` (el seed y los reportes antiguos no se tocan): la fu
 | Acción | Roles | Qué permite |
 |---|---|---|
 | `reportar_falla` | operador, técnico, supervisor, ingeniero, gerente | Crear avisos y ver los propios |
-| `gestionar_avisos` | supervisor, gerente | Ver el repositorio completo, generar OT y descartar |
-| `asignar_ot` | supervisor, gerente | Priorizar, asignar y reasignar una OT abierta |
+| `gestionar_avisos` | supervisor | Generar OT y descartar (el repositorio completo lo ven supervisor y gerente: `ROLES_REPOSITORIO_AVISOS`) |
+| `asignar_ot` | supervisor | Priorizar, asignar y reasignar una OT abierta |
 
 La pantalla `/avisos` (ruta `avisos`) la ven quienes reportan; el administrador y el superusuario no tienen acceso (403).
 
@@ -127,7 +127,7 @@ nacidas de un aviso suyo (listado, detalle, topología y canal SSE). El técnico
 ## 6. Frontend
 
 - Pantalla `/avisos` (`features/avisos/`), con el ítem «Avisos de falla» en el menú:
-  - Supervisor y gerente: «Avisos de falla», filtro por estado (parte en «Pendiente») y, en cada pendiente, **Generar OT** o **Descartar**.
+  - Supervisor: «Avisos de falla», filtro por estado (parte en «Pendiente») y, en cada pendiente, **Generar OT** o **Descartar**. Gerente: el mismo repositorio, solo de consulta (sin esos botones).
   - El resto: «Mis avisos de falla», con el resultado de cada uno, y el botón **+ Reportar falla**.
   - El formulario de **Reportar falla** incluye **Adjuntar foto** (con vista previa y opción de quitarla); valida tipo y tamaño antes de enviar.
   - Los avisos con foto muestran **Ver foto**, que abre un visor (la imagen se descarga con la sesión del usuario).

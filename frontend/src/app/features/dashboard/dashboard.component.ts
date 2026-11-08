@@ -223,6 +223,7 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
             class="min-w-0"
             [maquinas]="equipos()"
             [maquinasPorCosto]="equiposPorCosto()"
+            [verFinanzas]="verFinanzas()"
           />
 
           <!-- Dona por tipo de intervencion (CGBIDA-395). Se auto-oculta sin datos. -->
@@ -230,7 +231,9 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
 
           <!-- Escenarios de Impacto Anual (CGBIDA-436). Reemplaza al de resolucion,
                que duplicaba el ranking en su metrica MTTR. -->
-          <app-impacto-escenarios class="min-w-0" [impacto]="impacto()" />
+          @if (verFinanzas()) {
+            <app-impacto-escenarios class="min-w-0" [impacto]="impacto()" />
+          }
         </div>
       }
     </div>
@@ -340,12 +343,12 @@ export class DashboardComponent implements OnInit {
     // cambian en config.py, el tooltip sigue diciendo la verdad.
     // La cifra va en la MONEDA ACTIVA (CGBIDA-435): antes decia "CLP" fijo aunque el
     // toggle estuviera en dolares.
-    const costoMin = imp.supuestos?.costo_por_minuto ?? 2000;
+    const costoMin = imp?.supuestos?.costo_por_minuto ?? 2000;
     const supuesto = this.currency.formatearDetalle(costoMin);
     const notaMoneda =
       this.currency.moneda() === 'USD' && !this.currency.sinTasa() ? ` ${tx.kpiUsdNote}` : '';
 
-    return [
+    const todas = [
       {
         clave: 'mttr',
         etiqueta: tx.mttrGlobal,
@@ -365,7 +368,7 @@ export class DashboardComponent implements OnInit {
       {
         clave: 'costo',
         etiqueta: tx.directCost,
-        valor: cifra(f.costo_total_acumulado),
+        valor: cifra(f.costo_total_acumulado ?? 0),
         descripcion: tx.directCostSub,
         color: 'text-tinta ',
         tooltip: `${tx.kpiCostoTooltip}${notaMoneda}`
@@ -387,13 +390,18 @@ export class DashboardComponent implements OnInit {
       {
         clave: 'ahorro',
         etiqueta: tx.savingsGenerated,
-        valor: cifra(f.ahorro_generado),
+        valor: cifra(f.ahorro_generado ?? 0),
         descripcion: tx.savingsSub,
         color: 'text-alerta ',
         tooltip: `${tx.kpiAhorroTooltip} Supuesto: ${supuesto} por minuto.${notaMoneda}`
       }
     ];
+    // Costo directo y ahorro son financieros: el backend no los manda a quien no es gerente, y acá no se dibujan.
+    return this.verFinanzas() ? todas : todas.filter(t => t.clave !== 'costo' && t.clave !== 'ahorro');
   });
+
+  /** Costo directo, ahorro, impacto anual y ranking por costo: solo si el backend los entregó (gerente). */
+  protected readonly verFinanzas = computed(() => this.stats()?.financieros_visibles !== false);
 
   ngOnInit() {
     // La tasa se pide en el componente, no en el servicio: asi el arranque es explicito

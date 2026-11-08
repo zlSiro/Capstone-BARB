@@ -30,7 +30,7 @@ from barb.routers import stats
 # las expectativas de estas pruebas siguen siendo válidas sin editarlas.
 SIN_BARB = stats.settings.impact_without_barb_minutes
 
-ADMIN_E1 = ("admin@barb.com", "admin123")
+GERENTE_E1 = ("gerente1@planta.com", "gerente123")
 STATS_PY = pathlib.Path(stats.__file__)
 
 
@@ -115,7 +115,7 @@ def _montar(monkeypatch, incidentes: int, tiempo_promedio: float | None):
 
 
 async def _impacto(client, qs: str = ""):
-    h = await _login(client, ADMIN_E1)
+    h = await _login(client, GERENTE_E1)
     r = await client.get(f"/api/stats/financial-impact{qs}", headers=h)
     assert r.status_code == 200, r.text
     return r.json()["impacto_anual"]

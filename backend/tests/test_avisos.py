@@ -26,6 +26,7 @@ GERENTE = {"email": "gerente1@planta.com", "password": "gerente123"}
 ADMIN = {"email": "admin@barb.com", "password": "admin123"}
 SUPER = {"email": "super@barb.com", "password": "super123"}
 GERENTE_E2 = {"email": "gerente@mineranorte.cl", "password": "minera123"}
+SUPERVISOR_E2 = {"email": "supervisor@mineranorte.cl", "password": "minera123"}
 
 
 async def _login(client, creds: dict) -> dict:
@@ -211,14 +212,17 @@ async def test_quien_reporto_ve_la_ot_que_nacio_de_su_aviso(client, maquina_id, 
     assert numero not in [o["numero_ot"] for o in (await client.get("/api/work-orders", headers=h2)).json()]
 
 
-async def test_el_gerente_tambien_puede_decidir(client, maquina_id, limpieza):
+async def test_el_gerente_ve_el_repositorio_pero_no_decide(client, maquina_id, limpieza):
+    """Solo el supervisor genera la OT o descarta; el gerente únicamente consulta y el aviso queda intacto."""
     aviso = await _reportar(client, OPERADOR, maquina_id)
-    resp = await client.post(
-        f"/api/avisos/{aviso['aviso_id']}/generar-ot",
-        json={"tecnico_id": await _usuario_id(TECNICO["email"])},
-        headers=await _login(client, GERENTE),
-    )
-    assert resp.status_code == 200, resp.text
+    hg = await _login(client, GERENTE)
+    url = f"/api/avisos/{aviso['aviso_id']}"
+    assert (await client.get(url, headers=hg)).status_code == 200
+    assert aviso["aviso_id"] in await _ids(client, GERENTE)
+    generar = await client.post(f"{url}/generar-ot", json={"tecnico_id": await _usuario_id(TECNICO["email"])}, headers=hg)
+    assert generar.status_code == 403
+    assert (await client.post(f"{url}/descartar", json={"motivo": "no"}, headers=hg)).status_code == 403
+    assert (await client.get(url, headers=hg)).json()["estado"] == "pendiente"
 
 
 async def test_un_aviso_no_se_convierte_dos_veces(client, maquina_id, limpieza):
@@ -244,8 +248,8 @@ async def test_generar_ot_valida_al_tecnico(client, maquina_id, limpieza):
     assert (await client.get(f"/api/avisos/{aviso['aviso_id']}", headers=hs)).json()["estado"] == "pendiente"
 
 
-@pytest.mark.parametrize("creds", [OPERADOR, TECNICO, ENGINEER, ADMIN])
-async def test_solo_supervisor_y_gerente_deciden(client, maquina_id, limpieza, creds):
+@pytest.mark.parametrize("creds", [OPERADOR, TECNICO, ENGINEER, GERENTE, ADMIN])
+async def test_solo_el_supervisor_decide(client, maquina_id, limpieza, creds):
     aviso = await _reportar(client, OPERADOR, maquina_id)
     h = await _login(client, creds)
     url = f"/api/avisos/{aviso['aviso_id']}"
@@ -288,9 +292,9 @@ async def test_decidir_sobre_un_aviso_inexistente_o_de_otra_empresa_es_404(clien
     aviso = await _reportar(client, OPERADOR, maquina_id)
     hs = await _login(client, SUPERVISOR)
     assert (await client.post("/api/avisos/999999/descartar", json={"motivo": "xxx"}, headers=hs)).status_code == 404
-    hg2 = await _login(client, GERENTE_E2)
+    hs2 = await _login(client, SUPERVISOR_E2)
     url = f"/api/avisos/{aviso['aviso_id']}"
-    assert (await client.post(f"{url}/descartar", json={"motivo": "xxx"}, headers=hg2)).status_code == 404
+    assert (await client.post(f"{url}/descartar", json={"motivo": "xxx"}, headers=hs2)).status_code == 404
     assert (await client.get(url, headers=hs)).json()["estado"] == "pendiente"
 
 

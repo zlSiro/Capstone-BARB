@@ -21,8 +21,10 @@ from barb.core.permissions import (
     resolver_empresa,
 )
 from barb.core.work_order_states import (
+    ESTADO_POR_VALIDAR,
     ESTADOS_FINALES,
     ETIQUETA_ES,
+    exige_comentario,
     rol_puede_ir_a,
     transiciones_permitidas,
     transiciones_posibles,
@@ -239,8 +241,10 @@ async def get_work_order(numero_ot: str, sesion: dict = Depends(get_sesion_actua
     return row_to_work_order(row, photos=photos, rol=sesion["rol"], history=history, usuario_id=sesion["usuario_id"])
 
 
-# Supervisión hacia arriba cambia estados; el técnico asignado solo inicia su OT (se valida dentro del endpoint).
-_CAMBIAR_ESTADO = [Depends(require_any_action("cambiar_estado_ot", "iniciar_ot_asignada"))]
+# El supervisor cambia estados; el técnico asignado solo inicia y envía a validación su OT (se valida dentro del endpoint).
+_CAMBIAR_ESTADO = [
+    Depends(require_any_action("cambiar_estado_ot", "iniciar_ot_asignada", "enviar_a_validacion", "validar_ot", "cancelar_ot"))
+]
 
 
 @router.patch("/api/work-orders/{numero_ot}/status", dependencies=_CAMBIAR_ESTADO)
@@ -252,8 +256,9 @@ async def update_work_order_status(numero_ot: str, payload: WorkOrderStatusReque
     """
     Cambia el estado de una OT respetando la máquina de estados (`core/work_order_states.py`) y deja auditoría.
 
-    Supervisión hacia arriba cambia estados según `cambiar_estado_ot`/`cancelar_ot`. El técnico solo puede
-    iniciar (pending -> in_progress) la OT que tiene asignada.
+    El supervisor es el único que valida (`por_validar -> completed`), devuelve (`por_validar -> in_progress`, con
+    comentario) y cancela (con motivo). El técnico solo puede iniciar y enviar a validación la OT que tiene asignada.
+    `in_progress -> completed` directo no existe; el supervisor que envió la OT a validación también puede validarla.
     """
     desired_status = parse_work_order_status(payload.status)
     comment = safe_text(payload.comment) or None
@@ -293,12 +298,17 @@ async def update_work_order_status(numero_ot: str, payload: WorkOrderStatusReque
                     ),
                 )
             es_responsable = current["tecnico_id"] is not None and int(current["tecnico_id"]) == sesion["usuario_id"]
-            if not rol_puede_ir_a(rol, desired_status, es_responsable):
+            if not rol_puede_ir_a(rol, desired_status, es_responsable, previous_status):
                 if desired_status == "in_progress" and puede_ejecutar_accion(rol, "iniciar_ot_asignada"):
                     detalle = "Solo el técnico asignado a la OT puede iniciarla."
+                elif desired_status == ESTADO_POR_VALIDAR and puede_ejecutar_accion(rol, "enviar_a_validacion"):
+                    detalle = "Solo el técnico asignado a la OT puede enviarla a validación."
                 else:
                     detalle = f"El rol '{rol}' no puede cambiar una OT a '{ETIQUETA_ES[desired_status]}'."
                 raise HTTPException(status_code=403, detail=detalle)
+            if exige_comentario(previous_status, desired_status) and not comment:
+                motivo = "el motivo de la cancelación" if desired_status == "cancelled" else "la razón de la devolución"
+                raise HTTPException(status_code=422, detail=f"Indica {motivo} en el campo 'comment'.")
 
             next_fecha_inicio = current["fecha_inicio"]
             next_fecha_cierre = current["fecha_cierre"]
@@ -372,7 +382,7 @@ async def update_work_order_status(numero_ot: str, payload: WorkOrderStatusReque
 async def assign_work_order(numero_ot: str, payload: WorkOrderAssignRequest, sesion: dict = Depends(get_sesion_actual)):
     """
     Prioriza y asigna (o reasigna) una OT abierta: técnico, prioridad y/o fecha de vencimiento.
-    Supervisor y gerente. Una OT cerrada o cancelada no se modifica. El cambio queda en la bitácora de transacciones.
+    Solo el supervisor. Una OT cerrada o cancelada no se modifica. El cambio queda en la bitácora de transacciones.
     """
     if payload.tecnico_id is None and payload.priority is None and payload.fecha_vencimiento is None:
         raise HTTPException(status_code=422, detail="Indica al menos un cambio: tecnico_id, priority o fecha_vencimiento.")

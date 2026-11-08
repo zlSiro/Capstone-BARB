@@ -11,6 +11,7 @@ export type WorkOrderStatus =
   | 'pending'
   | 'assigned'
   | 'in_progress'
+  | 'por_validar'
   | 'completed'
   | 'cancelled'
   | 'overdue'

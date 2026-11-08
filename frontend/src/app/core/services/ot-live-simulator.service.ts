@@ -10,7 +10,8 @@ const SIMULATABLE: WorkOrderStatus[] = ['pending', 'assigned', 'overdue', 'in_pr
 
 /** Estados a los que el rol puede mover la OT desde cada estado (para recalcular `allowed_transitions`). */
 const FOLLOWING: Partial<Record<WorkOrderStatus, WorkOrderStatus[]>> = {
-  in_progress: ['completed', 'cancelled'],
+  in_progress: ['por_validar', 'cancelled'],
+  por_validar: ['completed', 'in_progress', 'cancelled'],
 };
 
 const CANCEL_PROBABILITY = 0.1;
@@ -19,6 +20,7 @@ const STATUS_LABEL: Record<string, string> = {
   pending: 'Pending',
   assigned: 'Assigned',
   in_progress: 'In Progress',
+  por_validar: 'Pending Validation',
   completed: 'Completed',
   cancelled: 'Cancelled',
   overdue: 'Overdue',
@@ -109,7 +111,7 @@ export class OtLiveSimulatorService {
 
     const ot = candidates[Math.floor(this.random() * candidates.length) % candidates.length];
     let estado: WorkOrderStatus = 'in_progress';
-    if (ot.estado === 'in_progress') estado = this.random() < CANCEL_PROBABILITY ? 'cancelled' : 'completed';
+    if (ot.estado === 'in_progress') estado = this.random() < CANCEL_PROBABILITY ? 'cancelled' : 'por_validar';
     const now = new Date().toISOString();
 
     this.subject.next({

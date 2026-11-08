@@ -1415,7 +1415,7 @@ describe('TopologyComponent', () => {
  * Acceso al mantenedor de plantas desde Topología (HU-25, CGBIDA-466).
  *
  * El mantenedor dejó de tener ítem en el menú y ruta propia: se abre con un botón que
- * sólo ven gerente y admin. El mapa se desmonta al entrar, pero la cámara vive en un
+ * sólo ve el admin (el mantenedor es del admin). El mapa se desmonta al entrar, pero la cámara vive en un
  * signal del componente, así que se conserva.
  */
 describe('TopologyComponent — acceso al mantenedor de plantas', () => {
@@ -1451,13 +1451,13 @@ describe('TopologyComponent — acceso al mantenedor de plantas', () => {
 
   const boton = (el: HTMLElement) => el.querySelector<HTMLElement>('[data-testid="gestionar-activos"]');
 
-  it.each(['admin', 'gerente'])('muestra el botón para el rol %s', (role) => {
+  it.each(['admin'])('muestra el botón para el rol %s', (role) => {
     const { el } = setupConRol(role);
     expect(boton(el)).not.toBeNull();
     expect(boton(el)!.textContent).toContain('Gestionar activos');
   });
 
-  it.each(['tecnico', 'operador', 'supervisor', 'engineer', null])(
+  it.each(['tecnico', 'operador', 'supervisor', 'engineer', 'gerente', null])(
     'oculta el botón para el rol %s',
     (role) => {
       const { el } = setupConRol(role as string | null);

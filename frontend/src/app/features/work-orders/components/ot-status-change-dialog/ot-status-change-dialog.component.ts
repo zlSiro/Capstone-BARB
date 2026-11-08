@@ -2,6 +2,7 @@ import { Component, computed, input, output, signal } from '@angular/core';
 
 import { WorkOrder, WorkOrderStatus } from '../../../../core/models';
 import { ModalComponent } from '../../../../shared/components/ui/modal/modal.component';
+import { textoActual } from '../../../../core/i18n/i18n.service';
 import { statusMeta } from '../../utils/work-order-labels';
 
 import { TranslatePipe } from '../../../../core/i18n/translate.pipe';
@@ -26,17 +27,22 @@ const MAX_COMMENT = 500;
         }
 
         <div class="flex flex-col gap-1">
-          <label for="status-comment" class="text-sm font-medium">{{ 'ot.comentario' | translate }} <span class="font-normal text-tinta-suave">{{ 'ot.opcional' | translate }}</span></label>
+          <label for="status-comment" class="text-sm font-medium">{{ 'ot.comentario' | translate }} <span class="font-normal text-tinta-suave">{{ (requiereComentario() ? 'ot.obligatorio' : 'ot.opcional') | translate }}</span></label>
           <textarea
             id="status-comment"
             rows="3"
             [attr.maxlength]="maxComment"
+            [attr.aria-required]="requiereComentario()"
             [attr.placeholder]="'ot.ej_se_reemplazo_el' | translate"
             class="w-full rounded-control border border-borde bg-superficie px-3 py-2 text-sm text-tinta placeholder:text-tinta-suave focus:outline-none focus:ring-2 focus:ring-accion"
             [value]="comment()"
             (input)="comment.set($any($event.target).value)"></textarea>
           <p class="self-end text-sm text-tinta-suave">{{ comment().length }}/{{ maxComment }}</p>
         </div>
+
+        @if (requiereComentario() && !comment().trim()) {
+          <p class="text-sm text-tinta-suave" data-testid="comentario-obligatorio">{{ (to() === 'cancelled' ? 'ot.indica_el_motivo_de_la_cancelacion' : 'ot.indica_la_razon_de_la_devolucion') | translate }}</p>
+        }
 
         @if (error()) {
           <p class="rounded-control border border-peligro bg-peligro-suave px-3 py-2 text-sm text-peligro" role="alert">{{ error() }}</p>
@@ -47,7 +53,7 @@ const MAX_COMMENT = 500;
           <button
             type="button"
             [class]="to() === 'cancelled' ? dangerClass : 'btn-primary'"
-            [disabled]="submitting()"
+            [disabled]="submitting() || (requiereComentario() && !comment().trim())"
             (click)="confirmed.emit(comment().trim())">
             {{ (submitting() ? 'ot.guardando' : 'ot.confirmar_cambio') | translate }}
           </button>
@@ -70,7 +76,17 @@ export class OtStatusChangeDialogComponent {
     'rounded-control bg-peligro px-4 py-2 text-sm font-semibold text-sobre-accion transition hover:bg-peligro focus:outline-none focus:ring-2 focus:ring-peligro disabled:cursor-not-allowed disabled:opacity-60';
   protected readonly comment = signal('');
   protected readonly from = computed(() => statusMeta(this.order().estado));
-  protected readonly destination = computed(() => statusMeta(this.to()));
+  protected readonly destination = computed(() => {
+    const meta = statusMeta(this.to());
+    // Devolver una OT por validar no inicia los trabajos: explica que vuelve a corrección.
+    return this.order().estado === 'por_validar' && this.to() === 'in_progress'
+      ? { ...meta, effect: textoActual('ot.se_devuelve_a_en_curso') }
+      : meta;
+  });
+  /** Cancelar exige el motivo y devolver una OT por validar exige la razón (el backend responde 422 si falta). */
+  protected readonly requiereComentario = computed(
+    () => this.to() === 'cancelled' || (this.order().estado === 'por_validar' && this.to() === 'in_progress'),
+  );
 
   protected cancel(): void {
     if (!this.submitting()) this.closed.emit();

@@ -17,7 +17,7 @@ import pytest_asyncio
 
 from barb.core.db import execute, fetch_all, fetch_one
 
-GERENTE_ID = 2  # gerente de la empresa 1
+ADMIN_ID = 1  # admin de la empresa 1 (el mantenedor de plantas es solo del admin)
 TECNICO_ID = 4  # técnico de la empresa 1: sin permiso sobre la ruta `plantas`
 
 
@@ -27,10 +27,10 @@ def _marca() -> str:
 
 @pytest_asyncio.fixture
 async def marcas(db_pool):
-    """Tokens de sesión para gerente y técnico, y limpieza de todo lo creado."""
+    """Tokens de sesión para admin y técnico, y limpieza de todo lo creado."""
     marca = _marca()
     tokens: dict[str, dict[str, str]] = {}
-    for nombre, uid in (("gerente", GERENTE_ID), ("tecnico", TECNICO_ID)):
+    for nombre, uid in (("admin", ADMIN_ID), ("tecnico", TECNICO_ID)):
         token = f"test-plt-{nombre}-{marca}"
         await execute(
             "INSERT INTO sesion (token, usuario_id, expira_en) "
@@ -81,7 +81,7 @@ async def test_crea_planta_disciplinas_y_maquinas_en_una_llamada(client, marcas)
 
     r = await client.post(
         "/api/plantas/completa",
-        headers=marcas["tokens"]["gerente"],
+        headers=marcas["tokens"]["admin"],
         json={
             "nombre": nombre,
             "ubicacion": "Quilicura",
@@ -121,7 +121,7 @@ async def test_reutiliza_una_disciplina_que_ya_existe(client, marcas):
     # Primera alta: crea la disciplina.
     r1 = await client.post(
         "/api/plantas/completa",
-        headers=marcas["tokens"]["gerente"],
+        headers=marcas["tokens"]["admin"],
         json={"nombre": f"Planta A {sufijo}", "disciplinas": [disc], "maquinas": []},
     )
     assert r1.status_code == 201, r1.text
@@ -131,7 +131,7 @@ async def test_reutiliza_una_disciplina_que_ya_existe(client, marcas):
     # Segunda alta: la reutiliza, no la duplica.
     r2 = await client.post(
         "/api/plantas/completa",
-        headers=marcas["tokens"]["gerente"],
+        headers=marcas["tokens"]["admin"],
         json={"nombre": f"Planta B {sufijo}", "disciplinas": [disc], "maquinas": []},
     )
     assert r2.status_code == 201, r2.text
@@ -151,7 +151,7 @@ async def test_resuelve_la_disciplina_de_una_maquina_aunque_no_venga_en_la_lista
 
     r = await client.post(
         "/api/plantas/completa",
-        headers=marcas["tokens"]["gerente"],
+        headers=marcas["tokens"]["admin"],
         json={
             "nombre": f"Planta C {sufijo}",
             "disciplinas": [],
@@ -170,7 +170,7 @@ async def test_permite_crear_una_planta_sin_maquinas(client, marcas):
     sufijo = marcas["sufijo"]
     r = await client.post(
         "/api/plantas/completa",
-        headers=marcas["tokens"]["gerente"],
+        headers=marcas["tokens"]["admin"],
         json={"nombre": f"Planta Vacía {sufijo}"},
     )
     assert r.status_code == 201, r.text
@@ -182,7 +182,7 @@ async def test_una_maquina_sin_disciplina_queda_en_null(client, marcas):
     sufijo = marcas["sufijo"]
     r = await client.post(
         "/api/plantas/completa",
-        headers=marcas["tokens"]["gerente"],
+        headers=marcas["tokens"]["admin"],
         json={
             "nombre": f"Planta D {sufijo}",
             "maquinas": [{"nombre": "Gen T4", "codigo": f"T4-{sufijo}"}],
@@ -205,7 +205,7 @@ async def test_si_falla_una_maquina_no_queda_la_planta_creada(client, marcas):
 
     r = await client.post(
         "/api/plantas/completa",
-        headers=marcas["tokens"]["gerente"],
+        headers=marcas["tokens"]["admin"],
         json={
             "nombre": nombre,
             "disciplinas": [f"TEST-{sufijo}-Hidráulica"],
@@ -233,10 +233,10 @@ async def test_no_permite_dos_plantas_con_el_mismo_nombre(client, marcas):
     nombre = f"Planta Dup {sufijo}"
     cuerpo = {"nombre": nombre}
 
-    primera = await client.post("/api/plantas/completa", headers=marcas["tokens"]["gerente"], json=cuerpo)
+    primera = await client.post("/api/plantas/completa", headers=marcas["tokens"]["admin"], json=cuerpo)
     assert primera.status_code == 201, primera.text
 
-    segunda = await client.post("/api/plantas/completa", headers=marcas["tokens"]["gerente"], json=cuerpo)
+    segunda = await client.post("/api/plantas/completa", headers=marcas["tokens"]["admin"], json=cuerpo)
     assert segunda.status_code == 409, segunda.text
     assert "planta" in segunda.json()["detail"].lower()
 
@@ -251,7 +251,7 @@ async def test_rechaza_codigos_repetidos_en_el_payload_antes_de_tocar_la_base(cl
 
     r = await client.post(
         "/api/plantas/completa",
-        headers=marcas["tokens"]["gerente"],
+        headers=marcas["tokens"]["admin"],
         json={
             "nombre": nombre,
             "maquinas": [
@@ -290,7 +290,7 @@ async def test_sin_sesion_no_puede_crear(client, marcas):
 async def test_valida_el_nombre_minimo(client, marcas, campo):
     r = await client.post(
         "/api/plantas/completa",
-        headers=marcas["tokens"]["gerente"],
+        headers=marcas["tokens"]["admin"],
         json={campo: "x"},
     )
     assert r.status_code == 422, r.text

@@ -21,6 +21,7 @@ from barb.core.permissions import (
     ROL_SUPER,
     ROLES,
     ROLES_GESTIONABLES_POR_ADMIN,
+    ROLES_GESTIONABLES_POR_GERENTE,
     empresa_obligatoria,
     get_sesion_actual,
     require_action,
@@ -44,6 +45,21 @@ _USER_SELECT = """
 
 ROL_GERENTE = "gerente"
 ROL_ADMIN = "admin"
+ROL_SUPERVISOR = "supervisor"
+
+
+async def _exigir_otro_supervisor_activo(usuario_id: int, empresa_id: int | None, accion: str) -> None:
+    """409 si `usuario_id` es el último supervisor activo de la empresa (no aplica a empresas sin supervisor)."""
+    fila = await fetch_one(
+        "SELECT COUNT(*) AS otros FROM usuario "
+        "WHERE empresa_id = %(e)s AND rol = 'supervisor' AND activo AND usuario_id <> %(id)s",
+        {"e": empresa_id, "id": usuario_id},
+    )
+    if int(fila["otros"]) == 0:
+        raise HTTPException(
+            status_code=409,
+            detail=f"No puedes {accion} último supervisor activo de la empresa. Crea o activa otro supervisor primero.",
+        )
 
 
 def _validar_rol(rol: str, sesion: dict) -> str:
@@ -64,6 +80,9 @@ def _validar_rol(rol: str, sesion: dict) -> str:
             status_code=403,
             detail="El administrador solo puede gestionar usuarios operativos (no gerentes ni otros administradores).",
         )
+    # Gestión en cascada: el gerente solo gestiona administradores (operativos: del admin; gerentes: del super_usuario).
+    elif sesion["rol"] == ROL_GERENTE and rol not in ROLES_GESTIONABLES_POR_GERENTE:
+        raise HTTPException(status_code=403, detail="El gerente solo puede gestionar usuarios con perfil administrador.")
     return rol
 
 
@@ -85,6 +104,9 @@ async def _usuario_visible(usuario_id: int, sesion: dict) -> dict:
     elif sesion["rol"] == ROL_ADMIN and str(row["rol"]).lower() not in ROLES_GESTIONABLES_POR_ADMIN:
         # El administrador no ve ni toca a gerentes ni a otros administradores (404 para no revelarlos).
         raise HTTPException(status_code=404, detail="Usuario no encontrado.")
+    elif sesion["rol"] == ROL_GERENTE and str(row["rol"]).lower() not in ROLES_GESTIONABLES_POR_GERENTE:
+        # El gerente solo ve y toca administradores (404 para no revelar a los demás).
+        raise HTTPException(status_code=404, detail="Usuario no encontrado.")
     return row
 
 
@@ -97,6 +119,7 @@ async def list_users(empresa_id: int | None = Query(default=None), sesion: dict 
         WHERE (%(empresa_id)s::int IS NULL OR u.empresa_id = %(empresa_id)s)
           AND (CASE WHEN %(es_super)s THEN u.rol = 'gerente'
                     WHEN %(es_admin)s THEN u.rol = ANY(%(roles_admin)s)
+                    WHEN %(es_gerente)s THEN u.rol = ANY(%(roles_gerente)s)
                     ELSE u.rol <> 'super_usuario' END)
         ORDER BY e.nombre NULLS FIRST, u.usuario_id
         """,
@@ -105,6 +128,8 @@ async def list_users(empresa_id: int | None = Query(default=None), sesion: dict 
             "es_super": sesion["rol"] == ROL_SUPER,
             "es_admin": sesion["rol"] == ROL_ADMIN,
             "roles_admin": sorted(ROLES_GESTIONABLES_POR_ADMIN),
+            "es_gerente": sesion["rol"] == ROL_GERENTE,
+            "roles_gerente": sorted(ROLES_GESTIONABLES_POR_GERENTE),
         },
     )
     return [serialize_user(r) for r in rows]
@@ -184,6 +209,10 @@ async def update_user(usuario_id: int, payload: UserUpdateRequest, sesion: dict 
     if (next_rol == ROL_SUPER) != (str(current["rol"]).lower() == ROL_SUPER):
         raise HTTPException(status_code=422, detail="No se puede convertir un usuario en/desde super_usuario; crea uno nuevo.")
 
+    # Cada empresa conserva al menos un supervisor activo: es quien decide los avisos y valida las OT.
+    if str(current["rol"]).lower() == ROL_SUPERVISOR and current["activo"] and (next_rol != ROL_SUPERVISOR or not next_activo):
+        await _exigir_otro_supervisor_activo(usuario_id, current["empresa_id"], "desactivar ni cambiar el rol del")
+
     next_email = payload.email.strip().lower() if payload.email is not None else current["email"]
     next_nombre = payload.nombre.strip() if payload.nombre is not None else current["nombre"]
     next_password_hash = hash_password(payload.password) if payload.password is not None else current["password_hash"]
@@ -221,9 +250,11 @@ async def update_user(usuario_id: int, payload: UserUpdateRequest, sesion: dict 
 
 @router.delete("/api/usuarios/{usuario_id}", status_code=204, dependencies=[Depends(require_action("gestionar_usuarios"))])
 async def delete_user(usuario_id: int, sesion: dict = Depends(get_sesion_actual)):
-    await _usuario_visible(usuario_id, sesion)
+    objetivo = await _usuario_visible(usuario_id, sesion)
     if usuario_id == sesion["usuario_id"]:
         raise HTTPException(status_code=409, detail="No puedes eliminar tu propio usuario.")
+    if str(objetivo["rol"]).lower() == ROL_SUPERVISOR and objetivo["activo"]:
+        await _exigir_otro_supervisor_activo(usuario_id, objetivo["empresa_id"], "eliminar al")
 
     try:
         async with transaction() as cur:

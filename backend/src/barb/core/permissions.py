@@ -46,7 +46,7 @@ RUTAS: dict[str, dict[str, bool | str]] = {
     "topology":   {"operador": True, "tecnico": True, "supervisor": True, "engineer": True, "gerente": True, "admin": True, "super_usuario": False},
     "memory":     {"operador": True, "tecnico": True, "supervisor": True, "engineer": True, "gerente": True, "admin": True, "super_usuario": False},
     "report":     {"operador": True, "tecnico": True, "supervisor": True, "engineer": True, "gerente": True, "admin": True, "super_usuario": False},
-    "dashboard":  {"operador": False, "tecnico": False, "supervisor": True, "engineer": True, "gerente": True, "admin": True, "super_usuario": False},
+    "dashboard":  {"operador": False, "tecnico": False, "supervisor": True, "engineer": True, "gerente": True, "admin": False, "super_usuario": False},
     # --- Multi-empresa (migración 0004) ---
     # empresas: mantenedor de empresas, exclusivo del super_usuario.
     # usuarios: mantenedor de perfiles; gerente y admin de empresa (solo su empresa). El super_usuario
@@ -54,22 +54,23 @@ RUTAS: dict[str, dict[str, bool | str]] = {
     # documentos: documentación de la empresa que consume el chat IA ("ver" = solo consulta).
     "empresas":   {"operador": False, "tecnico": False, "supervisor": False, "engineer": False, "gerente": False, "admin": False, "super_usuario": True},
     "usuarios":   {"operador": False, "tecnico": False, "supervisor": False, "engineer": False, "gerente": True, "admin": True, "super_usuario": True},
-    "documentos": {"operador": "ver", "tecnico": "ver", "supervisor": "ver", "engineer": True, "gerente": True, "admin": True, "super_usuario": False},
-    # plantas: mantenedor masivo de plantas, disciplinas y máquinas (HU-24). Sólo gerente y
-    # admin de la empresa pueden dar de alta: crear una planta arrastra máquinas, y desde ahí
-    # ya se pueden abrir OTs. El resto de los roles sigue viendo el catálogo por /api/plants,
-    # /api/machines y /api/disciplines, que sólo piden sesión.
-    "plantas":    {"operador": False, "tecnico": False, "supervisor": False, "engineer": False, "gerente": True, "admin": True, "super_usuario": False},
-    # notificaciones: configuración del correo de OTs atrasadas (supervisor hacia arriba).
-    "notificaciones": {"operador": False, "tecnico": False, "supervisor": True, "engineer": False, "gerente": True, "admin": True, "super_usuario": False},
+    "documentos": {"operador": "ver", "tecnico": "ver", "supervisor": "ver", "engineer": True, "gerente": "ver", "admin": True, "super_usuario": False},
+    # plantas: mantenedor masivo de plantas, disciplinas y máquinas (HU-24). Sólo el admin de la
+    # empresa puede dar de alta: crear una planta arrastra máquinas, y desde ahí ya se pueden abrir
+    # OTs. El resto de los roles sigue viendo el catálogo por /api/plants, /api/machines y
+    # /api/disciplines, que sólo piden sesión.
+    "plantas":    {"operador": False, "tecnico": False, "supervisor": False, "engineer": False, "gerente": False, "admin": True, "super_usuario": False},
+    # notificaciones: configuración del correo de OTs atrasadas (supervisor y admin). El gerente solo lo recibe (escalamiento).
+    "notificaciones": {"operador": False, "tecnico": False, "supervisor": True, "engineer": False, "gerente": False, "admin": True, "super_usuario": False},
     # transacciones: bitácora de lo que hacen los usuarios de las empresas (solo lectura), exclusiva del super_usuario.
     "transacciones": {"operador": False, "tecnico": False, "supervisor": False, "engineer": False, "gerente": False, "admin": False, "super_usuario": True},
     # transacciones_empresa: lo mismo, acotado a la empresa del usuario (solo lectura), exclusiva del gerente.
     "transacciones_empresa": {"operador": False, "tecnico": False, "supervisor": False, "engineer": False, "gerente": True, "admin": False, "super_usuario": False},
-    # history: el ingeniero analiza el historial de fallas; el administrador solo lo consulta.
-    "history":    {"operador": False, "tecnico": False, "supervisor": True, "engineer": True, "gerente": True, "admin": "ver", "super_usuario": False},
+    # history: supervisor, ingeniero y gerente analizan el historial de fallas; el administrador no lo ve.
+    "history":    {"operador": False, "tecnico": False, "supervisor": True, "engineer": True, "gerente": True, "admin": False, "super_usuario": False},
     # avisos: reporte de fallas desde planta. Quienes reportan ven los suyos; supervisor y gerente ven
-    # el repositorio completo de la empresa y deciden si se genera una OT (acción `gestionar_avisos`).
+    # el repositorio completo de la empresa (ROLES_REPOSITORIO_AVISOS), pero solo el supervisor decide
+    # si se genera una OT o se descarta (acción `gestionar_avisos`).
     "avisos":     {"operador": True, "tecnico": True, "supervisor": True, "engineer": True, "gerente": True, "admin": False, "super_usuario": False},
 }
 
@@ -82,46 +83,65 @@ RUTAS: dict[str, dict[str, bool | str]] = {
 
 ACCIONES: dict[str, dict[str, bool]] = {
     # Crear una OT directamente (sin pasar por un aviso): SOLO el supervisor. El gerente y el administrador no la
-    # crean por esta vía (el gerente sí genera OT desde un aviso con `gestionar_avisos`).
+    # crean por esta vía; las OT que nacen de un aviso también las genera solo el supervisor (`gestionar_avisos`).
     "crear_ot":            {"operador": False, "tecnico": False, "supervisor": True,  "engineer": False, "gerente": False, "admin": False, "super_usuario": False},
-    # El técnico solo inicia las OT que tiene asignadas (`iniciar_ot_asignada`); cerrar es de supervisión hacia arriba.
-    "cambiar_estado_ot":   {"operador": False, "tecnico": False, "supervisor": True,  "engineer": True,  "gerente": True, "admin": False, "super_usuario": False},
-    # Cancelar una OT (estado final) es más restrictivo que iniciarla/cerrarla: engineer no puede.
-    "cancelar_ot":         {"operador": False, "tecnico": False, "supervisor": True,  "engineer": False, "gerente": True, "admin": False, "super_usuario": False},
-    # Eliminar borra el historial de la OT: solo el gerente (lo normal es cancelar).
-    "eliminar_ot":         {"operador": False, "tecnico": False, "supervisor": False, "engineer": False, "gerente": True, "admin": False, "super_usuario": False},
+    # El técnico solo inicia las OT que tiene asignadas (`iniciar_ot_asignada`). Gerente e ingeniero consultan, no operan.
+    "cambiar_estado_ot":   {"operador": False, "tecnico": False, "supervisor": True,  "engineer": False,  "gerente": False, "admin": False, "super_usuario": False},
+    # Cancelar una OT (estado final, con motivo) es solo del supervisor.
+    "cancelar_ot":         {"operador": False, "tecnico": False, "supervisor": True,  "engineer": False, "gerente": False, "admin": False, "super_usuario": False},
+    # Eliminar borra el historial de la OT: ningún perfil puede (D1). El endpoint DELETE se mantiene y
+    # responde 403 por permisos; lo normal es cancelar.
+    "eliminar_ot":         {"operador": False, "tecnico": False, "supervisor": False, "engineer": False, "gerente": False, "admin": False, "super_usuario": False},
     # --- Aviso de falla -> OT (Fase 1 de roles y privilegios) ---
     # Reportar una falla desde planta. Llega al repositorio de avisos del supervisor.
     "reportar_falla":      {"operador": True,  "tecnico": True,  "supervisor": True,  "engineer": True,  "gerente": True, "admin": False, "super_usuario": False},
     # Decidir sobre un aviso: generar una OT o descartarlo (con motivo).
-    "gestionar_avisos":    {"operador": False, "tecnico": False, "supervisor": True,  "engineer": False, "gerente": True, "admin": False, "super_usuario": False},
+    "gestionar_avisos":    {"operador": False, "tecnico": False, "supervisor": True,  "engineer": False, "gerente": False, "admin": False, "super_usuario": False},
     # Priorizar, asignar y reasignar el técnico de una OT.
-    "asignar_ot":          {"operador": False, "tecnico": False, "supervisor": True,  "engineer": False, "gerente": True, "admin": False, "super_usuario": False},
+    "asignar_ot":          {"operador": False, "tecnico": False, "supervisor": True,  "engineer": False, "gerente": False, "admin": False, "super_usuario": False},
+    # Doble validación del cierre: enviar la OT a validación (in_progress -> por_validar). El técnico solo la OT que
+    # tiene asignada (ROLES_SOLO_OT_ASIGNADA); el supervisor cualquiera.
+    "enviar_a_validacion": {"operador": False, "tecnico": True,  "supervisor": True,  "engineer": False, "gerente": False, "admin": False, "super_usuario": False},
+    # Validar y cerrar (por_validar -> completed) o devolver a «en curso» con comentario: solo el supervisor, y nunca
+    # quien envió la OT a validación (se comprueba en work_order_states / el router).
+    "validar_ot":          {"operador": False, "tecnico": False, "supervisor": True,  "engineer": False, "gerente": False, "admin": False, "super_usuario": False},
+    # KPIs financieros del dashboard (costo directo, ahorro, impacto anual y rankings por costo): solo el gerente.
+    # Supervisor e ingeniero ven los KPIs operativos; el resto de los campos se omite de la respuesta.
+    "ver_kpis_financieros": {"operador": False, "tecnico": False, "supervisor": False, "engineer": False, "gerente": True,  "admin": False, "super_usuario": False},
     # Iniciar la OT propia (solo si el usuario es el técnico asignado; se valida en el router).
     "iniciar_ot_asignada": {"operador": False, "tecnico": True,  "supervisor": False, "engineer": False, "gerente": False, "admin": False, "super_usuario": False},
-    "subir_documentos":    {"operador": False, "tecnico": False, "supervisor": False, "engineer": True,  "gerente": True, "admin": True, "super_usuario": False},
+    "subir_documentos":    {"operador": False, "tecnico": False, "supervisor": False, "engineer": True,  "gerente": False, "admin": True, "super_usuario": False},
     # No estaba en la matriz original; gestión de usuarios (crear/editar/eliminar) queda
     # restringida a gerente y admin de la empresa. El super_usuario solo puede operar sobre
     # usuarios con perfil gerente (regla aplicada en routers/users.py).
     "gestionar_usuarios":  {"operador": False, "tecnico": False, "supervisor": False, "engineer": False, "gerente": True, "admin": True, "super_usuario": True},
     # Ver el directorio de usuarios (con email) se limita a los mismos perfiles.
-    "eliminar_documentos": {"operador": False, "tecnico": False, "supervisor": False, "engineer": True,  "gerente": True, "admin": True, "super_usuario": False},
+    "eliminar_documentos": {"operador": False, "tecnico": False, "supervisor": False, "engineer": True,  "gerente": False, "admin": True, "super_usuario": False},
     # Alta/edición/baja de empresas: solo super_usuario.
     "gestionar_empresas":  {"operador": False, "tecnico": False, "supervisor": False, "engineer": False, "gerente": False, "admin": False, "super_usuario": True},
-    "configurar_notificaciones": {"operador": False, "tecnico": False, "supervisor": True, "engineer": False, "gerente": True, "admin": True, "super_usuario": False},
+    "configurar_notificaciones": {"operador": False, "tecnico": False, "supervisor": True, "engineer": False, "gerente": False, "admin": True, "super_usuario": False},
     "ver_usuarios":        {"operador": False, "tecnico": False, "supervisor": False, "engineer": False, "gerente": True, "admin": True, "super_usuario": True},
 }
 
 
 ROL_SUPER = "super_usuario"
 
+# Roles cuyas acciones sobre una OT se limitan a la que tienen asignada (p. ej. enviarla a validación).
+ROLES_SOLO_OT_ASIGNADA = frozenset({"tecnico"})
+
 # Roles que solo ven las OT que les corresponden (asignadas a ellos, o nacidas de un aviso suyo).
 # El resto de los roles de empresa ve todas las OT de su empresa.
 ROLES_VISTA_PROPIA = frozenset({"operador", "tecnico"})
 
-# Roles que un administrador de empresa puede crear y gestionar. Gerente y administrador solo los
-# gestiona el gerente: evita que un perfil operativo se otorgue privilegios de decisión.
+# Gestión de usuarios en cascada: cada perfil solo crea, ve, edita y elimina a los del nivel siguiente.
+#   super_usuario -> gerente  ->  admin  ->  operador, tecnico, supervisor, engineer
+# Evita que un perfil se otorgue (u otorgue a un igual) privilegios de decisión.
 ROLES_GESTIONABLES_POR_ADMIN = frozenset({"operador", "tecnico", "supervisor", "engineer"})
+ROLES_GESTIONABLES_POR_GERENTE = frozenset({"admin"})
+
+# Roles que ven el repositorio completo de avisos de falla de su empresa. Solo `gestionar_avisos`
+# (supervisor) decide sobre ellos; el gerente únicamente los consulta.
+ROLES_REPOSITORIO_AVISOS = frozenset({"supervisor", "gerente"})
 ESTADOS_EMPRESA_BLOQUEADOS = ("suspended", "cancelled")
 
 

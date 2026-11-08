@@ -9,7 +9,7 @@ import pytest
 from fastapi import HTTPException
 
 from barb.core.db import execute, fetch_one
-from barb.core.permissions import ACCIONES, RUTAS, ROLES, ROLES_GESTIONABLES_POR_ADMIN, puede_ejecutar_accion
+from barb.core.permissions import ACCIONES, ROLES, ROLES_GESTIONABLES_POR_ADMIN, RUTAS, puede_ejecutar_accion
 
 ADMIN_E1 = {"email": "admin@barb.com", "password": "admin123"}
 SUPER = {"email": "super@barb.com", "password": "super123"}

@@ -34,18 +34,18 @@ describe('OtLiveSimulatorService', () => {
 
     expect(emitted).toHaveLength(1);
     expect(emitted[0]).toMatchObject({ numero_ot: 'OT-1', estado: 'in_progress', status: 'In Progress' });
-    expect(emitted[0].allowed_transitions).toEqual(['completed', 'cancelled']);
+    expect(emitted[0].allowed_transitions).toEqual(['por_validar', 'cancelled']);
     expect(emitted[0].fecha_inicio).toBeTruthy();
   });
 
-  it('cierra una OT en curso y la deja sin transiciones; con random bajo la cancela', () => {
+  it('envía una OT en curso a validación (no la cierra directo); con random bajo la cancela', () => {
     const emitted: WorkOrder[] = [];
     sim.changes.subscribe(ot => emitted.push(ot));
 
     sim.value = 0.5;
     sim.start(() => [order('OT-1', 'in_progress')]);
     vi.advanceTimersByTime(12_000);
-    expect(emitted[0]).toMatchObject({ estado: 'completed', allowed_transitions: [] });
+    expect(emitted[0]).toMatchObject({ estado: 'por_validar', allowed_transitions: ['completed', 'in_progress', 'cancelled'] });
 
     sim.value = 0.05;
     sim.start(() => [order('OT-2', 'in_progress')]);
