@@ -15,7 +15,7 @@ import uuid
 
 import pytest
 import pytest_asyncio
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from barb.core.db import execute, fetch_one
 from barb.services import chat_graph
@@ -285,10 +285,12 @@ async def test_proponer_planta_completa_no_escribe_nada(db_pool):
     """La tool de propuesta valida y redacta, pero NO inserta nada: ni planta ni máquinas."""
     antes = await fetch_one("SELECT COUNT(*) AS n FROM planta")
 
+    # «Quilicura» está tomada por la planta del seed (la regla anti-duplicado la
+    # detecta); ubicación inocente para proponer en los tests:
     salida = await HERRAMIENTAS["proponer_planta_completa"].ainvoke(
         {
             "nombre": "Planta Propuesta",
-            "ubicacion": "Quilicura",
+            "ubicacion": "Ventarrón 889",
             "maquinas": [
                 {"nombre": "Turbina 1", "codigo": "TUR-1", "disciplina": "Mecánica"},
                 {"nombre": "Turbina 2", "codigo": "TUR-2", "disciplina": "Mecánica"},
@@ -600,3 +602,108 @@ async def test_el_grafo_cambia_parametros_con_confirmacion(db_pool, monkeypatch)
         assert float(fila["sla_horas"]) == 8
     finally:
         await execute("UPDATE maquina SET sla_horas = 6 WHERE codigo = 'PUMP-E4'")
+
+
+# =============================================================================
+# QA 07-11: el turno con error de tool no queda pegado y la ubicación no se inventa
+# =============================================================================
+
+
+class _LLMGuionado:
+    """Modelo que devuelve exactamente `respuesta`: sirve para ver si el grafo vuelca al
+    modelo después de un error de tool (tras_tools), o para scripted de un tool_call y
+    correr la ronda de tools real. Acepta `str` o `AIMessage` listo."""
+
+    def __init__(self, respuesta: str | AIMessage) -> None:
+        self.respuesta = respuesta
+        self.llamadas: list[list] = []
+
+    def bind_tools(self, _tools):
+        return self
+
+    def with_retry(self, **_kwargs):
+        return self
+
+    async def ainvoke(self, mensajes):
+        self.llamadas.append(list(mensajes))
+        if isinstance(self.respuesta, AIMessage):
+            return self.respuesta
+        return AIMessage(content=self.respuesta)
+
+
+def _turno_con_tool_que_erro(content_tool: str, nombre: str = "proponer_planta_completa") -> list:
+    """Historial de un turno donde el modelo ya llamó la tool y ella devolvió un error."""
+    return [
+        HumanMessage(content="crea la planta Bodega Norte con una balanza"),
+        AIMessage(
+            content="",
+            tool_calls=[{"name": nombre, "args": {"nombre": "Bodega Norte"}, "id": "call-1", "type": "tool_call"}],
+        ),
+        ToolMessage(content=content_tool, name=nombre, tool_call_id="call-1"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_el_grafo_conversa_cuando_la_tool_no_produce_propuesta(monkeypatch):
+    """QA 07-11: la respuesta «Necesito la ubicación…» de la herramienta no cierra el
+    turno de cabeza: vuelve al modelo, que pregunta en lenguaje natural."""
+    modelo = _LLMGuionado("¿En qué comuna o dirección va la planta?")
+    grafo = crear_grafo(empresa_id=1, llm=modelo, usuario_id=GERENTE_ID, rol="gerente")
+
+    estado = await grafo.ainvoke(
+        _entrada(_turno_con_tool_que_erro("Necesito la ubicación de la planta (comuna o dirección) antes de proponer el alta."))
+    )
+
+    final = estado["messages"][-1]
+    assert final.content == "¿En qué comuna o dirección va la planta?", "el modelo responde; el turno no queda pegado al error"
+    assert len(modelo.llamadas) == 1, "el error viajó al modelo como ToolMessage"
+
+
+@pytest.mark.asyncio
+async def test_el_grafo_termina_con_la_propuesta_exacta(db_pool):
+    """La misma ruta con una propuesta válida sigue cortando el turno con el texto EXACTO
+    de la tool: un parafraseo rompe el formato que el gate re-parsea."""
+    datos = {
+        "nombre": "Planta Propuesta XT",
+        "ubicacion": "Ventarrón 889",
+        "maquinas": [{"nombre": "Turbina", "codigo": "TRT-1", "disciplina": "Mecánica"}],
+    }
+    guion = AIMessage(
+        content="", tool_calls=[{"name": "proponer_planta_completa", "args": datos, "id": "call-1", "type": "tool_call"}]
+    )
+    modelo = _LLMGuionado(guion)
+    grafo = crear_grafo(empresa_id=1, llm=modelo, usuario_id=GERENTE_ID, rol="gerente")
+
+    estado = await grafo.ainvoke(_entrada([HumanMessage(content="crea la planta Propuesta XT en Ventarrón 889")]))
+
+    final = estado["messages"][-1]
+    propuesta = _texto_propuesta_planta(datos["nombre"], datos["ubicacion"], datos["maquinas"])
+    assert final.content == propuesta, "la propuesta exacta termina el turno"
+    assert len(modelo.llamadas) == 1, "el turno termina en la propuesta; no vuelve a generate"
+
+
+@pytest.mark.asyncio
+async def test_la_tool_no_propone_ubicaciones_que_nadie_dijo(db_pool):
+    """QA 07-11: el modelo rellenaba el hueco con una ubicación inventada. Con la
+    conversación a la vista, la tool rechaza una ubicación que ningún usuario escribió."""
+    herramientas_test = {
+        t.name: t
+        for t in crear_tools(
+            empresa_id=1,
+            usuario_id=GERENTE_ID,
+            rol="gerente",
+            habla_del_usuario=["crea la planta Nacional Places con dos turbina"],
+        )
+    }
+
+    rechazo = await herramientas_test["proponer_planta_completa"].ainvoke(
+        {"nombre": "Nacional Places", "ubicacion": "La Granja Invención", "maquinas": [{"nombre": "Turbina", "codigo": "INV-1"}]}
+    )
+    rechazo_minuscula = rechazo.lower()
+    assert "no la invento" in rechazo_minuscula and "pregúntale" in rechazo_minuscula
+    assert not rechazo.startswith(_PREFIJO_PROPUESTA_PLANTA)
+
+    propuesta = await herramientas_test["proponer_planta_completa"].ainvoke(
+        {"nombre": "Nacional Places", "ubicacion": "Nacional Places", "maquinas": [{"nombre": "Turbina", "codigo": "INV-1"}]}
+    )
+    assert propuesta.startswith(_PREFIJO_PROPUESTA_PLANTA), "la ubicación dicha por el usuario sí pasa"

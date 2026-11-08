@@ -1256,7 +1256,24 @@ async def registrar_aviso_aprobada(
     )
 
 
-def crear_tools(empresa_id: int, usuario_id: int | None = None, rol: str | None = None) -> list[BaseTool]:
+# Los cuatro prefijos de propuesta, en un solo lugar: `chat_graph.tras_tools` decide con
+# ellos si el turno termina con el texto EXACTO de la tool (propuesta) o si el error
+# vuelve al modelo para conversarse (QA 07-11: la tool pedía ubicación con texto crudo
+# y el turno quedaba pegado en él).
+PREFIJOS_DE_PROPUESTA: tuple[str, ...] = (
+    _PREFIJO_PROPUESTA,
+    _PREFIJO_PROPUESTA_PLANTA,
+    _PREFIJO_PROPUESTA_PARAMETROS,
+    _PREFIJO_PROPUESTA_AVISO,
+)
+
+
+def crear_tools(
+    empresa_id: int,
+    usuario_id: int | None = None,
+    rol: str | None = None,
+    habla_del_usuario: list[str] | None = None,
+) -> list[BaseTool]:
     """
     Tools disponibles para una empresa concreta y su usuario.
 
@@ -1513,6 +1530,19 @@ def crear_tools(empresa_id: int, usuario_id: int | None = None, rol: str | None 
         ubicacion_limpia = " ".join((ubicacion or "").split())
         if len(ubicacion_limpia) < 2:
             return "Necesito la ubicación de la planta (comuna o dirección) antes de proponer el alta."
+
+        # La ubicación la da el USUARIO, no el modelo (QA 07-11: el chat inventó una
+        # ubicación para rellenar el hueco). Se verifica contra lo que dijeron los
+        # usuarios en la conversación; si no está ahí, no se propone nada y el turno
+        # vuelve al modelo para que pregunte. `habla_del_usuario` vacío (tests y
+        # flujos sin historial) no aplica el chequeo.
+        frases = [_normalizar(f) for f in (habla_del_usuario or []) if f]
+        if frases and not any(_normalizar(ubicacion_limpia) in f for f in frases):
+            return (
+                f"La ubicación «{_sin_separadores(ubicacion_limpia)}» no la dijiste tú en la conversación "
+                "y no la invento. Pregúntale al usuario en qué comuna o dirección va la planta "
+                "y vuelve a llamar esta herramienta con ESE dato literal."
+            )
 
         repetida = await fetch_one(
             "SELECT nombre FROM planta WHERE empresa_id = %(e)s AND lower(ubicacion) = lower(%(u)s)",

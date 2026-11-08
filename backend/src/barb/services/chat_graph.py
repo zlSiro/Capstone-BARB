@@ -49,6 +49,7 @@ from langgraph.prebuilt import ToolNode
 
 from barb.core.config import settings
 from barb.services.ai_tools import (
+    PREFIJOS_DE_PROPUESTA,
     TEXTO_RECHAZO,
     actualizar_parametros_aprobada,
     crear_ot_aprobada,
@@ -119,6 +120,8 @@ REGLAS_CON_TOOLS = (
     "- El CÓDIGO de cada máquina es LITERAL: copialo exactamente como lo escribió el "
     "usuario, sin inventar, abreviar ni normalizar («COMP-A1» no se convierte en «CM-A1»). "
     "Si no te dio el código, pedíselo antes de proponer.\n"
+    "- La ubicación NO se inventa ni se adivina: la propuesta solo se hace con la "
+    "ubicación que escribió el usuario. Si no la dio, pregunta y no propongas nada."
     "- La disciplina de cada máquina es UNA sola palabra de la lista de disciplinas de la "
     "empresa (Mecánica, Eléctrica…): jamás compuestas tipo «Neumática / Mecánica».\n"
     "- No la llames de nuevo en el mismo turno ni insistas después de proponer: la "
@@ -158,12 +161,17 @@ def crear_grafo(
     llm: BaseChatModel | None = None,
     usuario_id: int | None = None,
     rol: str | None = None,
+    habla_del_usuario: list[str] | None = None,
 ):
     """
     Compila el grafo del chat para una empresa.
 
     `llm` permite inyectar un modelo falso en los tests: el resto del grafo (retrieval,
     tools, condiciones) es el de producción.
+
+    `habla_del_usuario` son los últimos textos que escribieron los usuarios de la
+    conversación (incluido el mensaje del turno): la tool de plantas los usa para
+    verificar que la ubicación la dijo una persona y no la inventó el modelo (QA 07-11).
 
     Se bindean las tools ANTES de aplicar la política de reintentos porque `with_retry`
     devuelve un `RunnableRetry`, que ya no expone `bind_tools`. Efecto colateral asumido:
@@ -172,7 +180,7 @@ def crear_grafo(
     """
     # `usuario_id` y `rol` viajan a la tool de creación: decide a qué técnico se asigna la
     # OT y quién queda como creador. El modelo NO los ve ni puede cambiarlos.
-    tools = crear_tools(empresa_id, usuario_id, rol)
+    tools = crear_tools(empresa_id, usuario_id, rol, habla_del_usuario=habla_del_usuario)
     if llm is not None:
         # Modelo inyectado (tests): se respeta tal cual, con las mismas reglas de orden.
         modelo = llm.bind_tools(tools).with_retry(**_RETRY_CONFIG)
@@ -281,15 +289,21 @@ def crear_grafo(
     )
 
     def tras_tools(estado: EstadoChat) -> Literal["propuesta", "seguir"]:
-        """Si la ronda de tools incluyó una tool de propuesta, el turno termina con la
-        propuesta en vez de pasar por `generate`: el texto que se persiste tiene que ser
-        el EXACTO de la tool, no un parafraseo del modelo."""
+        """El turno termina con la propuesta SOLO si alguna tool redactó una propuesta
+        (prefijo `PROPUESTA DE …`): ese texto es el que el gate re-parsea byte a byte.
+
+        Si la tool devolvió un error («necesito la ubicación…»), el turno sigue normal y
+        el modelo conversa. Es la corrección del QA 07-11: antes cualquier resultado de
+        una tool de propuesta terminaba el turno con el texto crudo y quedaba pegado.
+        """
         for mensaje in reversed(estado["messages"]):
             if isinstance(mensaje, ToolMessage):
+                texto = str(mensaje.content)
+                if mensaje.name in _TOOLS_DE_PROPUESTA and any(texto.startswith(p) for p in PREFIJOS_DE_PROPUESTA):
+                    return "propuesta"
                 continue
             if isinstance(mensaje, AIMessage):
-                llamadas = mensaje.tool_calls or []
-                return "propuesta" if any(t.get("name") in _TOOLS_DE_PROPUESTA for t in llamadas) else "seguir"
+                return "seguir"
             break
         return "seguir"
 
@@ -383,8 +397,21 @@ async def astream_respuesta(
     las respuestas normales, las resoluciones del candado de OTs y el texto exacto de la
     propuesta. Los deltas de las vueltas de planificación (tool_calls) no son texto para
     el usuario. El bucle de herramientas ocurre entre medio sin que el router lo sepa.
+
+    Los últimos textos de los usuarios viajan a las tools para verificar provenance de
+    datos que el modelo podría inventar (la ubicación de una planta): ventana corta
+    porque es lo que el modelo tiene a la vista al redactar.
     """
-    grafo = crear_grafo(empresa_id, llm=llm, usuario_id=usuario_id, rol=rol)
+    habla_del_usuario = [
+        d["content"] for d in historial if d.get("role") == "user" and d.get("content")
+    ][-6:] + [mensaje]
+    grafo = crear_grafo(
+        empresa_id,
+        llm=llm,
+        usuario_id=usuario_id,
+        rol=rol,
+        habla_del_usuario=habla_del_usuario,
+    )
     entrada: EstadoChat = {
         "messages": [*_dicts_to_messages(historial), HumanMessage(content=mensaje)],
         "empresa_id": empresa_id,
