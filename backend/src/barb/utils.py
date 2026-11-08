@@ -70,6 +70,9 @@ def normalize_db_status(value: str | None) -> str:
         "in progress": "in_progress",
         "in_progress": "in_progress",
         "progress": "in_progress",
+        "por_validar": "por_validar",
+        "por validar": "por_validar",
+        "pending validation": "por_validar",
         "closed": "completed",
         "complete": "completed",
         "completed": "completed",
@@ -87,6 +90,7 @@ def humanize_status(value: str | None) -> str:
         "pending": "Open",
         "assigned": "Assigned",
         "in_progress": "In Progress",
+        "por_validar": "Pending Validation",
         "completed": "Closed",
         "cancelled": "Cancelled",
         "overdue": "Overdue",
@@ -132,7 +136,7 @@ def iso_z(val) -> str | None:
 
 def parse_work_order_status(value: str | None) -> str:
     db_status = normalize_db_status(value)
-    allowed = {"pending", "assigned", "in_progress", "completed", "cancelled", "overdue"}
+    allowed = {"pending", "assigned", "in_progress", "por_validar", "completed", "cancelled", "overdue"}
     if db_status not in allowed:
         raise HTTPException(status_code=400, detail="Estado de OT inválido.")
     return db_status

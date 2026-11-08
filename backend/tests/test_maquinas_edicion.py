@@ -17,15 +17,15 @@ import pytest_asyncio
 from barb.core.db import execute, fetch_one
 from barb.routers import catalog
 
-GERENTE_ID = 2  # gerente de la empresa 1
-OTRA_EMPRESA_ID = 17  # gerente de la empresa 2 (tiene permiso sobre `plantas`)
+ADMIN_ID = 1  # admin de la empresa 1 (el mantenedor de plantas es solo del admin)
+OTRA_EMPRESA_ID = 16  # admin de la empresa 2 (tiene permiso sobre `plantas`)
 
 
 @pytest_asyncio.fixture
 async def ctx(db_pool):
     marca = uuid.uuid4().hex[:8]
     tokens: dict[str, dict[str, str]] = {}
-    for nombre, uid in (("gerente", GERENTE_ID), ("ajeno", OTRA_EMPRESA_ID)):
+    for nombre, uid in (("admin", ADMIN_ID), ("ajeno", OTRA_EMPRESA_ID)):
         token = f"test-maq-{nombre}-{marca}"
         await execute(
             "INSERT INTO sesion (token, usuario_id, expira_en) "
@@ -47,7 +47,7 @@ async def ctx(db_pool):
 async def _planta_con_maquina(client, ctx, codigo: str = "M1") -> tuple[int, int]:
     r = await client.post(
         "/api/plantas/completa",
-        headers=ctx["tokens"]["gerente"],
+        headers=ctx["tokens"]["admin"],
         json={
             "nombre": f"Planta maq {ctx['marca']}",
             "maquinas": [{"nombre": "Compressor", "codigo": codigo, "disciplina": "Mecánica"}],
@@ -64,7 +64,7 @@ async def test_edita_nombre_y_codigo(client, ctx):
 
     r = await client.patch(
         f"/api/maquinas/{maquina_id}",
-        headers=ctx["tokens"]["gerente"],
+        headers=ctx["tokens"]["admin"],
         json={"nombre": "Compressor A1", "codigo": "COMP-A1"},
     )
 
@@ -87,7 +87,7 @@ async def test_el_patch_parcial_no_pisa_lo_que_no_se_envia(client, ctx):
 
     r = await client.patch(
         f"/api/maquinas/{maquina_id}",
-        headers=ctx["tokens"]["gerente"],
+        headers=ctx["tokens"]["admin"],
         json={"nombre": "Renombrada"},
     )
 
@@ -103,7 +103,7 @@ async def test_codigo_duplicado_en_la_misma_planta_da_409(client, ctx):
     planta_id, primera = await _planta_con_maquina(client, ctx, codigo="DUP-1")
     r = await client.post(
         f"/api/plantas/{planta_id}/maquinas",
-        headers=ctx["tokens"]["gerente"],
+        headers=ctx["tokens"]["admin"],
         json={"nombre": "Otra", "codigo": "DUP-2"},
     )
     assert r.status_code == 201, r.text
@@ -112,7 +112,7 @@ async def test_codigo_duplicado_en_la_misma_planta_da_409(client, ctx):
     # Intentar que la segunda tome el código de la primera, sin importar mayúsculas.
     r = await client.patch(
         f"/api/maquinas/{segunda}",
-        headers=ctx["tokens"]["gerente"],
+        headers=ctx["tokens"]["admin"],
         json={"codigo": "dup-1"},
     )
 
@@ -127,7 +127,7 @@ async def test_el_mismo_codigo_no_choca_consigo_mismo(client, ctx):
 
     r = await client.patch(
         f"/api/maquinas/{maquina_id}",
-        headers=ctx["tokens"]["gerente"],
+        headers=ctx["tokens"]["admin"],
         json={"codigo": "SELF-1", "nombre": "Mismo código"},
     )
 
@@ -156,7 +156,7 @@ async def test_no_edita_una_maquina_de_otra_empresa(client, ctx):
 async def test_maquina_inexistente_da_404(client, ctx):
     r = await client.patch(
         "/api/maquinas/999999",
-        headers=ctx["tokens"]["gerente"],
+        headers=ctx["tokens"]["admin"],
         json={"nombre": "Fantasma"},
     )
     assert r.status_code == 404
@@ -173,7 +173,7 @@ async def test_sla_sin_columnas_da_503_y_no_cambia_nada(client, ctx, monkeypatch
 
     r = await client.patch(
         f"/api/maquinas/{maquina_id}",
-        headers=ctx["tokens"]["gerente"],
+        headers=ctx["tokens"]["admin"],
         json={"nombre": "Con SLA", "sla_horas": 8},
     )
 
@@ -191,7 +191,7 @@ async def test_nombre_vacio_da_422(client, ctx):
 
     r = await client.patch(
         f"/api/maquinas/{maquina_id}",
-        headers=ctx["tokens"]["gerente"],
+        headers=ctx["tokens"]["admin"],
         json={"nombre": "   "},
     )
 

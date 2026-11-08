@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
-import { ACCIONES, AccionKey, RUTAS, ROLES, getDefaultRouteForRole, puedeAccederRuta, puedeEjecutarAccion } from './permissions';
+import {
+  ACCIONES,
+  AccionKey,
+  ROLES,
+  ROLES_REPOSITORIO_AVISOS,
+  RUTAS,
+  getDefaultRouteForRole,
+  puedeAccederRuta,
+  puedeEjecutarAccion,
+} from './permissions';
 
 /**
  * Espejo de `backend/tests/test_permissions.py`: si cambia la matriz en uno de los dos lados, estas pruebas
@@ -8,12 +17,12 @@ import { ACCIONES, AccionKey, RUTAS, ROLES, getDefaultRouteForRole, puedeAcceder
  */
 const ACCIONES_ESPERADAS: Partial<Record<AccionKey, string[]>> = {
   crear_ot: ['supervisor'],
-  cambiar_estado_ot: ['supervisor', 'engineer', 'gerente'],
-  cancelar_ot: ['supervisor', 'gerente'],
-  eliminar_ot: ['gerente'],
+  cambiar_estado_ot: ['supervisor'],
+  cancelar_ot: ['supervisor'],
+  eliminar_ot: [],
   reportar_falla: ['operador', 'tecnico', 'supervisor', 'engineer', 'gerente'],
-  gestionar_avisos: ['supervisor', 'gerente'],
-  asignar_ot: ['supervisor', 'gerente'],
+  gestionar_avisos: ['supervisor'],
+  asignar_ot: ['supervisor'],
   iniciar_ot_asignada: ['tecnico'],
 };
 
@@ -49,10 +58,41 @@ describe('permisos: pantallas', () => {
     expect([...conAcceso].sort()).toEqual(['engineer', 'gerente', 'operador', 'supervisor', 'tecnico']);
   });
 
-  it('Historial: el ingeniero lo analiza y el administrador solo lo consulta', () => {
-    expect(puedeAccederRuta('engineer', 'history')).toBe(true);
-    expect(puedeAccederRuta('admin', 'history')).toBe(true); // lectura
-    expect(puedeAccederRuta('admin', 'history', false)).toBe(false); // no escritura
+  it('Historial y dashboard: supervisor, ingeniero y gerente; el administrador no', () => {
+    for (const ruta of ['history', 'dashboard'] as const) {
+      const conAcceso = ROLES.filter((r) => puedeAccederRuta(r, ruta));
+      expect([...conAcceso].sort()).toEqual(['engineer', 'gerente', 'supervisor']);
+    }
+    expect(puedeAccederRuta('admin', 'history')).toBe(false);
+    expect(puedeAccederRuta('admin', 'dashboard')).toBe(false);
+  });
+
+  it('Mantenedor de plantas: solo el admin', () => {
+    expect(ROLES.filter((r) => puedeAccederRuta(r, 'plantas'))).toEqual(['admin']);
+  });
+
+  it('Documentos: el gerente solo los consulta; los suben el ingeniero y el admin', () => {
+    expect(puedeAccederRuta('gerente', 'documentos')).toBe(true); // lectura
+    expect(puedeAccederRuta('gerente', 'documentos', false)).toBe(false); // no escritura
+    for (const accion of ['subir_documentos', 'eliminar_documentos'] as const) {
+      expect([...ROLES.filter((r) => puedeEjecutarAccion(r, accion))].sort()).toEqual(['admin', 'engineer']);
+    }
+  });
+
+  it('el repositorio de avisos lo ven supervisor y gerente, pero solo el supervisor decide', () => {
+    expect([...ROLES_REPOSITORIO_AVISOS].sort()).toEqual(['gerente', 'supervisor']);
+    expect(ROLES.filter((r) => puedeEjecutarAccion(r, 'gestionar_avisos'))).toEqual(['supervisor']);
+  });
+
+  it('los KPIs financieros del dashboard son solo del gerente', () => {
+    expect(ROLES.filter((r) => puedeEjecutarAccion(r, 'ver_kpis_financieros'))).toEqual(['gerente']);
+  });
+
+  it('el gerente consulta las OT pero no las opera', () => {
+    for (const accion of ['cambiar_estado_ot', 'cancelar_ot', 'eliminar_ot', 'asignar_ot', 'gestionar_avisos'] as const) {
+      expect(puedeEjecutarAccion('gerente', accion)).toBe(false);
+    }
+    expect(puedeEjecutarAccion('gerente', 'gestionar_usuarios')).toBe(true);
   });
 });
 
@@ -63,7 +103,7 @@ describe('permisos: pantalla de inicio por rol (HU-24)', () => {
     ['tecnico', '/work-orders'],
     ['engineer', '/dashboard'],
     ['gerente', '/dashboard'],
-    ['admin', '/dashboard'],
+    ['admin', '/work-orders'],
     ['super_usuario', '/empresas'],
   ])('%s empieza en %s', (rol, ruta) => {
     expect(getDefaultRouteForRole(rol as never)).toBe(ruta);

@@ -115,6 +115,8 @@ const ORDEN_GRUPOS: GrupoOt[] = ['groupPendientes', 'groupEnCurso', 'groupCerrad
 const CLAVE_GRUPO: Record<string, GrupoOt> = {
   pending: 'groupPendientes',
   in_progress: 'groupEnCurso',
+  // Por validar sigue siendo trabajo abierto: se agrupa con «En curso».
+  por_validar: 'groupEnCurso',
   completed: 'groupCerradas',
   cancelled: 'groupCanceladas',
 };
@@ -125,6 +127,7 @@ const ETIQUETA_OT: Record<string, string> = {
   get pending() { return textoActual('ot.pendiente'); },
   get assigned() { return textoActual('ot.asignada'); },
   get in_progress() { return textoActual('ot.en_curso'); },
+  get por_validar() { return textoActual('ot.por_validar'); },
   get overdue() { return textoActual('ot.vencida'); },
   get completed() { return textoActual('ot.cerrada'); },
   get cancelled() { return textoActual('ot.cancelada'); },
@@ -135,6 +138,7 @@ const COLOR_OT: Record<string, string> = {
   pending: 'bg-media-suave text-media',
   assigned: 'bg-accion-suave text-accion',
   in_progress: 'bg-accion-suave text-accion',
+  por_validar: 'bg-alerta-suave text-alerta',
   overdue: 'bg-peligro-suave text-peligro',
   completed: 'bg-ok-suave text-ok',
   cancelled: 'bg-borde text-tinta',

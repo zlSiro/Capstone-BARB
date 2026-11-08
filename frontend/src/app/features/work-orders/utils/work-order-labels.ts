@@ -37,6 +37,13 @@ const STATUS_META: Record<string, () => StatusMeta> = {
     effect: textoActual('ot.se_registrara_la_fecha'),
     final: false,
   }),
+  por_validar: () => ({
+    label: textoActual('ot.por_validar'),
+    badge: 'bg-alerta-suave text-alerta',
+    dot: 'bg-alerta',
+    effect: textoActual('ot.la_ot_espera_validacion'),
+    final: false,
+  }),
   completed: () => ({
     label: textoActual('ot.cerrada'),
     badge: 'bg-ok-suave text-ok',
@@ -66,7 +73,7 @@ export function statusMeta(estado: WorkOrderStatus | null | undefined): StatusMe
 }
 
 /** Orden en que se muestran los estados en filtros: sigue el ciclo de vida de la OT. */
-export const STATUS_FILTER_ORDER: WorkOrderStatus[] = ['pending', 'in_progress', 'completed', 'cancelled'];
+export const STATUS_FILTER_ORDER: WorkOrderStatus[] = ['pending', 'in_progress', 'por_validar', 'completed', 'cancelled'];
 
 /** Agrupa estados heredados bajo «pendiente» para los filtros y conteos (asignada y vencida aún no inician). */
 export function filterGroup(estado: WorkOrderStatus): WorkOrderStatus {

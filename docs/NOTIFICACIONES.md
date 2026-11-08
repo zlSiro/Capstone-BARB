@@ -26,7 +26,7 @@ Dev: Mailtrap, o `python -m aiosmtpd -n -l localhost:1025` con `SMTP_STARTTLS=fa
 
 ## API (contrato para el frontend)
 
-Permiso: acción `configurar_notificaciones` (supervisor, gerente, admin, super_usuario).
+Permiso: acción `configurar_notificaciones` (supervisor y admin). El gerente **no** la configura, pero recibe el reporte (ver «Escalamiento»).
 El `super_usuario` debe pasar `?empresa_id=`; los demás siempre usan su empresa (se ignora el parámetro).
 
 | Método | Ruta | Descripción |
@@ -44,10 +44,24 @@ El `super_usuario` debe pasar `?empresa_id=`; los demás siempre usan su empresa
 `hora` 0–23 en `NOTIF_TIMEZONE`; `dia_semana` 0=lunes…6=domingo, obligatorio si `semanal`; máx. 20 destinatarios
 (se normalizan a minúsculas y sin duplicados); `activo=true` exige ≥1 destinatario.
 
+## Escalamiento a gerente y supervisor
+
+Además de los destinatarios configurados, el job (`POST /api/jobs/ot-atrasadas` y `scripts/run_overdue_job.py`) envía el
+correo a los usuarios **activos** con rol `gerente` y `supervisor` de la empresa. La lista final se normaliza a minúsculas y
+se deduplica (si un supervisor también está configurado, recibe un solo correo); los configurados van primero.
+
+- Solo aplica a empresas con la notificación **activa** (`activo = true`) y no suspendidas/canceladas; el resto no recibe nada.
+- Los usuarios desactivados, los administradores y los demás roles no reciben el escalamiento.
+- Aunque la lista configurada estuviera vacía, la empresa igual avisa a su gerente y a su supervisor (`sin_destinatarios`
+  solo ocurre si la empresa no tiene ninguno de los dos activos).
+- Una OT `por_validar` con fecha vencida sigue contando como atrasada (no es un estado final).
+- `POST /api/notificaciones/prueba` envía solo a los destinatarios configurados; el escalamiento es del job programado.
+- Implementación: `services/overdue_report.py` (`destinatarios_escalamiento`, `combinar_destinatarios`).
+
 ## Pendiente en frontend (otro compañero)
 
 - El formulario de creación de OT no envía `fecha_vencimiento` (el backend la acepta, alias `due_date`): sin ella ninguna OT nueva puede atrasarse.
-- Replicar en `core/permissions/permissions.ts` la ruta `notificaciones` y la acción `configurar_notificaciones`.
+- Replicar en `core/permissions/permissions.ts` la ruta `notificaciones` y la acción `configurar_notificaciones` (supervisor y admin).
 - Pantalla de configuración usando los endpoints de arriba.
 
 ## Despliegue

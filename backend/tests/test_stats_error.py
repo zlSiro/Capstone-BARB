@@ -16,7 +16,7 @@ from psycopg_pool import PoolTimeout
 
 from barb.routers import stats
 
-ADMIN_E1 = ("admin@barb.com", "admin123")
+GERENTE_E1 = ("gerente1@planta.com", "gerente123")
 
 
 async def _login(client, creds) -> dict:
@@ -55,7 +55,7 @@ def _pool_que_falla(exc: BaseException):
 
 async def test_camino_feliz_devuelve_datos(client):
     """El cambio no puede romper la respuesta correcta."""
-    h = await _login(client, ADMIN_E1)
+    h = await _login(client, GERENTE_E1)
     r = await client.get("/api/stats/financial-impact", headers=h)
 
     assert r.status_code == 200, r.text
@@ -70,7 +70,7 @@ async def test_camino_feliz_devuelve_datos(client):
 
 async def test_la_respuesta_ya_no_tiene_forma_de_ceros(client):
     """Contraprueba del anti-patrón: la respuesta buena no es la estructura de ceros."""
-    h = await _login(client, ADMIN_E1)
+    h = await _login(client, GERENTE_E1)
     cuerpo = (await client.get("/api/stats/financial-impact", headers=h)).json()
     ceros = {
         "ahorro_generado": 0.0,
@@ -89,7 +89,7 @@ async def test_la_respuesta_ya_no_tiene_forma_de_ceros(client):
 # =============================================================================
 
 async def test_base_inalcanzable_devuelve_503(client, monkeypatch):
-    h = await _login(client, ADMIN_E1)
+    h = await _login(client, GERENTE_E1)
     monkeypatch.setattr(
         stats, "pool", _pool_que_falla(psycopg.OperationalError("connection refused"))
     )
@@ -100,7 +100,7 @@ async def test_base_inalcanzable_devuelve_503(client, monkeypatch):
 
 
 async def test_pool_agotado_devuelve_503(client, monkeypatch):
-    h = await _login(client, ADMIN_E1)
+    h = await _login(client, GERENTE_E1)
     monkeypatch.setattr(stats, "pool", _pool_que_falla(PoolTimeout("pool exhausted")))
     r = await client.get("/api/stats/financial-impact", headers=h)
 
@@ -113,7 +113,7 @@ async def test_pool_agotado_devuelve_503(client, monkeypatch):
 # =============================================================================
 
 async def test_error_inesperado_devuelve_500(client, monkeypatch):
-    h = await _login(client, ADMIN_E1)
+    h = await _login(client, GERENTE_E1)
     monkeypatch.setattr(stats, "pool", _pool_que_falla(RuntimeError("algo se rompió")))
     r = await client.get("/api/stats/financial-impact", headers=h)
 
@@ -123,7 +123,7 @@ async def test_error_inesperado_devuelve_500(client, monkeypatch):
 
 async def test_no_devuelve_ceros_ante_error(client, monkeypatch):
     """El corazón de CGBIDA-403: ante fallo NO se devuelve la estructura de ceros."""
-    h = await _login(client, ADMIN_E1)
+    h = await _login(client, GERENTE_E1)
     monkeypatch.setattr(stats, "pool", _pool_que_falla(psycopg.OperationalError("caída")))
     r = await client.get("/api/stats/financial-impact", headers=h)
 
@@ -153,6 +153,6 @@ async def test_token_invalido_devuelve_401(client):
 
 async def test_parametro_invalido_devuelve_422(client):
     """`days` tiene cota inferior 1: un valor inválido lo rechaza el esquema, no el handler."""
-    h = await _login(client, ADMIN_E1)
+    h = await _login(client, GERENTE_E1)
     r = await client.get("/api/stats/financial-impact?days=0", headers=h)
     assert r.status_code == 422, r.text

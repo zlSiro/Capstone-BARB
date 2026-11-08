@@ -14,7 +14,7 @@ import { TranslatePipe } from '../../core/i18n/translate.pipe';
 import { I18nService } from '../../core/i18n/i18n.service';
 /**
  * Mantenedor de perfiles de usuario.
- * - Gerente/admin de empresa: gestiona solo los usuarios de su empresa (lo garantiza el backend).
+ * - Gerente: gestiona solo a los administradores de su empresa. Admin: solo a los operativos (lo garantiza el backend).
  * - super_usuario: solo crea y gestiona usuarios con perfil gerente de cualquier empresa.
  * Por auditoría los usuarios no se eliminan: solo se activan o desactivan.
  */
@@ -123,6 +123,7 @@ import { I18nService } from '../../core/i18n/i18n.service';
         [usuario]="editing()"
         [isSuper]="isSuper()"
         [soloOperativos]="soloOperativos()"
+        [soloAdmins]="soloAdmins()"
         [empresas]="empresas()"
         [defaultEmpresaId]="tenant.empresaId()"
         (closed)="modalOpen.set(false)"
@@ -141,6 +142,8 @@ export class UsuariosComponent {
   protected readonly isSuper = this.tenant.isSuper;
   /** El administrador de empresa solo gestiona roles operativos (no gerentes ni otros administradores). */
   protected readonly soloOperativos = computed(() => this.auth.user()?.role === 'admin');
+  /** El gerente solo gestiona administradores; los gerentes los gestiona el super_usuario. */
+  protected readonly soloAdmins = computed(() => this.auth.user()?.role === 'gerente');
   protected readonly usuarios = signal<UsuarioPerfil[]>([]);
   protected readonly empresas = signal<Empresa[]>([]);
   protected readonly loading = signal(true);

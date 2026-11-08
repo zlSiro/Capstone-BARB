@@ -77,9 +77,18 @@ describe('WorkOrdersListComponent — cambio de estado', () => {
     select.value = 'cancelled';
     select.dispatchEvent(new Event('change'));
     fixture.detectChanges();
-    (Array.from(el.querySelectorAll('app-ot-status-change-dialog button')).find(b =>
-      b.textContent?.includes('Confirmar'),
-    ) as HTMLButtonElement).click();
+    // Cancelar exige el motivo: sin comentario el botón de confirmar está deshabilitado.
+    const confirmar = () =>
+      Array.from(el.querySelectorAll('app-ot-status-change-dialog button')).find(b =>
+        b.textContent?.includes('Confirmar'),
+      ) as HTMLButtonElement;
+    expect(confirmar().disabled).toBe(true);
+    const comentario = el.querySelector('app-ot-status-change-dialog textarea') as HTMLTextAreaElement;
+    comentario.value = 'Duplicada';
+    comentario.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    expect(confirmar().disabled).toBe(false);
+    confirmar().click();
 
     http
       .expectOne(r => r.method === 'PATCH')

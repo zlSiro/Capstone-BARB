@@ -23,7 +23,7 @@ from __future__ import annotations
 from barb.core.db import fetch_all
 from barb.routers import stats
 
-ADMIN_E1 = ("admin@barb.com", "admin123")
+GERENTE_E1 = ("gerente1@planta.com", "gerente123")
 
 # --- Identificación de consultas por ALIAS de columna ------------------------
 # NO usar substrings como "corrective": esa palabra aparece en la consulta de MTBF y
@@ -136,7 +136,7 @@ def _montar(monkeypatch, fallas: int, downtime_min: int = 0):
 
 
 async def _pedir(client, qs: str = ""):
-    h = await _login(client, ADMIN_E1)
+    h = await _login(client, GERENTE_E1)
     return await client.get(f"/api/stats/financial-impact{qs}", headers=h)
 
 

@@ -1,4 +1,4 @@
-"""Asignar y reasignar una OT: PATCH /api/work-orders/{numero_ot}/assignment (supervisor y gerente)."""
+"""Asignar y reasignar una OT: PATCH /api/work-orders/{numero_ot}/assignment (solo el supervisor)."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ ADMIN = {"email": "admin@barb.com", "password": "admin123"}
 TECNICO = {"email": "carlos@planta.com", "password": "tecnico123"}
 TECNICO_2 = {"email": "ana@planta.com", "password": "tecnico123"}
 OPERADOR = {"email": "operador1@planta.com", "password": "operador123"}
-GERENTE_E2 = {"email": "gerente@mineranorte.cl", "password": "minera123"}
+SUPERVISOR_E2 = {"email": "supervisor@mineranorte.cl", "password": "minera123"}
 
 
 async def _login(client, creds) -> dict:
@@ -51,10 +51,10 @@ def _url(numero: str) -> str:
     return f"/api/work-orders/{numero}/assignment"
 
 
-@pytest.mark.parametrize("creds", [SUPERVISOR, GERENTE])
-async def test_supervisor_y_gerente_reasignan_el_tecnico_y_la_prioridad(client, ot, creds):
+async def test_el_supervisor_reasigna_el_tecnico_y_la_prioridad(client, ot):
     nuevo = await _usuario_id(TECNICO_2["email"])
-    resp = await client.patch(_url(ot), json={"tecnico_id": nuevo, "priority": "urgent"}, headers=await _login(client, creds))
+    cuerpo = {"tecnico_id": nuevo, "priority": "urgent"}
+    resp = await client.patch(_url(ot), json=cuerpo, headers=await _login(client, SUPERVISOR))
     assert resp.status_code == 200, resp.text
     data = resp.json()
     assert data["tecnico_id"] == nuevo and data["tecnico_nombre"] == "Ana Silva" and data["priority"] == "urgent"
@@ -97,11 +97,17 @@ async def test_validaciones(client, ot):
 
 async def test_una_ot_cerrada_no_se_reasigna(client, ot):
     h = await _login(client, SUPERVISOR)
-    await client.patch(f"/api/work-orders/{ot}/status", json={"status": "cancelled"}, headers=h)
+    await client.patch(f"/api/work-orders/{ot}/status", json={"status": "cancelled", "comment": "Duplicada"}, headers=h)
     resp = await client.patch(_url(ot), json={"priority": "high"}, headers=h)
     assert resp.status_code == 409
 
 
 async def test_otra_empresa_no_puede_reasignar(client, ot):
-    resp = await client.patch(_url(ot), json={"priority": "high"}, headers=await _login(client, GERENTE_E2))
+    resp = await client.patch(_url(ot), json={"priority": "high"}, headers=await _login(client, SUPERVISOR_E2))
     assert resp.status_code == 404
+
+
+async def test_el_gerente_no_asigna_ni_reasigna(client, ot):
+    resp = await client.patch(_url(ot), json={"priority": "high"}, headers=await _login(client, GERENTE))
+    assert resp.status_code == 403
+    assert (await fetch_one("SELECT priority FROM orden_trabajo WHERE numero_ot = %(n)s", {"n": ot}))["priority"] != "high"

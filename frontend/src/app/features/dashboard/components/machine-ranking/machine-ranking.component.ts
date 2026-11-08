@@ -91,8 +91,10 @@ const MIL = new Intl.NumberFormat('es-CL');
           >
             <option value="ots">{{ t().viewOts }}</option>
             <option value="mttr">{{ t().viewMttr }}</option>
-            <option value="ahorro">{{ t().viewAhorro }}</option>
-            <option value="costo">{{ t().viewCosto }}</option>
+            @if (verFinanzas()) {
+              <option value="ahorro">{{ t().viewAhorro }}</option>
+              <option value="costo">{{ t().viewCosto }}</option>
+            }
           </select>
         </figcaption>
 
@@ -228,6 +230,9 @@ export class MachineRankingComponent {
    */
   readonly maquinasPorCosto = input<MachineData[]>([]);
 
+  /** Sin acceso a los KPIs financieros solo se ofrecen las métricas operativas (volumen y MTTR). */
+  readonly verFinanzas = input(true);
+
   /**
    * Lista sobre la que se calcula el ranking.
    *
@@ -325,7 +330,7 @@ export class MachineRankingComponent {
         // usuario ve todo el perfil del equipo sin tocar el selector.
         ots: MIL.format(m.total),
         mttr: `${MIL.format(Math.round(m.mttr))} min`,
-        ahorro: this.currency.formatear(m.ahorroGenerado),
+        ahorro: this.currency.formatear(m.ahorroGenerado ?? 0),
         costo: this.currency.formatear(m.costo_total ?? 0),
         sla: `${m.slaCompliance} %`,
         // Color por POSICIÓN en el ranking, no por equipo: si al cambiar de métrica un

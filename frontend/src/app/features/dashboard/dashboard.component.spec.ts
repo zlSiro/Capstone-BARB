@@ -93,15 +93,144 @@ function clavesKpi(el: HTMLElement): string[] {
     .filter(Boolean);
 }
 
-describe('dashboard: KPIs', () => {
-  it('renderiza 5 tarjetas', () => {
-    const { el } = setup();
-    expect(clavesKpi(el)).toHaveLength(5);
+// El KPI de Impacto se elimino en CGBIDA-435: su cifra vive en el grafico de abajo.
+const CLAVES = ['mttr', 'sla', 'costo', 'mtbf', 'ahorro'];
+
+/** Lo que recibe un supervisor o un ingeniero: el backend omite todo campo de costo (`ver_kpis_financieros`). */
+function statsSinFinanzas(): FinancialStats {
+  const completo = stats();
+  const { ahorro_generado: _a, costo_total_acumulado: _c, ...financials } = completo.financials;
+  const { impacto_anual: _i, machines_por_costo: _m, ...resto } = completo;
+  return {
+    ...resto,
+    financials,
+    // Una máquina operativa (sin ahorro ni costo): el ranking solo se dibuja si hay equipos.
+    machines: [{ id: '1', name: 'Bomba BP-3', total: 4, mttr: 35, slaCompliance: 90 }],
+    financieros_visibles: false,
+  };
+}
+
+describe('DashboardComponent', () => {
+  describe('sin acceso a los KPIs financieros (supervisor, ingeniero)', () => {
+    it('muestra solo las tarjetas operativas, sin costo ni ahorro', () => {
+      const { el } = setup(statsSinFinanzas());
+      const claves = [...el.querySelectorAll('[data-testid^="kpi-"]')].map((n) =>
+        (n as HTMLElement).dataset['testid']?.replace('kpi-', '')
+      );
+      expect(claves.sort()).toEqual(['mtbf', 'mttr', 'sla']);
+    });
+
+    it('oculta el impacto anual y las métricas de ahorro y costo del ranking', () => {
+      const { el } = setup(statsSinFinanzas());
+      expect(el.querySelector('app-impacto-escenarios')).toBeNull();
+      const valores = [...el.querySelectorAll('[data-testid="selector-metrica"] option')].map((o) => (o as HTMLOptionElement).value);
+      expect(valores).toEqual(['ots', 'mttr']);
+    });
+
+    it('sigue mostrando los KPIs operativos y la salud operacional', () => {
+      const { el } = setup(statsSinFinanzas());
+      expect(tarjeta(el, 'mttr').textContent).toContain('88.1m');
+      expect(el.querySelector('app-salud-operacional')).not.toBeNull();
+    });
+
+    it('con el gerente (financieros_visibles ausente o true) conserva las 5 tarjetas y el impacto', () => {
+      const { el } = setup();
+      expect(el.querySelectorAll('[data-testid^="kpi-"]').length).toBe(5);
+      expect(el.querySelector('app-impacto-escenarios')).not.toBeNull();
+    });
   });
 
-  it('pone el SLA primero (CGBIDA-515)', () => {
-    const { el } = setup();
-    expect(clavesKpi(el)[0]).toBe('sla');
+  describe('los 5 indicadores', () => {
+    it('pide las metricas al servicio al construirse', () => {
+      const { getFinancialImpact } = setup();
+      expect(getFinancialImpact).toHaveBeenCalledWith('all');
+    });
+
+    it('renderiza exactamente las 5 tarjetas esperadas', () => {
+      const { el } = setup();
+      const claves = [...el.querySelectorAll('[data-testid^="kpi-"]')].map((n) =>
+        (n as HTMLElement).dataset['testid']?.replace('kpi-', '')
+      );
+      expect(claves.sort()).toEqual([...CLAVES].sort());
+    });
+
+    it('cada tarjeta muestra su valor calculado', () => {
+      const { el } = setup();
+      expect(tarjeta(el, 'mttr').textContent).toContain('88.1m');
+      expect(tarjeta(el, 'sla').textContent).toContain('97.7%');
+      expect(tarjeta(el, 'mtbf').textContent).toContain('9.3 d');
+      // El costo y el ahorro van formateados en CLP.
+      expect(tarjeta(el, 'costo').textContent).toMatch(/47\.192\.065/);
+      expect(tarjeta(el, 'ahorro').textContent).toMatch(/10\.042\.000/);
+      // El impacto ya no es tarjeta: se comprueba en el grafico de escenarios.
+      expect(el.textContent).toMatch(/3\.748\.000/);
+    });
+
+    it('cada tarjeta dice QUE mide, no solo el numero', () => {
+      const { el } = setup();
+      for (const clave of CLAVES) {
+        const textos = [...tarjeta(el, clave).querySelectorAll('p')].map((p) => p.textContent ?? '');
+        // Etiqueta + valor + descripcion = 3 parrafos, y la descripcion no puede ir vacia.
+        expect(textos.length).toBe(3);
+        expect(textos[2].trim().length).toBeGreaterThan(0);
+      }
+    });
+
+    it('cada tarjeta usa colores del tema (claro y oscuro)', () => {
+      const { el } = setup();
+      for (const clave of CLAVES) {
+        const t = tarjeta(el, clave);
+        expect(siguelTema(t.className)).toBe(true);
+        const internos = [...t.querySelectorAll('*')].some((n) => siguelTema(n.className));
+        expect(internos).toBe(true);
+      }
+    });
+  });
+
+  describe('estado del MTBF y del impacto', () => {
+    it('con mtbf_visible=false muestra el aviso en vez de un numero', () => {
+      const sinMtbf = stats();
+      sinMtbf.financials.mtbfHours = null;
+      sinMtbf.financials.mtbf_visible = false;
+      const { el } = setup(sinMtbf);
+      const texto = tarjeta(el, 'mtbf').textContent ?? '';
+      expect(texto).toContain('Requiere historial');
+      expect(texto).not.toContain('null');
+    });
+
+    it('con impacto_visible=false muestra el aviso en vez de un numero', () => {
+      const sinImpacto = stats();
+      sinImpacto.impacto_anual!.impacto_visible = false;
+      sinImpacto.impacto_anual!.ahorro_proyectado = null;
+      const { el } = setup(sinImpacto);
+      // CGBIDA-435: el aviso vive en el grafico de escenarios, no en una tarjeta de KPI.
+      const texto = el.querySelector('[data-testid="impacto-vacio"]')?.textContent ?? '';
+      expect(texto).toContain('90 días');
+      expect(texto).not.toContain('null');
+    });
+
+    it('con supuestos_incompletos lo refleja en el subtitulo del grafico', () => {
+      const incompleto = stats();
+      incompleto.impacto_anual!.supuestos_incompletos = true;
+      const { el } = setup(incompleto);
+      // El aviso de "estimado" se mudo con el KPI al grafico.
+      expect(el.querySelector('[data-testid="impacto-escenarios"]')!.textContent).toContain(
+        'Estimado'
+      );
+    });
+
+    it('no muestra ceros cuando el backend no puede calcular', () => {
+      // Este es el criterio de la HU: avisar en vez de mostrar ceros.
+      const vacio = stats();
+      vacio.financials.mtbfHours = null;
+      vacio.financials.mtbf_visible = false;
+      vacio.impacto_anual!.ahorro_proyectado = null;
+      vacio.impacto_anual!.impacto_visible = false;
+      const { el } = setup(vacio);
+      expect(tarjeta(el, 'mtbf').textContent).not.toMatch(/\b0 d\b/);
+      expect(el.querySelector('[data-testid="impacto-vacio"]')).not.toBeNull();
+      expect(el.querySelector('[data-testid="valor-ahorro"]')).toBeNull();
+    });
   });
 
   it('muestra las 5 claves en el orden pedido', () => {

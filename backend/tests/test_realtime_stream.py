@@ -8,7 +8,7 @@ from __future__ import annotations
 import pytest
 
 from barb.core.db import execute, fetch_one
-from barb.services.realtime import EVENT_OT_CREATED, EVENT_OT_DELETED, EVENT_OT_STATUS_CHANGED, broker
+from barb.services.realtime import EVENT_OT_CREATED, EVENT_OT_STATUS_CHANGED, broker
 
 ADMIN = {"email": "admin@barb.com", "password": "admin123"}
 GERENTE = {"email": "gerente1@planta.com", "password": "gerente123"}
@@ -122,7 +122,7 @@ async def test_transicion_rechazada_no_publica_evento(client, ot):
         assert sub.queue.empty()
 
 
-async def test_crear_y_eliminar_ot_publican_eventos(client):
+async def test_crear_ot_publica_evento_y_eliminarla_esta_prohibido(client):
     empresa = await _empresa_de(client, ADMIN)
     maquina = await fetch_one("SELECT maquina_id FROM maquina ORDER BY maquina_id LIMIT 1")
     tecnico = await fetch_one("SELECT usuario_id FROM usuario WHERE rol = 'tecnico' AND activo ORDER BY usuario_id LIMIT 1")
@@ -134,7 +134,7 @@ async def test_crear_y_eliminar_ot_publican_eventos(client):
             json={
                 "maquina_id": maquina["maquina_id"],
                 "tecnico_id": tecnico["usuario_id"],
-                "descripcion_problema": f"{MARCA}: crear/eliminar",
+                "descripcion_problema": f"{MARCA}: crear/no eliminar",
             },
             headers=headers,
         )
@@ -144,10 +144,14 @@ async def test_crear_y_eliminar_ot_publican_eventos(client):
         creado = sub.queue.get_nowait()
         assert (creado.type, creado.data["numero_ot"]) == (EVENT_OT_CREATED, numero_ot)
 
-        resp = await client.delete(f"/api/work-orders/{numero_ot}", headers=await _auth(client, GERENTE))
-        assert resp.status_code == 204, resp.text
-        eliminado = sub.queue.get_nowait()
-        assert (eliminado.type, eliminado.data["numero_ot"]) == (EVENT_OT_DELETED, numero_ot)
+        # Ningún perfil elimina OT (D1): el DELETE responde 403 y no publica nada. La OT de prueba se limpia por SQL.
+        try:
+            for creds in (GERENTE, SUPERVISOR):
+                resp = await client.delete(f"/api/work-orders/{numero_ot}", headers=await _auth(client, creds))
+                assert resp.status_code == 403, resp.text
+            assert sub.queue.empty()
+        finally:
+            await execute("DELETE FROM orden_trabajo WHERE numero_ot = %(n)s", {"n": numero_ot})
 
 
 # --- reconexión (CGBIDA-351) ------------------------------------------------------
@@ -162,12 +166,12 @@ async def test_reconexion_recupera_el_evento_perdido_con_last_event_id(client, o
         visto = primera.queue.get_nowait()
 
     # Cliente desconectado: este cambio ocurre mientras no hay conexión.
-    resp = await client.patch(f"/api/work-orders/{ot}/status", json={"status": "completed"}, headers=headers)
+    resp = await client.patch(f"/api/work-orders/{ot}/status", json={"status": "por_validar"}, headers=headers)
     assert resp.status_code == 200, resp.text
 
     with broker.subscribe(empresa, visto.id) as segunda:
         assert [e.type for e in segunda.initial] == [EVENT_OT_STATUS_CHANGED]
-        assert segunda.initial[0].data["estado_nuevo"] == "completed"
+        assert segunda.initial[0].data["estado_nuevo"] == "por_validar"
 
 
 async def test_el_tecnico_solo_recibe_eventos_de_sus_ot_y_el_payload_no_expone_la_lista_interna(client, ot):

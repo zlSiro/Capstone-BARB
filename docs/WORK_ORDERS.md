@@ -12,7 +12,7 @@ Documento de las HU-07 «Usuario crea OT» (secciones 1–6) y HU-09 «Actualiza
 | `tipo` | — | No (`corrective`) | `corrective`, `preventive`, `predictive`, `inspection` | |
 | `priority` | — | No (`medium`) | `low`, `medium`, `high`, `urgent` | |
 | `severity` | — | No | `low`, `medium`, `high`, `critical` | |
-| `estado` | `status` | No (`pending`) | `pending`, `assigned`, `in_progress`, `completed`, `cancelled`, `overdue` (también `open`, `closed`, etc.) | |
+| `estado` | `status` | No (`pending`) | `pending`, `assigned`, `in_progress`, `por_validar`, `completed`, `cancelled`, `overdue` (también `open`, `closed`, etc.) | |
 | `descripcion_reparacion` | — | No | texto | |
 | `resolution` | — | No | texto | |
 | `fecha_vencimiento` | `due_date` | No | ISO 8601 | |
@@ -102,7 +102,7 @@ Notas sobre la respuesta:
 
 Acción `crear_ot` (`backend/src/barb/core/permissions.py`, espejo en `frontend/src/app/core/permissions/permissions.ts`):
 solo el **supervisor** puede crear una OT directamente, sin un aviso de falla previo. Los demás roles (incluidos gerente y administrador) reciben `403` y no ven el botón «Crear OT».
-Lo que reportan los usuarios de planta entra como **aviso de falla** y el supervisor (o el gerente, con `gestionar_avisos`) decide si genera la OT: ver `AVISOS_FALLA.md`.
+Lo que reportan los usuarios de planta entra como **aviso de falla** y el supervisor (el gerente solo consulta el repositorio) decide si genera la OT: ver `AVISOS_FALLA.md`.
 
 ## 4. Flujo completo
 
@@ -146,10 +146,13 @@ Checklist manual end-to-end (`uv run fastapi dev src/barb/main.py --port 9000` +
 
 ## 7. Máquina de estados
 
+El cierre tiene **doble validación**: quien trabaja la OT la envía a validación y un supervisor la valida (la cierra) o la devuelve.
+
 ```
-Pendiente ──► En curso ──► Cerrada
-    │             │
-    └─────────────┴──────► Cancelada
+Pendiente ──► En curso ──► Por validar ──► Cerrada
+    │           ▲  │           │  │
+    │           └──┼───────────┘  │   (devolución, con comentario)
+    └──────────────┴──────────────┴──► Cancelada (con motivo)
 ```
 
 | Estado actual (`estado`) | Etiqueta UI | Puede pasar a | Efecto en fechas |
@@ -157,40 +160,34 @@ Pendiente ──► En curso ──► Cerrada
 | `pending` | Pendiente | `in_progress`, `cancelled` | — |
 | `assigned` (heredado) | Asignada | `in_progress`, `cancelled` | — |
 | `overdue` (heredado) | Vencida | `in_progress`, `cancelled` | — |
-| `in_progress` | En curso | `completed`, `cancelled` | al entrar: `fecha_inicio` = ahora (si estaba vacía) |
+| `in_progress` | En curso | `por_validar`, `cancelled` | al entrar: `fecha_inicio` = ahora (si estaba vacía) |
+| `por_validar` | Por validar | `completed`, `in_progress` (devolución), `cancelled` | — (sigue siendo una OT abierta) |
 | `completed` | Cerrada | — (final) | al entrar: `fecha_cierre` = ahora |
 | `cancelled` | Cancelada | — (final) | — |
 
-- No se puede cerrar una OT sin pasar por «En curso», ni volver a un estado anterior, ni modificar una OT cerrada o cancelada.
+- `in_progress → completed` directo **no existe**: toda OT pasa por «Por validar». Tampoco se puede volver a un estado anterior (salvo la devolución) ni modificar una OT cerrada o cancelada.
+- `por_validar` cuenta como estado **activo** en todo lo que distingue abiertas de finales (estadísticas, atrasadas, topología, tiempo real): una OT por validar con fecha vencida sigue contando como atrasada.
+- El supervisor que envió la OT a validación **puede** validarla: no hay bloqueo de autovalidación (así una empresa con un solo supervisor siempre puede cerrar sus OT).
 - `assigned` y `overdue` existen en el esquema (`estado_ot`) pero la HU no los usa como destino: se tratan como «pendiente».
+- El valor `por_validar` lo agrega la migración `0014_estado_por_validar` (hay que aplicarla antes de desplegar; ver `DEPLOY.md`).
 - Implementación: `backend/src/barb/core/work_order_states.py` (`TRANSICIONES`, `ACCION_POR_DESTINO`). Es la única fuente de verdad: el backend entrega en cada OT `allowed_transitions` ya filtrado por rol y el frontend solo lo pinta.
 
 ## 8. Permisos por rol del cambio de estado
 
-Dos acciones en `ACCIONES` (`permissions.py`, espejo en `permissions.ts`):
+Acciones en `ACCIONES` (`permissions.py`, espejo en `permissions.ts`):
 
 | Acción | Se exige para ir a | Roles |
 |---|---|---|
-| `cambiar_estado_ot` | `in_progress`, `completed` | supervisor, engineer, gerente |
+| `cambiar_estado_ot` | `in_progress` (iniciar) | supervisor |
 | `iniciar_ot_asignada` | `in_progress` (solo) | técnico, **y solo si es el técnico asignado a esa OT** |
-| `cancelar_ot` | `cancelled` | supervisor, gerente (**engineer no**) |
-| `eliminar_ot` | — (borra la OT) | gerente |
+| `enviar_a_validacion` | `por_validar` | técnico (**solo su OT asignada**), supervisor |
+| `validar_ot` | `completed` y la devolución `por_validar → in_progress` | supervisor |
+| `cancelar_ot` | `cancelled` (desde cualquier estado activo, incluido `por_validar`) | supervisor |
+| `eliminar_ot` | — | **nadie**: `DELETE` responde 403 para todos los roles |
 
-**Operador y administrador no pueden cambiar el estado** (403). El técnico solo puede **iniciar** la OT que tiene asignada (un técnico
-que no es el asignado recibe 403 «Solo el técnico asignado a la OT puede iniciarla.»); cerrarla y cancelarla es de supervisión.
-Cancelar es más restrictivo porque es irreversible. *Revisión de roles y privilegios: el administrador ya no cambia estados ni elimina OT, y eliminar es solo del gerente.*
-
-**Visibilidad por rol:** `operador` y `tecnico` solo ven las OT que tienen asignadas, que crearon o que nacieron de un aviso suyo (listado, detalle,
-topología y canal en tiempo real); el resto de los roles de empresa ve todas. Una OT que no les corresponde responde `404`.
-El aislamiento multi-empresa se mantiene: una OT de otra empresa responde `404`.
-
-## 9. Contrato API: `PATCH /api/work-orders/{numero_ot}/status`
-
-Alias: `PATCH /api/work_orders/{numero_ot}/status`. `PUT` en ambas rutas sigue funcionando por compatibilidad y hace lo mismo. El identificador es el `numero_ot` (ej. `OT-2026-0042`).
-
-Header: `Authorization: Bearer <token>`.
-
-Request:
+**Operador, ingeniero, gerente y administrador no pueden cambiar el estado** (403): consultan, no operan. El técnico solo puede **iniciar** y **enviar a validación** la OT que tiene asignada (un técnico
+que no es el asignado recibe 403 «Solo el técnico asignado a la OT puede iniciarla.» / «…enviarla a validación.»); validar, devolver y cancelar es del supervisor.
+**Cancelar y devolver exigen el campo `comment`** (el motivo o la razón): si falta o viene vacío, 422. Primero se valida el permiso (403) y después el comentario.
 
 ```json
 { "status": "in_progress", "comment": "Se inicia el cambio de rodamiento" }
@@ -198,8 +195,8 @@ Request:
 
 | Campo | Obligatorio | Detalle |
 |---|---|---|
-| `status` | Sí | Estado destino: `in_progress`, `completed`, `cancelled`. Acepta también los alias del sistema (`open`, `closed`, `canceled`…). |
-| `comment` | No | Texto libre, máx. 500. Se guarda en la auditoría. |
+| `status` | Sí | Estado destino: `in_progress`, `por_validar`, `completed`, `cancelled`. Acepta también los alias del sistema (`open`, `closed`, `canceled`…). |
+| `comment` | **Sí al cancelar y al devolver** (`por_validar → in_progress`); no en el resto | Texto libre, máx. 500. Se guarda en la auditoría. |
 
 Response `200`: la OT actualizada (misma forma que `GET /api/work-orders/{numero_ot}`) con dos campos propios de esta HU:
 
@@ -210,7 +207,7 @@ Response `200`: la OT actualizada (misma forma que `GET /api/work-orders/{numero
   "status": "In Progress",
   "fecha_inicio": "2026-10-06T14:02:11.120Z",
   "fecha_cierre": null,
-  "allowed_transitions": ["completed", "cancelled"],
+  "allowed_transitions": ["por_validar", "cancelled"],
   "status_history": [
     {
       "id": 17,
@@ -235,10 +232,10 @@ Errores:
 |---|---|---|
 | 400 | `status` no es un estado válido | `Estado de OT inválido.` |
 | 401 | Token inválido o expirado | `Sesión inválida o expirada. Vuelve a iniciar sesión.` |
-| 403 | Rol sin `cambiar_estado_ot`, o sin `cancelar_ot` al cancelar | `El rol 'tecnico' no puede ejecutar 'cambiar_estado_ot'.` / `El rol 'engineer' no puede cambiar una OT a 'Cancelada'.` |
+| 403 | Rol sin permiso para ese destino, o técnico que no es el asignado | `El rol 'engineer' no puede ejecutar 'cambiar_estado_ot'.` / `El rol 'tecnico' no puede cambiar una OT a 'Cancelada'.` |
 | 404 | OT inexistente o de otra empresa | `OT no encontrada.` |
-| 409 | Transición fuera de la máquina de estados, o la OT ya está en ese estado | `Transición no permitida: una OT 'Pendiente' no puede pasar a 'Cerrada'.` |
-| 422 | `comment` de más de 500 caracteres | (validación de FastAPI) |
+| 409 | Transición fuera de la máquina de estados, o la OT ya está en ese estado | `Transición no permitida: una OT 'En curso' no puede pasar a 'Cerrada'.` |
+| 422 | `comment` de más de 500 caracteres, o vacío al cancelar / devolver | `Indica el motivo de la cancelación en el campo 'comment'.` |
 | 500 | Error interno (el detalle solo queda en el log) | `Error interno al actualizar el estado de la OT.` |
 
 Orden de validación: autenticación → permiso base (`cambiar_estado_ot`) → la OT existe en la empresa → transición válida (409) → permiso del estado destino (403).
@@ -287,9 +284,11 @@ cd frontend && npm test
 Usuarios del seed (ver `docs/MULTIEMPRESA.md`): `supervisor1@planta.com / super123`, `engineer1@planta.com / engineer123`, `carlos@planta.com / tecnico123`, `operador1@planta.com / operador123`.
 
 - [ ] Supervisor en `/work-orders`: la columna Estado muestra un selector; una OT Pendiente ofrece `→ En curso` y `→ Cancelada`.
-- [ ] Elegir `→ En curso` y confirmar: toast de éxito; el selector pasa a «En curso» y ahora ofrece `→ Cerrada` / `→ Cancelada`.
+- [ ] Elegir `→ En curso` y confirmar: toast de éxito; el selector pasa a «En curso» y ahora ofrece `→ Por validar` / `→ Cancelada`.
 - [ ] Abrir el detalle (clic en el N° OT): el historial muestra el cambio con tu nombre, rol y hora.
-- [ ] Cerrar la OT: queda solo la etiqueta «Cerrada» (sin selector) y el historial tiene dos entradas.
-- [ ] Engineer: puede iniciar y cerrar, pero «Cancelada» no aparece como opción.
-- [ ] Técnico u operador: no hay selectores, solo etiquetas; un `PATCH` directo responde 403.
+- [ ] Técnico asignado (`carlos@planta.com`): puede iniciar su OT y enviarla `→ Por validar`; después ya no tiene opciones.
+- [ ] Supervisor con la OT «Por validar»: ofrece `→ Cerrada`, `→ En curso` (devolver, comentario obligatorio) y `→ Cancelada` (motivo obligatorio). Con el comentario vacío el botón Confirmar está deshabilitado.
+- [ ] Cerrar la OT: queda solo la etiqueta «Cerrada» (sin selector).
+- [ ] Engineer, gerente y administrador: no hay selectores, solo etiquetas; un `PATCH` directo responde 403. `DELETE` responde 403 a todos.
+- [ ] Técnico u operador: no hay selectores salvo el del técnico asignado; un `PATCH` directo sobre otra OT responde 403.
 - [ ] Con dos pestañas: cambiar la misma OT en una y luego en la otra → la segunda muestra el error 409 y se refresca.

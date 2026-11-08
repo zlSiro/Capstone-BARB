@@ -20,7 +20,7 @@ import pytest_asyncio
 
 from barb.core.db import execute, fetch_all, fetch_one
 
-GERENTE_ID = 2  # gerente de la empresa 1
+ADMIN_ID = 1  # admin de la empresa 1 (el mantenedor de plantas es solo del admin)
 TECNICO_ID = 4  # técnico de la empresa 1: sin permiso sobre la ruta `plantas`
 
 
@@ -29,7 +29,7 @@ async def ctx(db_pool):
     """Tokens de sesión y limpieza de todo lo creado por el test."""
     marca = uuid.uuid4().hex[:8]
     tokens: dict[str, dict[str, str]] = {}
-    for nombre, uid in (("gerente", GERENTE_ID), ("tecnico", TECNICO_ID)):
+    for nombre, uid in (("admin", ADMIN_ID), ("tecnico", TECNICO_ID)):
         token = f"test-edp-{nombre}-{marca}"
         await execute(
             "INSERT INTO sesion (token, usuario_id, expira_en) "
@@ -52,7 +52,7 @@ async def ctx(db_pool):
 async def _crear_planta(client, ctx, nombre: str, **extra) -> int:
     r = await client.post(
         "/api/plantas/completa",
-        headers=ctx["tokens"]["gerente"],
+        headers=ctx["tokens"]["admin"],
         json={"nombre": nombre, **extra},
     )
     assert r.status_code == 201, r.text
@@ -78,7 +78,7 @@ async def test_edita_el_nombre_y_la_ubicacion(client, ctx):
 
     r = await client.patch(
         f"/api/plantas/{planta_id}",
-        headers=ctx["tokens"]["gerente"],
+        headers=ctx["tokens"]["admin"],
         json={"nombre": f"Planta Editada {sufijo}", "ubicacion": "Maipú"},
     )
     assert r.status_code == 200, r.text
@@ -99,7 +99,7 @@ async def test_permite_editar_solo_la_ubicacion(client, ctx):
 
     r = await client.patch(
         f"/api/plantas/{planta_id}",
-        headers=ctx["tokens"]["gerente"],
+        headers=ctx["tokens"]["admin"],
         json={"ubicacion": "Antofagasta"},
     )
     assert r.status_code == 200, r.text
@@ -113,7 +113,7 @@ async def test_permite_limpiar_la_ubicacion(client, ctx):
 
     r = await client.patch(
         f"/api/plantas/{planta_id}",
-        headers=ctx["tokens"]["gerente"],
+        headers=ctx["tokens"]["admin"],
         json={"ubicacion": "   "},
     )
     assert r.status_code == 200, r.text
@@ -125,7 +125,7 @@ async def test_sin_cambios_devuelve_el_estado_actual(client, ctx):
     nombre = f"Planta Sin Cambios {sufijo}"
     planta_id = await _crear_planta(client, ctx, nombre)
 
-    r = await client.patch(f"/api/plantas/{planta_id}", headers=ctx["tokens"]["gerente"], json={})
+    r = await client.patch(f"/api/plantas/{planta_id}", headers=ctx["tokens"]["admin"], json={})
     assert r.status_code == 200, r.text
     assert r.json()["nombre"] == nombre
 
@@ -137,7 +137,7 @@ async def test_no_permite_un_nombre_duplicado_en_la_empresa(client, ctx):
 
     r = await client.patch(
         f"/api/plantas/{planta_id}",
-        headers=ctx["tokens"]["gerente"],
+        headers=ctx["tokens"]["admin"],
         json={"nombre": f"Planta Ocupada {sufijo}"},
     )
     assert r.status_code == 409, r.text
@@ -155,7 +155,7 @@ async def test_el_duplicado_se_detecta_sin_importar_mayusculas(client, ctx):
 
     r = await client.patch(
         f"/api/plantas/{planta_id}",
-        headers=ctx["tokens"]["gerente"],
+        headers=ctx["tokens"]["admin"],
         json={"nombre": f"planta mayus {sufijo}"},
     )
     assert r.status_code == 409, r.text
@@ -168,7 +168,7 @@ async def test_guardar_el_mismo_nombre_no_choca_consigo_mismo(client, ctx):
 
     r = await client.patch(
         f"/api/plantas/{planta_id}",
-        headers=ctx["tokens"]["gerente"],
+        headers=ctx["tokens"]["admin"],
         json={"nombre": nombre, "ubicacion": "Los Andes"},
     )
     assert r.status_code == 200, r.text
@@ -181,7 +181,7 @@ async def test_rechaza_un_nombre_demasiado_corto(client, ctx):
 
     r = await client.patch(
         f"/api/plantas/{planta_id}",
-        headers=ctx["tokens"]["gerente"],
+        headers=ctx["tokens"]["admin"],
         json={"nombre": "X"},
     )
     assert r.status_code in (409, 422), r.text
@@ -190,7 +190,7 @@ async def test_rechaza_un_nombre_demasiado_corto(client, ctx):
 async def test_planta_inexistente_da_404(client, ctx):
     r = await client.patch(
         "/api/plantas/999999",
-        headers=ctx["tokens"]["gerente"],
+        headers=ctx["tokens"]["admin"],
         json={"nombre": "Planta Fantasma"},
     )
     assert r.status_code == 404, r.text
@@ -221,7 +221,7 @@ async def test_agrega_una_maquina_a_una_planta_existente(client, ctx):
 
     r = await client.post(
         f"/api/plantas/{planta_id}/maquinas",
-        headers=ctx["tokens"]["gerente"],
+        headers=ctx["tokens"]["admin"],
         json={"nombre": "Compressor N1", "codigo": f"N1-{sufijo}", "disciplina": disc},
     )
     assert r.status_code == 201, r.text
@@ -243,7 +243,7 @@ async def test_la_maquina_puede_quedar_sin_disciplina(client, ctx):
 
     r = await client.post(
         f"/api/plantas/{planta_id}/maquinas",
-        headers=ctx["tokens"]["gerente"],
+        headers=ctx["tokens"]["admin"],
         json={"nombre": "Generador", "codigo": f"G-{sufijo}"},
     )
     assert r.status_code == 201, r.text
@@ -260,7 +260,7 @@ async def test_reutiliza_una_disciplina_existente(client, ctx):
 
     r = await client.post(
         f"/api/plantas/{planta_id}/maquinas",
-        headers=ctx["tokens"]["gerente"],
+        headers=ctx["tokens"]["admin"],
         json={"nombre": "Tablero", "codigo": f"T-{sufijo}", "disciplina": disc},
     )
     assert r.status_code == 201, r.text
@@ -279,14 +279,14 @@ async def test_no_permite_dos_maquinas_con_el_mismo_codigo_en_la_planta(client, 
 
     primera = await client.post(
         f"/api/plantas/{planta_id}/maquinas",
-        headers=ctx["tokens"]["gerente"],
+        headers=ctx["tokens"]["admin"],
         json={"nombre": "Uno", "codigo": codigo},
     )
     assert primera.status_code == 201, primera.text
 
     segunda = await client.post(
         f"/api/plantas/{planta_id}/maquinas",
-        headers=ctx["tokens"]["gerente"],
+        headers=ctx["tokens"]["admin"],
         json={"nombre": "Dos", "codigo": codigo.upper()},
     )
     assert segunda.status_code == 409, segunda.text
@@ -307,7 +307,7 @@ async def test_el_mismo_codigo_si_se_permite_en_otra_planta(client, ctx):
     for planta in (planta_a, planta_b):
         r = await client.post(
             f"/api/plantas/{planta}/maquinas",
-            headers=ctx["tokens"]["gerente"],
+            headers=ctx["tokens"]["admin"],
             json={"nombre": "Misma", "codigo": codigo},
         )
         assert r.status_code == 201, r.text
@@ -316,7 +316,7 @@ async def test_el_mismo_codigo_si_se_permite_en_otra_planta(client, ctx):
 async def test_no_agrega_maquinas_a_una_planta_inexistente(client, ctx):
     r = await client.post(
         "/api/plantas/999999/maquinas",
-        headers=ctx["tokens"]["gerente"],
+        headers=ctx["tokens"]["admin"],
         json={"nombre": "Fantasma", "codigo": "F-1"},
     )
     assert r.status_code == 404, r.text

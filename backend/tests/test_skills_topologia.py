@@ -2,7 +2,7 @@
 
 Lo que se prueba acá es lo que podría salir caro: que ninguna tool exponga identificadores
 al modelo (§2 de la spec), que otra empresa no vea ni modifique nada, que la escritura
-requiera el permiso del mantenedor (gerente/admin) y que sin confirmación del usuario no
+requiera el permiso del mantenedor (admin) y que sin confirmación del usuario no
 se escriba nada (el candado de planta, mismo patrón que el de OTs en test_candado_ot.py).
 
 Los tests de integración contra la base son explícitos: lo que se crea se limpia (planta
@@ -33,21 +33,21 @@ from barb.services.ai_tools import (
 )
 from barb.services.chat_graph import crear_grafo
 
-GERENTE_ID = 2  # gerente de la empresa 1
-OTRA_EMPRESA_ID = 17  # gerente de la empresa 2 (tiene permiso sobre `plantas`)
+ADMIN_ID = 1  # admin de la empresa 1 (el mantenedor de plantas es solo del admin)
+OTRA_EMPRESA_ID = 16  # admin de la empresa 2 (tiene permiso sobre `plantas`)
 
 # Nada de estos identificadores puede aparecer en el schema que ve el modelo (spec §2).
 SENSIBLES = {"empresa_id", "usuario_id", "rol", "maquina_id", "planta_id"}
 
-HERRAMIENTAS = {t.name: t for t in crear_tools(empresa_id=1, usuario_id=GERENTE_ID, rol="gerente")}
+HERRAMIENTAS = {t.name: t for t in crear_tools(empresa_id=1, usuario_id=ADMIN_ID, rol="admin")}
 
 
 @pytest_asyncio.fixture
 async def ctx(db_pool):
-    """Tokens de sesión (gerente local + gerente ajeno) y limpieza por marca."""
+    """Tokens de sesión (admin local + admin ajeno) y limpieza por marca."""
     marca = uuid.uuid4().hex[:8]
     tokens: dict[str, dict[str, str]] = {}
-    for nombre, uid in (("gerente", GERENTE_ID), ("ajeno", OTRA_EMPRESA_ID)):
+    for nombre, uid in (("admin", ADMIN_ID), ("ajeno", OTRA_EMPRESA_ID)):
         token = f"test-skill-{nombre}-{marca}"
         await execute(
             "INSERT INTO sesion (token, usuario_id, expira_en) VALUES (%(t)s, %(u)s, NOW() + INTERVAL '10 minutes')",
@@ -69,7 +69,7 @@ async def _planta_con_dos_maquinas(client, ctx) -> int:
     """Una planta con 2 máquinas: la primera con SLA y costo, la segunda sin (NULL)."""
     r = await client.post(
         "/api/plantas/completa",
-        headers=ctx["tokens"]["gerente"],
+        headers=ctx["tokens"]["admin"],
         json={
             "nombre": f"Planta Skill {ctx['marca']}",
             "maquinas": [
@@ -116,7 +116,7 @@ async def test_listar_maquinas_planta_no_cruza_empresas(client, ctx):
     sus máquinas: el filtro de empresa va en el WHERE."""
     await _planta_con_dos_maquinas(client, ctx)
 
-    ajenas = {t.name: t for t in crear_tools(empresa_id=2, usuario_id=OTRA_EMPRESA_ID, rol="gerente")}
+    ajenas = {t.name: t for t in crear_tools(empresa_id=2, usuario_id=OTRA_EMPRESA_ID, rol="admin")}
     salida = await ajenas["listar_maquinas_planta"].ainvoke({"planta": f"Planta Skill {ctx['marca']}"})
 
     assert "No encontré" in salida
@@ -143,10 +143,10 @@ async def test_listar_maquinas_planta_muestra_sla_y_costo(client, ctx):
 
 @pytest.mark.asyncio
 async def test_actualizar_parametros_maquina_respeta_empresa(client, ctx):
-    """Una gerente de la empresa 2 no puede editar la máquina de la empresa 1 — y el valor
+    """Un admin de la empresa 2 no puede editar la máquina de la empresa 1 — y el valor
     en la base no cambia."""
     _, maquina_id = await _planta_con_dos_maquinas(client, ctx)
-    ajenas = {t.name: t for t in crear_tools(empresa_id=2, usuario_id=OTRA_EMPRESA_ID, rol="gerente")}
+    ajenas = {t.name: t for t in crear_tools(empresa_id=2, usuario_id=OTRA_EMPRESA_ID, rol="admin")}
 
     salida = await ajenas["actualizar_parametros_maquina"].ainvoke(
         {"nombre_maquina": f"Compresor {ctx['marca']}", "sla_horas": 1}
@@ -201,8 +201,8 @@ async def test_actualizar_parametros_maquina_cambia_sla_y_costo(client, ctx):
         borrador["sla_horas"],
         borrador["costo_inactividad_minuto"],
         empresa_id=1,
-        usuario_id=GERENTE_ID,
-        rol="gerente",
+        usuario_id=ADMIN_ID,
+        rol="admin",
     )
 
     assert f"Actualicé «Compresor {ctx['marca']}»" in salida
@@ -231,15 +231,15 @@ async def test_actualizar_parametros_aprobada_revalida_y_no_adivina(db_pool):
     """El write del gate revalida TODO: propuesta sin valores nuevos se descarta; la
     máquina se re-resuelve por CÓDIGO exacto y el permiso se vuelve a chequear."""
     # Sin valores: no hay nada que escribir.
-    salida = await actualizar_parametros_aprobada("PUMP-E4", None, None, empresa_id=1, usuario_id=GERENTE_ID, rol="gerente")
+    salida = await actualizar_parametros_aprobada("PUMP-E4", None, None, empresa_id=1, usuario_id=ADMIN_ID, rol="admin")
     assert "no indicaba ningún valor" in salida
 
     # Fuera de rango: no escribe aunque llegue con «sí».
-    salida = await actualizar_parametros_aprobada("PUMP-E4", 99999.0, None, empresa_id=1, usuario_id=GERENTE_ID, rol="gerente")
+    salida = await actualizar_parametros_aprobada("PUMP-E4", 99999.0, None, empresa_id=1, usuario_id=ADMIN_ID, rol="admin")
     assert "fuera de rango" in salida
 
     # Código que NO existe: no adivina, no escribe.
-    salida = await actualizar_parametros_aprobada("XYZ-NADIE", 8.0, None, empresa_id=1, usuario_id=GERENTE_ID, rol="gerente")
+    salida = await actualizar_parametros_aprobada("XYZ-NADIE", 8.0, None, empresa_id=1, usuario_id=ADMIN_ID, rol="admin")
     assert "No encontré la máquina" in salida
 
     # Sin permiso: el gate vuelve a chequear el rol, no confía en el turno anterior.
@@ -342,8 +342,8 @@ async def test_crear_planta_aprobada_crea_planta_y_maquinas(db_pool):
                 {"nombre": "Turbina 2", "codigo": "TUR-2", "disciplina": "Mecánica"},
             ],
             empresa_id=1,
-            usuario_id=GERENTE_ID,
-            rol="gerente",
+            usuario_id=ADMIN_ID,
+            rol="admin",
         )
 
         assert "creada con 2 máquina(s)" in salida
@@ -369,8 +369,8 @@ async def test_crear_planta_aprobada_revalida_la_propuesta(db_pool):
         "Planta Inválida",
         [{"nombre": "Sin código"}],
         empresa_id=1,
-        usuario_id=GERENTE_ID,
-        rol="gerente",
+        usuario_id=ADMIN_ID,
+        rol="admin",
     )
 
     despues = await fetch_one("SELECT COUNT(*) AS n FROM planta")
@@ -437,7 +437,7 @@ def _retrieval_aislado(monkeypatch):
 async def test_el_grafo_no_crea_planta_sin_confirmacion(db_pool, monkeypatch):
     """Turno ambiguo tras la propuesta: ni un INSERT. La propuesta se re-emite idéntica."""
     modelo = _LLMFalso()
-    grafo = crear_grafo(empresa_id=1, llm=modelo, usuario_id=GERENTE_ID, rol="gerente")
+    grafo = crear_grafo(empresa_id=1, llm=modelo, usuario_id=ADMIN_ID, rol="admin")
 
     estado = await grafo.ainvoke(_entrada([AIMessage(content=_propuesta_planta()), HumanMessage(content="mmm, no sé")]))
 
@@ -452,7 +452,7 @@ async def test_el_grafo_crea_planta_con_confirmacion(db_pool, monkeypatch):
     """Con el «sí» del usuario, el gate ejecuta `crear_planta_aprobada` y la planta queda
     creada con sus máquinas."""
     modelo = _LLMFalso()
-    grafo = crear_grafo(empresa_id=1, llm=modelo, usuario_id=GERENTE_ID, rol="gerente")
+    grafo = crear_grafo(empresa_id=1, llm=modelo, usuario_id=ADMIN_ID, rol="admin")
 
     try:
         estado = await grafo.ainvoke(_entrada([AIMessage(content=_propuesta_planta()), HumanMessage(content="sí, confirmo")]))
@@ -487,7 +487,7 @@ async def test_el_grafo_no_cambia_parametros_sin_confirmacion(db_pool, monkeypat
     re-emite idéntica. (El incidente del 31-10 en prod: el modelo escribió al instante;
     desde esta v2 el freno es el gate, no el prompt.)"""
     modelo = _LLMFalso()
-    grafo = crear_grafo(empresa_id=1, llm=modelo, usuario_id=GERENTE_ID, rol="gerente")
+    grafo = crear_grafo(empresa_id=1, llm=modelo, usuario_id=ADMIN_ID, rol="admin")
 
     fila_antes = await fetch_one("SELECT sla_horas FROM maquina WHERE codigo = 'PUMP-E4'")
     estado = await grafo.ainvoke(
@@ -505,7 +505,7 @@ async def test_el_grafo_cambia_parametros_con_confirmacion(db_pool, monkeypatch)
     """Con el «sí» del usuario, el gate ejecuta `actualizar_parametros_aprobada` y el SLA
     queda escrito (mensaje con antes → después)."""
     modelo = _LLMFalso()
-    grafo = crear_grafo(empresa_id=1, llm=modelo, usuario_id=GERENTE_ID, rol="gerente")
+    grafo = crear_grafo(empresa_id=1, llm=modelo, usuario_id=ADMIN_ID, rol="admin")
 
     try:
         estado = await grafo.ainvoke(_entrada([AIMessage(content=_propuesta_parametros()), HumanMessage(content="sí")]))

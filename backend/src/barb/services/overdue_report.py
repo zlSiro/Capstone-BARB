@@ -8,6 +8,11 @@ cuentan por fecha calendario en la zona `settings.notif_timezone`.
 `run_overdue_job` lo invoca el cron externo (`POST /api/jobs/ot-atrasadas`) o el
 script `scripts/run_overdue_job.py`: recorre las empresas con notificación
 activa, decide si "toca" enviar (`debe_enviar`) y manda un correo por empresa.
+
+Escalamiento: además de los destinatarios configurados, el correo llega a los
+usuarios activos con rol `gerente` y `supervisor` de la empresa
+(`destinatarios_escalamiento`), sin duplicados y en minúsculas. Así los atrasos
+llegan a quien decide aunque nadie haya cargado una lista de correos.
 """
 
 from __future__ import annotations
@@ -81,7 +86,8 @@ def debe_enviar(config: dict, ahora: datetime) -> bool:
     `ahora` debe ser tz-aware (en `notif_timezone`). Idempotente: dos llamadas
     dentro del mismo período solo envían la primera vez.
     """
-    if not config.get("activo") or not config.get("destinatarios"):
+    # Los destinatarios no se exigen acá: gerentes y supervisores reciben el reporte aunque la lista esté vacía.
+    if not config.get("activo"):
         return False
     ultimo = config.get("ultimo_envio")
     return ultimo is None or ultimo < ultimo_slot(config, ahora)
@@ -141,6 +147,33 @@ def render_reporte(empresa_nombre: str, ots: list[dict]) -> tuple[str, str, str]
 # Job
 # =============================================================================
 
+ROLES_ESCALAMIENTO = ("gerente", "supervisor")
+
+
+def combinar_destinatarios(*listas: list[str] | tuple[str, ...] | None) -> list[str]:
+    """Une listas de correos: recorta espacios, pasa a minúsculas, descarta vacíos y quita duplicados (conserva el orden)."""
+    vistos: dict[str, None] = {}
+    for lista in listas:
+        for correo in lista or ():
+            limpio = (correo or "").strip().lower()
+            if limpio:
+                vistos.setdefault(limpio, None)
+    return list(vistos)
+
+
+async def destinatarios_escalamiento(empresa_id: int) -> list[str]:
+    """Correos de los usuarios activos con rol gerente o supervisor de la empresa."""
+    filas = await fetch_all(
+        """
+        SELECT email FROM usuario
+        WHERE empresa_id = %(e)s AND activo AND rol = ANY(%(roles)s) AND COALESCE(email, '') <> ''
+        ORDER BY usuario_id
+        """,
+        {"e": empresa_id, "roles": list(ROLES_ESCALAMIENTO)},
+    )
+    return combinar_destinatarios([f["email"] for f in filas])
+
+
 async def get_config(empresa_id: int) -> dict | None:
     return await fetch_one("SELECT * FROM notificacion_config WHERE empresa_id = %(e)s", {"e": empresa_id})
 
@@ -176,11 +209,12 @@ async def run_overdue_job(*, force: bool = False, empresa_id: int | None = None)
         if not force and not debe_enviar(cfg, ahora):
             resultados.append({"empresa_id": eid, "enviado": False, "motivo": "fuera_de_horario_o_ya_enviado"})
             continue
-        if not cfg["destinatarios"]:
+        destinatarios = combinar_destinatarios(list(cfg["destinatarios"] or ()), await destinatarios_escalamiento(eid))
+        if not destinatarios:
             resultados.append({"empresa_id": eid, "enviado": False, "motivo": "sin_destinatarios"})
             continue
         try:
-            res = await enviar_reporte_empresa(eid, list(cfg["destinatarios"]))
+            res = await enviar_reporte_empresa(eid, destinatarios)
         except Exception as exc:  # una empresa con SMTP/destinatario roto no frena a las demás
             logger.exception("Falló el envío de OTs atrasadas (empresa %s)", eid)
             resultados.append({"empresa_id": eid, "enviado": False, "motivo": "error_envio", "detalle": str(exc)})

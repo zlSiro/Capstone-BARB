@@ -12,8 +12,8 @@
 
 /** Los 5 indicadores del bloque `financials`. */
 export interface Financials {
-  /** Inactividad evitada por las OTs completadas, valorizada. */
-  ahorro_generado: number;
+  /** Inactividad evitada por las OTs completadas, valorizada. Solo la recibe el gerente. */
+  ahorro_generado?: number;
   /**
    * Disponibilidad de planta en % (CGBIDA-519): `(horas - downtime) / horas * 100`.
    *
@@ -30,8 +30,8 @@ export interface Financials {
    * es el Cumplimiento de SLA. Es deuda de nomenclatura documentada en CGBIDA-410.
    */
   efficiency: number;
-  /** Suma del costo real, excluyendo las canceladas (CGBIDA-407). */
-  costo_total_acumulado: number;
+  /** Suma del costo real, excluyendo las canceladas (CGBIDA-407). Solo la recibe el gerente. */
+  costo_total_acumulado?: number;
   /** `null` cuando el rango pedido no alcanza el anio o hay menos de 2 fallas. */
   mtbfHours: number | null;
   /** Indica si el rango pedido justifica calcular un MTBF anual (CGBIDA-392). */
@@ -55,8 +55,8 @@ export interface MachineData {
   name: string;
   /** Volumen de OTs de la maquina, en el rango consultado. */
   total: number;
-  /** Valorizacion de la inactividad evitada de esa maquina. */
-  ahorroGenerado: number;
+  /** Valorizacion de la inactividad evitada de esa maquina. Solo la recibe el gerente. */
+  ahorroGenerado?: number;
   /** Tiempo medio de reparacion de esa maquina, en minutos. */
   mttr: number;
   /** Porcentaje de sus OTs completadas dentro del SLA. */
@@ -67,8 +67,9 @@ export interface MachineData {
    * Es una dimension distinta de `ahorroGenerado`: el ahorro valoriza la inactividad
    * evitada y el costo es lo que efectivamente se gasto en repuestos y servicios. Por eso
    * el ranking por costo no coincide con el ranking por volumen ni con el de ahorro.
+   * Solo la recibe el gerente.
    */
-  costo_total: number;
+  costo_total?: number;
 }
 
 /**
@@ -197,7 +198,10 @@ export interface HistoricoRespuesta {
 /** Respuesta completa del endpoint. */
 export interface FinancialStats {
   financials: Financials;
-  impacto_anual: ImpactoAnual;
+  /** Solo el gerente lo recibe (acción `ver_kpis_financieros`). */
+  impacto_anual?: ImpactoAnual;
+  /** `false` cuando el backend omitió los campos de costo para este rol; ausente = visibles. */
+  financieros_visibles?: boolean;
   trend14Days: TrendData[];
   machines: MachineData[];
   /**

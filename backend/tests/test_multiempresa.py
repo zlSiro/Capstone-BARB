@@ -15,6 +15,7 @@ from unittest.mock import patch
 import pytest
 from fastapi import HTTPException
 
+from barb.core.db import fetch_one
 from barb.core.permissions import ACCIONES, RUTAS, puede_acceder_ruta, puede_ejecutar_accion, resolver_empresa
 from barb.core.rate_limit import chat_rate_limiter
 from barb.core.security import get_current_user
@@ -28,6 +29,8 @@ SUPER = ("super@barb.com", "super123")
 ADMIN_E1 = ("admin@barb.com", "admin123")
 ADMIN_E2 = ("admin@mineranorte.cl", "minera123")
 GERENTE_E1 = ("gerente1@planta.com", "gerente123")
+SUPERVISOR_E1 = ("supervisor1@planta.com", "super123")
+SUPERVISOR_E2 = ("supervisor@mineranorte.cl", "minera123")
 GERENTE_E2 = ("gerente@mineranorte.cl", "minera123")
 TECNICO_E2 = ("pedro@mineranorte.cl", "minera123")
 ENGINEER_E1 = ("engineer1@planta.com", "engineer123")
@@ -119,13 +122,14 @@ async def test_ots_solo_de_la_propia_empresa(client):
 
 
 async def test_no_se_puede_ver_ni_modificar_una_ot_de_otra_empresa(client):
-    h1 = await _login(client, GERENTE_E1)
+    h1 = await _login(client, SUPERVISOR_E1)
     r = await client.get("/api/work-orders/OT-2026-101", headers=h1)  # OT de Minera Norte
     assert r.status_code == 404
-    r = await client.put("/api/work-orders/OT-2026-101/status", headers=h1, json={"status": "completed"})
+    r = await client.put("/api/work-orders/OT-2026-101/status", headers=h1, json={"status": "in_progress"})
     assert r.status_code == 404
+    # Eliminar OT está prohibido para todos los perfiles (D1): 403 por permisos, aunque la OT sea de otra empresa.
     r = await client.delete("/api/work-orders/OT-2026-101", headers=h1)
-    assert r.status_code == 404
+    assert r.status_code == 403
 
 
 async def test_parametro_empresa_id_es_ignorado_por_usuarios_de_empresa(client):
@@ -157,7 +161,7 @@ async def test_no_se_puede_crear_ot_con_maquina_o_tecnico_de_otra_empresa(client
 
 
 async def test_stats_y_topologia_solo_de_la_empresa(client):
-    h2 = await _login(client, ADMIN_E2)
+    h2 = await _login(client, GERENTE_E2)
     stats = (await client.get("/api/stats/financial-impact", headers=h2)).json()
     assert {m["name"] for m in stats["machines"]} <= {
         "Molino SAG 1", "Bomba de Pulpa BP-3", "Celda de Flotación CF-2", "Sistema Lubricación Molino",
@@ -237,15 +241,15 @@ async def test_super_crea_edita_suspende_y_elimina_empresa_con_gerente_inicial(c
         h_admin = await _login(client, (email_admin, "secreto123"))
         assert (await client.get("/api/work-orders", headers=h_admin)).json() == []
 
-        # Límite de licencia: max_usuarios=2 -> segundo usuario ok, tercero 409
+        # Límite de licencia: max_usuarios=2 -> segundo usuario ok, tercero 409 (el gerente solo crea administradores)
         ok = await client.post(
             "/api/usuarios", headers=h_admin,
-            json={"nombre": "Tec Uno", "email": f"t1-{sufijo}@test.cl", "password": "secreto123", "rol": "tecnico"},
+            json={"nombre": "Admin Uno", "email": f"a1-{sufijo}@test.cl", "password": "secreto123", "rol": "admin"},
         )
         assert ok.status_code == 201 and ok.json()["empresa_id"] == eid
         lleno = await client.post(
             "/api/usuarios", headers=h_admin,
-            json={"nombre": "Tec Dos", "email": f"t2-{sufijo}@test.cl", "password": "secreto123", "rol": "tecnico"},
+            json={"nombre": "Admin Dos", "email": f"a2-{sufijo}@test.cl", "password": "secreto123", "rol": "admin"},
         )
         assert lleno.status_code == 409
 
@@ -259,8 +263,8 @@ async def test_super_crea_edita_suspende_y_elimina_empresa_con_gerente_inicial(c
         # Con usuarios asociados no se puede eliminar
         assert (await client.delete(f"/api/empresas/{eid}", headers=hs)).status_code == 409
     finally:
-        # Limpieza: el super_usuario solo gestiona gerentes, así que el gerente (reactivada la
-        # empresa) elimina a los demás usuarios y luego el super elimina al gerente y la empresa.
+        # Limpieza: el super_usuario solo gestiona gerentes, así que el gerente (reactivada la empresa)
+        # elimina a los administradores y luego el super elimina al gerente y la empresa.
         await client.put(f"/api/empresas/{eid}", headers=hs, json={"estado": "active"})
         h_gerente = await _login(client, (email_admin, "secreto123"))
         for u in (await client.get("/api/usuarios", headers=h_gerente)).json():
@@ -339,6 +343,7 @@ async def test_gerente_puede_gestionar_usuarios_de_su_empresa(client):
     hg = await _login(client, ("gerente@mineranorte.cl", "minera123"))
     usuarios = (await client.get("/api/usuarios", headers=hg)).json()
     assert usuarios and {u["empresa_nombre"] for u in usuarios} == {"Minera Norte S.A."}
+    assert {u["rol"] for u in usuarios} == {"admin"}
     r = await client.post(
         "/api/usuarios", headers=hg,
         json={
@@ -367,11 +372,15 @@ async def test_admin_no_puede_asignar_otra_empresa_al_crear_usuario(client):
             await client.delete(f"/api/usuarios/{r.json()['usuario_id']}", headers=h1)
 
 
-async def test_no_puede_eliminarse_ni_desactivarse_a_si_mismo(client):
-    h1 = await _login(client, GERENTE_E1)
-    yo = next(u for u in (await client.get("/api/usuarios", headers=h1)).json() if u["email"] == GERENTE_E1[0])
-    assert (await client.delete(f"/api/usuarios/{yo['usuario_id']}", headers=h1)).status_code == 409
-    assert (await client.put(f"/api/usuarios/{yo['usuario_id']}", headers=h1, json={"activo": False})).status_code == 409
+async def test_nadie_se_modifica_a_si_mismo(client):
+    """Con la gestión en cascada nadie alcanza su propio registro: se responde 404 (como a cualquier usuario fuera de alcance)."""
+    for creds in (GERENTE_E1, ADMIN_E1):
+        h = await _login(client, creds)
+        yo = await fetch_one("SELECT usuario_id FROM usuario WHERE email = %(e)s", {"e": creds[0]})
+        assert (await client.delete(f"/api/usuarios/{yo['usuario_id']}", headers=h)).status_code in (404, 409), creds[0]
+        baja = await client.put(f"/api/usuarios/{yo['usuario_id']}", headers=h, json={"activo": False})
+        assert baja.status_code in (404, 409)
+        assert (await fetch_one("SELECT activo FROM usuario WHERE email = %(e)s", {"e": creds[0]}))["activo"] is True
 
 
 async def test_admin_solo_gestiona_usuarios_operativos(client):
@@ -387,16 +396,76 @@ async def test_admin_solo_gestiona_usuarios_operativos(client):
         assert r.status_code == 403, rol
 
     # No toca a un gerente existente: 404, como si no existiera.
-    hg = await _login(client, GERENTE_E1)
-    gerente = next(u for u in (await client.get("/api/usuarios", headers=hg)).json() if u["email"] == GERENTE_E1[0])
+    gerente = await fetch_one("SELECT usuario_id FROM usuario WHERE email = %(e)s", {"e": GERENTE_E1[0]})
     assert (await client.put(f"/api/usuarios/{gerente['usuario_id']}", headers=h, json={"nombre": "X Y"})).status_code == 404
     assert (await client.delete(f"/api/usuarios/{gerente['usuario_id']}", headers=h)).status_code == 404
 
 
-async def test_gerente_si_ve_y_gestiona_administradores(client):
+async def test_gerente_solo_gestiona_administradores(client):
+    """Cascada: el gerente crea, ve, edita y elimina únicamente administradores de su empresa."""
     hg = await _login(client, GERENTE_E1)
     roles = {u["rol"] for u in (await client.get("/api/usuarios", headers=hg)).json()}
-    assert {"admin", "gerente"} <= roles
+    assert roles == {"admin"}
+
+    base = {"nombre": "Intento", "password": "secreto123"}
+    for rol in ("operador", "tecnico", "supervisor", "engineer", "gerente", "super_usuario"):
+        r = await client.post("/api/usuarios", headers=hg, json={**base, "email": f"x-{uuid.uuid4().hex[:6]}@x.cl", "rol": rol})
+        assert r.status_code == 403, rol
+
+    # No ve ni toca a un usuario operativo ni a otro gerente: 404, como si no existiera.
+    operativo = await fetch_one("SELECT usuario_id FROM usuario WHERE email = %(e)s", {"e": OPERADOR_E1[0]})
+    assert (await client.put(f"/api/usuarios/{operativo['usuario_id']}", headers=hg, json={"nombre": "X Y"})).status_code == 404
+    assert (await client.delete(f"/api/usuarios/{operativo['usuario_id']}", headers=hg)).status_code == 404
+
+    # Sí crea, edita y elimina un administrador.
+    r = await client.post("/api/usuarios", headers=hg, json={**base, "email": f"adm-{uuid.uuid4().hex[:6]}@x.cl", "rol": "admin"})
+    assert r.status_code == 201, r.text
+    nuevo = r.json()
+    try:
+        assert nuevo["rol"] == "admin"
+        r = await client.put(f"/api/usuarios/{nuevo['usuario_id']}", headers=hg, json={"nombre": "Admin Renombrado"})
+        assert r.status_code == 200 and r.json()["nombre"] == "Admin Renombrado"
+        # No puede ascender al administrador a otro perfil.
+        assert (await client.put(f"/api/usuarios/{nuevo['usuario_id']}", headers=hg, json={"rol": "gerente"})).status_code == 403
+    finally:
+        assert (await client.delete(f"/api/usuarios/{nuevo['usuario_id']}", headers=hg)).status_code == 204
+
+
+async def test_no_se_pierde_al_ultimo_supervisor_activo_de_la_empresa(client):
+    """Minera Norte tiene un único supervisor: no se puede desactivar, eliminar ni cambiarle el rol (409)."""
+    h = await _login(client, ADMIN_E2)
+    unico = await fetch_one("SELECT usuario_id FROM usuario WHERE email = %(e)s", {"e": SUPERVISOR_E2[0]})
+    url = f"/api/usuarios/{unico['usuario_id']}"
+    assert (await fetch_one("SELECT COUNT(*) AS n FROM usuario WHERE rol = 'supervisor' AND activo AND empresa_id = "
+                            "(SELECT empresa_id FROM usuario WHERE usuario_id = %(i)s)", {"i": unico["usuario_id"]}))["n"] == 1
+    for cambio in ({"activo": False}, {"rol": "tecnico"}):
+        r = await client.put(url, headers=h, json=cambio)
+        assert r.status_code == 409, cambio
+        assert "último supervisor" in r.json()["detail"]
+    assert (await client.delete(url, headers=h)).status_code == 409
+    fila = await fetch_one("SELECT rol, activo FROM usuario WHERE usuario_id = %(i)s", {"i": unico["usuario_id"]})
+    assert (fila["rol"], fila["activo"]) == ("supervisor", True)
+    # Editar otros datos del supervisor sí se puede.
+    assert (await client.put(url, headers=h, json={"nombre": "Diego Fuentes"})).status_code == 200
+
+
+async def test_con_otro_supervisor_activo_se_puede_desactivar_y_eliminar(client):
+    h = await _login(client, ADMIN_E1)
+    r = await client.post(
+        "/api/usuarios", headers=h,
+        json={
+            "nombre": "Supervisor Temporal",
+            "email": f"sup-{uuid.uuid4().hex[:6]}@x.cl",
+            "password": "secreto123",
+            "rol": "supervisor",
+        },
+    )
+    assert r.status_code == 201, r.text
+    nuevo = r.json()
+    try:
+        assert (await client.put(f"/api/usuarios/{nuevo['usuario_id']}", headers=h, json={"activo": False})).status_code == 200
+    finally:
+        assert (await client.delete(f"/api/usuarios/{nuevo['usuario_id']}", headers=h)).status_code == 204
 
 
 async def test_email_duplicado_devuelve_409(client):
