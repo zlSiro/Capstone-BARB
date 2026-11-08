@@ -9,7 +9,9 @@ import { SaludOperacionalComponent } from './components/salud-operacional/salud-
 import { MachineRankingComponent } from './components/machine-ranking/machine-ranking.component';
 import { TipoDonutComponent } from './components/tipo-donut/tipo-donut.component';
 import { AlertaEstancadasComponent } from './components/alerta-estancadas/alerta-estancadas.component';
-import { ImpactoEscenariosComponent } from './components/impacto-escenarios/impacto-escenarios.component';
+import { CostoDetalleComponent } from './components/costo-detalle/costo-detalle.component';
+import { SlaHistoricoComponent } from './components/sla-historico/sla-historico.component';
+import { TopMaquinasComponent } from './components/top-maquinas/top-maquinas.component';
 
 /** Rangos del selector temporal (CGBIDA-397). `'all'` = histórico completo. */
 export type RangoTemporal = 7 | 30 | 90 | 'all';
@@ -30,7 +32,7 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, MachineRankingComponent, TipoDonutComponent, AlertaEstancadasComponent, ImpactoEscenariosComponent, SaludOperacionalComponent],
+  imports: [CommonModule, MachineRankingComponent, TipoDonutComponent, AlertaEstancadasComponent, CostoDetalleComponent, SaludOperacionalComponent, SlaHistoricoComponent, TopMaquinasComponent],
   template: `
     <!--
       max-w-screen-2xl (1536px) + mx-auto: sin esto el dashboard se estiraba al 100% del
@@ -197,6 +199,21 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
               </div>
               <p class="mt-1 text-2xl font-bold" [class]="kpi.color">{{ kpi.valor }}</p>
               <p class="mt-1 text-sm text-tinta-suave ">{{ kpi.descripcion }}</p>
+              <!--
+                Detalle de costos (CGBIDA-518). El boton vive SOLO en la tarjeta de Costo
+                Directo y abre un modal con el desglose por maquina.
+              -->
+              @if (kpi.clave === 'costo') {
+                <button
+                  type="button"
+                  (click)="abrirCostos()"
+                  class="mt-2 inline-flex items-center gap-1 rounded-control border
+                         border-borde-control px-2 py-1 text-sm font-semibold text-accion
+                         transition-colors hover:border-accion focus:border-accion
+                         focus:outline-none"
+                  data-testid="ver-detalle-costos"
+                >{{ t().costDetailButton }}</button>
+              }
             </div>
           }
         </div>
@@ -213,9 +230,11 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
           porque su contenido (dona de 200 px + leyenda de 214 px) es angosto y se centra.
         -->
         <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <!-- Salud Operacional (CGBIDA-435): el indicador como heroe de la tarjeta, con
-               el anillo y el desglose de SLA, MTBF y backlog. Sin la tendencia al pie, que
-               se quito por ruidosa. -->
+          <!-- Evolucion del SLA (CGBIDA-515). Ocupa las dos columnas: el eje X necesita
+               ancho para las etiquetas de periodo y la linea se lee mejor. -->
+          <app-sla-historico class="min-w-0 lg:col-span-2" />
+
+          <!-- Salud Operacional (CGBIDA-520): semaforo simplificado con el motivo. -->
           <app-salud-operacional class="min-w-0" [salud]="salud()" />
 
           <!-- El ranking muestra su propio estado vacío si no hay equipos. -->
@@ -226,6 +245,9 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
             [verFinanzas]="verFinanzas()"
           />
 
+          <!-- Top 5 por maquina (CGBIDA-516 y 517): peor MTTR y peor MTBF. -->
+          <app-top-maquinas class="min-w-0" [mttr]="peorMttr()" [mtbf]="peorMtbf()" />
+
           <!-- Dona por tipo de intervencion (CGBIDA-395). Se auto-oculta sin datos. -->
           <app-tipo-donut class="min-w-0" [datos]="porTipo()" />
 
@@ -235,6 +257,13 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
             <app-impacto-escenarios class="min-w-0" [impacto]="impacto()" />
           }
         </div>
+
+        <!-- Modal de costos desglosados (CGBIDA-518). -->
+        <app-costo-detalle
+          [abierto]="modalCostos()"
+          [maquinas]="equiposPorCosto()"
+          (cerrar)="cerrarCostos()"
+        />
       }
     </div>
   `
@@ -304,14 +333,20 @@ export class DashboardComponent implements OnInit {
   /** Top 5 por costo real, que no coincide con el top 5 por volumen (CGBIDA-435). */
   protected readonly equiposPorCosto = computed(() => this.stats()?.machines_por_costo ?? []);
 
+  /** Top 5 con peor MTTR: las que mas tardan en repararse (CGBIDA-516). */
+  protected readonly peorMttr = computed(() => this.stats()?.top_5_peor_mttr ?? []);
+
+  /** Top 5 con peor MTBF: las que menos aguantan sin fallar (CGBIDA-517). */
+  protected readonly peorMtbf = computed(() => this.stats()?.top_5_peor_mtbf ?? []);
+
   /** Distribucion por tipo de intervencion, para la dona. */
   protected readonly porTipo = computed(() => this.stats()?.por_tipo ?? []);
 
-  /** Impacto anual, para el grafico de escenarios (CGBIDA-436). */
-  protected readonly impacto = computed(() => this.stats()?.impacto_anual ?? null);
-
-  /** Semaforo compuesto de salud operacional (CGBIDA-435). */
+  /** Semaforo simplificado de salud operacional (CGBIDA-520). */
   protected readonly salud = computed(() => this.stats()?.salud_operacional ?? null);
+
+  /** Visibilidad del modal de costos desglosados (CGBIDA-518). */
+  protected readonly modalCostos = signal(false);
 
   /** Ordenes estancadas para el banner. Un total de 0 lo oculta. */
   protected readonly estancadas = computed(
@@ -331,7 +366,6 @@ export class DashboardComponent implements OnInit {
     const s = this.stats();
     if (!s) return [];
     const f = s.financials;
-    const imp = s.impacto_anual;
     const tx = this.t();
     const mtbfOk = f.mtbf_visible && f.mtbfHours !== null;
 
@@ -363,6 +397,22 @@ export class DashboardComponent implements OnInit {
         valor: `${f.efficiency}%`,
         descripcion: tx.efficiencySub,
         color: 'text-ok ',
+        tooltip: ''
+      },
+      {
+        clave: 'disponibilidad',
+        etiqueta: tx.disponibilidadPlanta,
+        valor: `${(f.disponibilidad_planta ?? 0).toFixed(1)}%`,
+        descripcion: tx.disponibilidadSub,
+        color: 'text-ok ',
+        tooltip: ''
+      },
+      {
+        clave: 'mttr',
+        etiqueta: tx.mttrGlobal,
+        valor: `${f.mttr}m`,
+        descripcion: tx.mttrSub,
+        color: 'text-tinta ',
         tooltip: ''
       },
       {
@@ -413,6 +463,16 @@ export class DashboardComponent implements OnInit {
   /** Cambia la moneda de presentación (CGBIDA-432). */
   protected cambiarMoneda(moneda: Moneda): void {
     this.currency.setMoneda(moneda);
+  }
+
+  /** Abre el modal de costos desglosados (CGBIDA-518). */
+  protected abrirCostos(): void {
+    this.modalCostos.set(true);
+  }
+
+  /** Cierra el modal (X, ESC o clic en el overlay). */
+  protected cerrarCostos(): void {
+    this.modalCostos.set(false);
   }
 
   /** Cambia la unidad del MTBF. El semáforo la refleja porque comparte el servicio. */

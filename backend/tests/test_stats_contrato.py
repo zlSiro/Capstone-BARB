@@ -65,6 +65,8 @@ async def test_contrato_del_endpoint_tiene_las_claves_exactas(client):
     compuesto de SLA, MTBF y backlog para el semaforo).
     ACTUALIZADO A PROPOSITO en HU-18 (roles): se agrego `financieros_visibles`; solo el gerente recibe los campos
     de costo (ver test_stats_kpis_financieros.py), por eso este contrato se mide con el gerente.
+    ACTUALIZADO A PROPOSITO en el rediseno del dashboard (CGBIDA-516/517): se agregaron
+    `top_5_peor_mttr` y `top_5_peor_mtbf`, y el semaforo paso a la forma simplificada.
 
     Esta asercion es un guardarrail: se toca cuando el contrato cambia a proposito, nunca
     para que una prueba pase.
@@ -73,6 +75,7 @@ async def test_contrato_del_endpoint_tiene_las_claves_exactas(client):
     assert set(d) == {
         "financials", "trend14Days", "machines", "machines_por_costo", "impacto_anual",
         "por_tipo", "estancadas", "salud_operacional", "financieros_visibles",
+        "top_5_peor_mttr", "top_5_peor_mtbf",
     }, sorted(d)
 
 

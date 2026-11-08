@@ -1,25 +1,24 @@
 import { Component, computed, inject, input } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ComponenteSalud, EstadoSalud, SaludOperacionalData } from '../../../../core/models';
+import { EstadoSalud, SaludOperacionalData } from '../../../../core/models';
 import { I18nService } from '../../../../core/i18n/i18n.service';
-import { MtbfUnitService } from '../../../../core/services/mtbf-unit.service';
 
 /**
- * Tarjeta de Salud Operacional (CGBIDA-435).
+ * Tarjeta de Salud Operacional simplificada (CGBIDA-520).
  *
- * Es la pieza que Samuel pidió: un indicador fuerte, no un gráfico de líneas más.
+ * El rediseño del dashboard redujo el semáforo a DOS señales que el supervisor puede
+ * accionar hoy: OTs estancadas/vencidas y cumplimiento de SLA. Por eso esta tarjeta ya no
+ * dibuja el anillo del índice compuesto ni las tres sub-tarjetas (SLA, MTBF, backlog):
  *
- * - **El anillo** muestra el índice 0-100 y se pinta con el color del estado. El número
- *   grande es lo primero que se lee.
- * - **Los tres componentes** (SLA, MTBF, backlog) van debajo del anillo: son la respuesta
- *   a "¿por qué este color?". Un semáforo sin desglose es otra caja negra.
+ * - **El semáforo grande** dice el estado de un vistazo.
+ * - **El motivo** (texto que manda el backend) explica POR QUÉ está en ese color. Un color
+ *   sin causa no es accionable, y el motivo lo redacta el backend para que haya una sola
+ *   fuente de verdad.
+ * - **Una línea** con el % de SLA y la cantidad de OTs vencidas: las dos cifras que
+ *   sostienen el color.
  *
- * La tendencia de backlog que vivía al pie se quitó: con 14 puntos y valores de 1 a 4 se
- * veía como un electrocardiograma y no aportaba. El espacio que dejó se usa para agrandar
- * el anillo y centrar la tarjeta.
- *
- * Si el estado es `insuficiente` el anillo se dibuja en gris y con guion, nunca en verde:
- * el backend se niega a pintar verde lo que no puede medir, y la interfaz no lo contradice.
+ * Si el backend no manda datos (`null`) el estado es `insuficiente` y se pinta en gris:
+ * la interfaz no inventa un verde que el backend no calculó.
  */
 @Component({
   selector: 'app-salud-operacional',
@@ -27,8 +26,7 @@ import { MtbfUnitService } from '../../../../core/services/mtbf-unit.service';
   imports: [CommonModule],
   template: `
     <figure
-      class="relative flex h-full flex-col justify-center rounded-control border border-borde
-             bg-superficie p-5 "
+      class="flex h-full flex-col rounded-control border border-borde bg-superficie p-5 "
       data-testid="salud-operacional"
     >
       <figcaption class="mb-1">
@@ -38,109 +36,56 @@ import { MtbfUnitService } from '../../../../core/services/mtbf-unit.service';
         <p class="text-sm text-tinta-suave ">{{ t().healthCardSub }}</p>
       </figcaption>
 
-      <!--
-        Anillo de 180 px con trazo de 16: el tamano lo vuelve el heroe de la tarjeta, y
-        el trazo fino deja 64 px de radio libre para el texto del centro.
-      -->
-      <div class="flex justify-center">
-        <svg
-          [attr.viewBox]="'0 0 ' + LADO + ' ' + LADO"
-          class="h-[180px] w-[180px]"
-          role="img"
-          [attr.aria-label]="t().healthCardTitle + ': ' + etiquetaEstado()"
-          data-testid="anillo-salud"
-        >
-          <circle
-            [attr.cx]="CENTRO" [attr.cy]="CENTRO" [attr.r]="RADIO"
-            fill="none" [attr.stroke-width]="TRAZO"
-            class="stroke-borde "
-          />
-          <circle
-            [attr.cx]="CENTRO" [attr.cy]="CENTRO" [attr.r]="RADIO"
-            fill="none" [attr.stroke-width]="TRAZO" stroke-linecap="round"
-            [attr.stroke]="color()"
-            [attr.stroke-dasharray]="arco()"
-            [attr.transform]="'rotate(-90 ' + CENTRO + ' ' + CENTRO + ')'"
-            data-testid="arco-salud"
-          />
-          <!--
-            El texto va mas chico y mas separado del trazo. Antes era 38 px dentro de un
-            radio libre de 53: "92.9%" lo tocaba y se veia apretado. Con 30 px y 64 px de
-            radio libre quedan ~10 px de aire a cada lado, suficiente incluso para "100.0%".
-          -->
-          <text
-            [attr.x]="CENTRO" [attr.y]="CENTRO - 2" text-anchor="middle"
-            font-size="30" font-weight="800"
-            [attr.fill]="color()"
-            data-testid="indice-salud"
-          >{{ textoIndice() }}</text>
-          <text
-            [attr.x]="CENTRO" [attr.y]="CENTRO + 24" text-anchor="middle"
-            font-size="12" font-weight="600"
-            class="fill-tinta-suave "
+      <div class="flex flex-1 flex-col items-center justify-center gap-4 py-4">
+        <!-- Semaforo grande: el estado se lee sin interpretar nada. -->
+        <div class="flex items-center gap-5">
+          <span
+            class="flex h-24 w-24 shrink-0 items-center justify-center rounded-full
+                   text-4xl font-extrabold text-white shadow-lg"
+            [style.background]="color()"
+            role="img"
+            [attr.aria-label]="t().healthCardTitle + ': ' + etiquetaEstado()"
+            data-testid="luz-salud"
+          >{{ icono() }}</span>
+          <p
+            class="text-3xl font-extrabold leading-tight"
+            [style.color]="color()"
             data-testid="estado-salud"
-          >{{ etiquetaEstado() }}</text>
-        </svg>
-      </div>
+          >{{ etiquetaEstado() }}</p>
+        </div>
 
-      <!-- Desglose: por qué ese color. Tres sub-tarjetas con el estado en palabras. -->
-      <ul class="mt-2 grid grid-cols-3 gap-2" data-testid="componentes-salud">
-        @for (c of componentes(); track c.clave) {
-          <li
-            class="rounded-control border border-borde px-2 py-1.5 text-center
-                   "
-            [attr.data-testid]="'componente-' + c.clave"
-          >
-            <p class="flex items-center justify-center gap-1 text-sm text-tinta-suave ">
-              <span
-                class="inline-block h-2 w-2 shrink-0 rounded-full"
-                [style.background]="c.color"
-              ></span>
-              {{ c.etiqueta }}
-            </p>
-            <p class="mt-1 text-sm font-bold tabular-nums text-tinta ">
-              {{ c.valor }}
-            </p>
-            <p class="text-sm font-medium" [style.color]="c.color">{{ c.estadoTexto }}</p>
-          </li>
-        }
-      </ul>
-
-      @if (insuficiente()) {
+        <!-- Motivo: lo redacta el backend, no se arma en el frontend. -->
         <p
-          class="mt-2 rounded-control bg-media-suave px-3 py-1.5 text-sm text-media
-                  "
-          data-testid="salud-aviso"
-        >{{ t().healthInsufficient }}</p>
-      }
+          class="max-w-md text-center text-sm font-medium text-tinta "
+          data-testid="motivo-salud"
+        >{{ motivo() }}</p>
 
+        <!-- Linea simple con las dos cifras que sostienen el color. -->
+        <p class="text-sm text-tinta-suave " data-testid="resumen-salud">
+          <span data-testid="sla-salud">{{ t().healthComponentSla }} {{ slaTexto() }}</span>
+          <span class="mx-2 text-borde-control ">·</span>
+          <span data-testid="vencidas-salud">
+            {{ vencidas() }} {{ t().healthOtsVencidas }}
+          </span>
+        </p>
+      </div>
     </figure>
   `
 })
 export class SaludOperacionalComponent {
   private i18n = inject(I18nService);
 
-  /** Unidad del MTBF compartida con la tarjeta de KPI (CGBIDA-435). */
-  private mtbf = inject(MtbfUnitService);
-
-  /** Semáforo compuesto que calcula el backend (CGBIDA-438). */
+  /** Semáforo simplificado que calcula el backend (CGBIDA-520). */
   readonly salud = input.required<SaludOperacionalData | null>();
 
   protected readonly t = computed(() => this.i18n.tree().financial);
 
-  // Anillo de 180 px: r=72 con trazo de 16 deja 64 px de radio libre para el porcentaje,
-  // que es lo que se mira primero. Antes era de 150 con el texto a 38 px y se tocaban.
-  protected readonly LADO = 180;
-  protected readonly CENTRO = 90;
-  protected readonly RADIO = 72;
-  protected readonly TRAZO = 16;
-  private readonly CIRCUNFERENCIA = 2 * Math.PI * this.RADIO;
-
-  private readonly estado = computed<EstadoSalud>(() => this.salud()?.estado ?? 'insuficiente');
-
-  protected readonly insuficiente = computed(() => this.estado() === 'insuficiente');
+  /** Sin datos se pinta gris (`insuficiente`), nunca verde. */
+  protected readonly estado = computed<EstadoSalud>(() => this.salud()?.estado ?? 'insuficiente');
 
   protected readonly color = computed(() => COLOR_POR_ESTADO[this.estado()]);
+
+  protected readonly icono = computed(() => ICONO_POR_ESTADO[this.estado()]);
 
   protected readonly etiquetaEstado = computed(() => {
     const t = this.t();
@@ -156,90 +101,19 @@ export class SaludOperacionalComponent {
     }
   });
 
-  /** Texto del centro: el índice, o un guion cuando no se puede calcular. */
-  protected readonly textoIndice = computed(() => {
-    const i = this.salud()?.indice;
-    return i === null || i === undefined ? '—' : `${i.toFixed(1)}%`;
+  /** Motivo del backend; si no hay datos, el aviso de siempre. */
+  protected readonly motivo = computed(() => {
+    const m = this.salud()?.motivo;
+    return m && m.trim() ? m : this.t().healthInsufficient;
   });
 
-  /** Trazo del anillo. Sin índice se dibuja vacío, no al 100%. */
-  protected readonly arco = computed(() => {
-    const i = this.salud()?.indice ?? 0;
-    const avance = (Math.max(0, Math.min(100, i)) / 100) * this.CIRCUNFERENCIA;
-    return `${avance.toFixed(1)} ${this.CIRCUNFERENCIA.toFixed(1)}`;
+  /** SLA del período, con un decimal. Guion si no vino. */
+  protected readonly slaTexto = computed(() => {
+    const sla = this.salud()?.sla;
+    return typeof sla === 'number' ? `${sla.toFixed(1)}%` : '—';
   });
 
-  protected readonly componentes = computed(() => {
-    const c = this.salud()?.componentes;
-    const t = this.t();
-    return [
-      {
-        clave: 'sla',
-        etiqueta: t.healthComponentSla,
-        valor: formatear(c?.sla, (v) => `${v}%`),
-        estadoTexto: this.etiquetaDeEstado(c?.sla),
-        color: colorDe(c?.sla),
-      },
-      {
-        clave: 'mtbf',
-        // La unidad la manda el servicio compartido: si el usuario elige días en la
-        // tarjeta de KPI, aquí también se ven días. Es el mismo MTBF.
-        etiqueta: t.healthComponentMtbf,
-        valor: this.mtbf.formatear(c?.mtbf?.valor ?? null, this.sufijoMtbf()),
-        estadoTexto: this.etiquetaDeEstado(c?.mtbf),
-        color: colorDe(c?.mtbf),
-      },
-      {
-        clave: 'backlog',
-        etiqueta: t.healthComponentBacklog,
-        valor: formatear(c?.backlog, (v) => `${v} ${t.healthWeeks}`),
-        estadoTexto: this.etiquetaDeEstado(c?.backlog),
-        color: colorDe(c?.backlog),
-      },
-    ];
-  });
-
-  /** Sufijo corto del MTBF en la unidad activa. */
-  private readonly sufijoMtbf = computed(() => {
-    const t = this.t();
-    switch (this.mtbf.unidad()) {
-      case 'horas':
-        return t.mtbfUnitShortHoras;
-      case 'meses':
-        return t.mtbfUnitShortMeses;
-      default:
-        return t.mtbfUnitShortDias;
-    }
-  });
-
-  /** Etiqueta del estado de UN componente, en palabras. */
-  private etiquetaDeEstado(c: ComponenteSalud | undefined): string {
-    const t = this.t();
-    switch (c?.estado) {
-      case 'verde':
-        return t.healthEstadoVerde;
-      case 'amarillo':
-        return t.healthEstadoAmarillo;
-      case 'rojo':
-        return t.healthEstadoRojo;
-      default:
-        return t.healthEstadoInsuficiente;
-    }
-  }
-
-}
-
-function colorDe(componente: ComponenteSalud | undefined): string {
-  if (!componente) return 'var(--neutro)';
-  return COLOR_POR_ESTADO[componente.estado];
-}
-
-function formatear(
-  componente: ComponenteSalud | undefined,
-  formato: (valor: number) => string
-): string {
-  if (!componente || componente.valor === null || componente.valor === undefined) return '—';
-  return formato(componente.valor);
+  protected readonly vencidas = computed(() => this.salud()?.vencidas ?? 0);
 }
 
 const COLOR_POR_ESTADO: Record<EstadoSalud, string> = {
@@ -249,7 +123,10 @@ const COLOR_POR_ESTADO: Record<EstadoSalud, string> = {
   insuficiente: 'var(--neutro)',
 };
 
-
-
-
-
+/** Glifo del semáforo. Se usa texto y no un icono para no sumar una dependencia. */
+const ICONO_POR_ESTADO: Record<EstadoSalud, string> = {
+  verde: '✓',
+  amarillo: '!',
+  rojo: '✕',
+  insuficiente: '—',
+};
