@@ -6,7 +6,9 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { environment } from '../../../../../environments/environment';
 import { WorkOrder, WorkOrderStatus } from '../../../../core/models';
 import { PermissionsService } from '../../../../core/permissions/permissions.service';
+import { AuthService } from '../../../../core/services/auth.service';
 import { OtLiveSimulatorService } from '../../../../core/services/ot-live-simulator.service';
+import { OtRealtimeEvent, OtRealtimeService } from '../../../../core/services/ot-realtime.service';
 import { TenantContextService } from '../../../../core/services/tenant-context.service';
 import { ToastService } from '../../../../core/services/toast.service';
 import { WorkOrdersService } from '../../../../core/services/work-orders.service';
@@ -37,7 +39,7 @@ import { I18nService } from '../../../../core/i18n/i18n.service';
           <div class="flex flex-wrap items-center gap-3">
             <h1 id="ot-title" class="text-2xl font-bold text-tinta ">{{ 'ot.ordenes_de_trabajo' | translate: { v0: orders().length } }}</h1>
             @if (liveEnabled) {
-              <app-ot-live-indicator [state]="simulator.connection()" />
+              <app-ot-live-indicator [state]="simulationEnabled ? simulator.connection() : realtime.connection()" [simulated]="simulationEnabled" />
             }
           </div>
           <p class="text-sm text-tinta-suave ">
@@ -156,10 +158,16 @@ export class WorkOrdersListComponent implements OnInit {
   protected readonly permissions = inject(PermissionsService);
   protected readonly tenant = inject(TenantContextService);
   protected readonly simulator = inject(OtLiveSimulatorService);
+  protected readonly realtime = inject(OtRealtimeService);
+  private readonly auth = inject(AuthService);
   private readonly destroyRef = inject(DestroyRef);
 
-  protected readonly liveEnabled = environment.liveSimulation;
-  /** Filas con un cambio simulado reciente (resaltadas ~2 s). */
+  /** Demo con cambios falsos (apagada por defecto). Tiene prioridad sobre el canal real si alguien la enciende. */
+  protected readonly simulationEnabled = environment.liveSimulation;
+  /** Cambios reales de otros usuarios, por SSE. */
+  protected readonly realtimeEnabled = environment.liveRealtime && !environment.liveSimulation;
+  protected readonly liveEnabled = this.simulationEnabled || this.realtimeEnabled;
+  /** Filas con un cambio en vivo reciente (resaltadas ~2 s). */
   protected readonly recentlyChanged = signal<ReadonlySet<string>>(new Set());
 
   protected readonly orders = signal<WorkOrder[]>([]);
@@ -206,7 +214,60 @@ export class WorkOrdersListComponent implements OnInit {
 
   ngOnInit(): void {
     this.load();
-    if (this.liveEnabled) this.startLive();
+    if (this.simulationEnabled) this.startLive();
+    else if (this.realtimeEnabled) this.startRealtime();
+  }
+
+  private startRealtime(): void {
+    this.realtime.start();
+    this.destroyRef.onDestroy(() => this.realtime.stop());
+    this.realtime.events.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(event => this.onRealtimeEvent(event));
+  }
+
+  /** Cambios hechos por OTROS usuarios. Lo que hace este usuario ya se refleja con la respuesta de su propia petición. */
+  private onRealtimeEvent(event: OtRealtimeEvent): void {
+    if (event.type === 'resync') {
+      this.reloadSilently();
+      return;
+    }
+    if (event.usuario_id !== null && event.usuario_id === Number(this.auth.user()?.id)) return;
+
+    if (event.type === 'status_changed') {
+      const previous = this.orders().find(ot => ot.numero_ot === event.numero_ot);
+      if (!previous) return;
+      this.refreshOrder(event.numero_ot, true);
+      this.toast.info(
+        `${event.numero_ot}: ${statusMeta(event.estado_anterior).label} → ${statusMeta(event.estado_nuevo).label}`,
+      );
+    } else if (event.type === 'created') {
+      this.reloadSilently();
+      this.toast.info(this.i18n.tr('ot.nueva_ot_creada', { v0: event.numero_ot }));
+    } else {
+      this.orders.update(list => list.filter(ot => ot.numero_ot !== event.numero_ot));
+      if (this.detail()?.numero_ot === event.numero_ot) this.detail.set(null);
+    }
+  }
+
+  /** Vuelve a pedir la lista sin mostrar el esqueleto de carga ni borrar lo que se ve si falla. */
+  private reloadSilently(): void {
+    this.workOrdersService.getAll().subscribe({
+      next: data => {
+        if (Array.isArray(data)) this.orders.set(data);
+      },
+    });
+  }
+
+  private highlight(numeroOt: string): void {
+    this.recentlyChanged.update(set => new Set(set).add(numeroOt));
+    setTimeout(
+      () =>
+        this.recentlyChanged.update(set => {
+          const next = new Set(set);
+          next.delete(numeroOt);
+          return next;
+        }),
+      2000,
+    );
   }
 
   private startLive(): void {
@@ -222,17 +283,7 @@ export class WorkOrdersListComponent implements OnInit {
     this.orders.update(list => list.map(ot => (ot.numero_ot === updated.numero_ot ? updated : ot)));
     if (this.detail()?.numero_ot === updated.numero_ot) this.detail.set(updated);
     this.toast.info(`${updated.numero_ot}: ${statusMeta(previous.estado).label} → ${statusMeta(updated.estado).label}`);
-
-    this.recentlyChanged.update(set => new Set(set).add(updated.numero_ot));
-    setTimeout(
-      () =>
-        this.recentlyChanged.update(set => {
-          const next = new Set(set);
-          next.delete(updated.numero_ot);
-          return next;
-        }),
-      2000,
-    );
+    this.highlight(updated.numero_ot);
   }
 
   protected load(): void {
@@ -317,11 +368,12 @@ export class WorkOrdersListComponent implements OnInit {
     });
   }
 
-  private refreshOrder(numeroOt: string): void {
+  private refreshOrder(numeroOt: string, destacar = false): void {
     this.workOrdersService.getByNumber(numeroOt).subscribe({
       next: fresh => {
         this.orders.update(list => list.map(ot => (ot.numero_ot === fresh.numero_ot ? fresh : ot)));
         if (this.detail()?.numero_ot === fresh.numero_ot) this.detail.set(fresh);
+        if (destacar) this.highlight(fresh.numero_ot);
       },
       error: () => this.load(),
     });
