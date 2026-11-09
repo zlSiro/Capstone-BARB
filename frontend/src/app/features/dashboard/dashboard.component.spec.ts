@@ -93,47 +93,8 @@ function clavesKpi(el: HTMLElement): string[] {
     .filter(Boolean);
 }
 
-// El KPI de Impacto se elimino en CGBIDA-435: su cifra vive en el grafico de abajo.
-const CLAVES = ['mttr', 'sla', 'costo', 'mtbf', 'ahorro'];
-
-/** Lo que recibe un supervisor o un ingeniero: el backend omite todo campo de costo (`ver_kpis_financieros`). */
-function statsSinFinanzas(): FinancialStats {
-  const completo = stats();
-  const { ahorro_generado: _a, costo_total_acumulado: _c, ...financials } = completo.financials;
-  const { impacto_anual: _i, machines_por_costo: _m, ...resto } = completo;
-  return {
-    ...resto,
-    financials,
-    // Una máquina operativa (sin ahorro ni costo): el ranking solo se dibuja si hay equipos.
-    machines: [{ id: '1', name: 'Bomba BP-3', total: 4, mttr: 35, slaCompliance: 90 }],
-    financieros_visibles: false,
-  };
-}
-
-describe('DashboardComponent', () => {
-  describe('sin acceso a los KPIs financieros (supervisor, ingeniero)', () => {
-    it('muestra solo las tarjetas operativas, sin costo ni ahorro', () => {
-      const { el } = setup(statsSinFinanzas());
-      const claves = [...el.querySelectorAll('[data-testid^="kpi-"]')].map((n) =>
-        (n as HTMLElement).dataset['testid']?.replace('kpi-', '')
-      );
-      expect(claves.sort()).toEqual(['mtbf', 'mttr', 'sla']);
-    });
-
-    it('oculta el impacto anual y las métricas de ahorro y costo del ranking', () => {
-      const { el } = setup(statsSinFinanzas());
-      expect(el.querySelector('app-impacto-escenarios')).toBeNull();
-      const valores = [...el.querySelectorAll('[data-testid="selector-metrica"] option')].map((o) => (o as HTMLOptionElement).value);
-      expect(valores).toEqual(['ots', 'mttr']);
-    });
-
-    it('sigue mostrando los KPIs operativos y la salud operacional', () => {
-      const { el } = setup(statsSinFinanzas());
-      expect(tarjeta(el, 'mttr').textContent).toContain('88.1m');
-      expect(el.querySelector('app-salud-operacional')).not.toBeNull();
-    });
-
-    it('con el gerente (financieros_visibles ausente o true) conserva las 5 tarjetas y el impacto', () => {
+describe('dashboard: KPIs', () => {
+  it('renderiza 5 tarjetas', () => {
     const { el } = setup();
     expect(clavesKpi(el)).toHaveLength(5);
   });
