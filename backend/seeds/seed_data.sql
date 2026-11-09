@@ -2,7 +2,7 @@
 INSERT INTO EMPRESA (nombre, rut, pais, industria, contacto_nombre, contacto_email, plan, estado, max_usuarios, max_plantas, licencia_inicio, licencia_fin) VALUES
 ('Planta Demo BARB', '76.000.001-K', 'Chile', 'Manufactura', 'Administrador BARB', 'admin@barb.com', 'professional', 'active', 50, 5, CURRENT_DATE, CURRENT_DATE + INTERVAL '1 year'),
 ('Minera Norte S.A.', '76.000.002-1', 'Chile', 'Minería', 'Juan Pérez', 'jperez@mineranorte.cl', 'enterprise', 'active', 100, 10, CURRENT_DATE, CURRENT_DATE + INTERVAL '2 years'),
-('Demo Trial Corp', NULL, 'Chile', 'Manufactura', NULL, NULL, 'trial', 'demo', 5, 1, CURRENT_DATE, CURRENT_DATE + INTERVAL '14 days');
+('Demo Trial Corp', NULL, 'Chile', 'Manufactura', NULL, NULL, 'trial', 'active', 5, 1, CURRENT_DATE, CURRENT_DATE + INTERVAL '14 days');
 
 -- Plantas
 INSERT INTO PLANTA (empresa_id, nombre, ubicacion) VALUES

@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-from datetime import date
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
-Plan = Literal["trial", "starter", "professional", "enterprise"]
-Estado = Literal["active", "suspended", "cancelled", "demo"]
+Estado = Literal["active", "suspended", "cancelled"]
 
 
 class GerenteInicial(BaseModel):
@@ -25,12 +23,8 @@ class EmpresaCreateRequest(BaseModel):
     contacto_nombre: str | None = Field(default=None, max_length=100)
     contacto_email: str | None = Field(default=None, max_length=100)
     contacto_telefono: str | None = Field(default=None, max_length=30)
-    plan: Plan = "trial"
     estado: Estado = "active"
     max_usuarios: int = Field(default=10, ge=1, le=10000)
-    max_plantas: int = Field(default=1, ge=1, le=1000)
-    licencia_inicio: date | None = None
-    licencia_fin: date | None = None
     notas: str | None = None
     gerente: GerenteInicial | None = None
 
@@ -43,10 +37,6 @@ class EmpresaUpdateRequest(BaseModel):
     contacto_nombre: str | None = Field(default=None, max_length=100)
     contacto_email: str | None = Field(default=None, max_length=100)
     contacto_telefono: str | None = Field(default=None, max_length=30)
-    plan: Plan | None = None
     estado: Estado | None = None
     max_usuarios: int | None = Field(default=None, ge=1, le=10000)
-    max_plantas: int | None = Field(default=None, ge=1, le=1000)
-    licencia_inicio: date | None = None
-    licencia_fin: date | None = None
     notas: str | None = None

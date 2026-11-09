@@ -15,7 +15,7 @@ from unittest.mock import patch
 import pytest
 from fastapi import HTTPException
 
-from barb.core.db import fetch_one
+from barb.core.db import fetch_all, fetch_one
 from barb.core.permissions import ACCIONES, RUTAS, puede_acceder_ruta, puede_ejecutar_accion, resolver_empresa
 from barb.core.rate_limit import chat_rate_limiter
 from barb.core.security import get_current_user
@@ -203,6 +203,42 @@ async def test_empresa_suspendida_no_puede_iniciar_sesion(client):
     assert r.status_code == 403
 
 
+CAMPOS_ELIMINADOS = {"plan", "max_plantas", "licencia_inicio", "licencia_fin"}
+
+
+async def test_la_api_de_empresas_ya_no_expone_plan_max_plantas_ni_licencias(client):
+    """Esos datos no tenían lógica asociada: el formulario y la API dejaron de pedirlos y devolverlos."""
+    hs = await _login(client, SUPER)
+    empresas = (await client.get("/api/empresas", headers=hs)).json()
+    assert empresas
+    for e in empresas:
+        assert not (CAMPOS_ELIMINADOS & set(e)), e
+        assert {"empresa_id", "nombre", "estado", "max_usuarios"} <= set(e)
+
+
+def test_los_esquemas_de_empresa_ignoran_los_campos_eliminados():
+    from barb.schemas.empresas import EmpresaCreateRequest, EmpresaUpdateRequest
+
+    crear = EmpresaCreateRequest(nombre="Acme", plan="starter", max_plantas=9, licencia_fin="2030-01-01")  # type: ignore[call-arg]
+    assert not (CAMPOS_ELIMINADOS & set(crear.model_dump()))
+    assert not (CAMPOS_ELIMINADOS & set(EmpresaUpdateRequest(plan="enterprise").model_dump(exclude_unset=True)))  # type: ignore[call-arg]
+
+
+async def test_el_estado_demo_ya_no_existe(client, db_pool):
+    hs = await _login(client, SUPER)
+    empresa_id = (await client.get("/api/empresas", headers=hs)).json()[0]["empresa_id"]
+    for estado in ("demo", "Demo"):
+        r = await client.put(f"/api/empresas/{empresa_id}", headers=hs, json={"estado": estado})
+        assert r.status_code == 422, estado
+    r = await client.post("/api/empresas", headers=hs, json={"nombre": "No debe crearse", "estado": "demo"})
+    assert r.status_code == 422
+    # Tampoco queda como valor del tipo en la base (migración 0015).
+    valores = {f["enumlabel"] for f in await fetch_all(
+        "SELECT enumlabel FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid WHERE t.typname = 'estado_empresa'")}
+    assert valores == {"active", "suspended", "cancelled"}
+    assert (await fetch_one("SELECT COUNT(*) AS n FROM empresa WHERE estado::text = 'demo'"))["n"] == 0
+
+
 async def test_mantenedor_de_empresas_es_exclusivo_del_super(client):
     for creds in (ADMIN_E1, ADMIN_E2, ENGINEER_E1, OPERADOR_E1):
         h = await _login(client, creds)
@@ -222,7 +258,6 @@ async def test_super_crea_edita_suspende_y_elimina_empresa_con_gerente_inicial(c
         json={
             "nombre": f"Empresa Test {sufijo}",
             "rut": f"99.{sufijo}-K",
-            "plan": "starter",
             "max_usuarios": 2,
             "gerente": {"nombre": "Gerente Test", "email": email_admin, "password": "secreto123"},
         },
