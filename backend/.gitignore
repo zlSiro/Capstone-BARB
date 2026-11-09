@@ -18,3 +18,9 @@ uploads/
 # Test cache
 .pytest_cache/
 .ruff_cache/
+
+# Coverage reports
+.coverage
+htmlcov/
+coverage.xml
+coverage.json

@@ -15,6 +15,7 @@
 | [`AI_ARCHITECTURE.md`](./AI_ARCHITECTURE.md) | Arquitectura de IA y gestión de memoria |
 | [`contrato_api_chat.md`](./contrato_api_chat.md) | Contrato API del chat |
 | [`contrato_api_documents.md`](./contrato_api_documents.md) | Contrato API de documentos (HU-04) |
+| [`COBERTURA_TESTS.md`](./COBERTURA_TESTS.md) | Reporte de cobertura de tests del backend por flujo (auth, OTs, métricas): comandos, entorno limpio y huecos (HU-14) |
 
 ---
 

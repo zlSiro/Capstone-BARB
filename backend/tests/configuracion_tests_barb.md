@@ -10,6 +10,7 @@ PostgreSQL configurada en `backend/.env` (Docker local en desarrollo).
 - **Requisito previo:** Docker con `barb_capstone_postgres` corriendo + `uv run alembic upgrade head` + `uv run python scripts/seed.py`.
 - **Aislamiento:** Los tests no escriben en BD por ahora (solo lectura). Cuando se agreguen tests que mutan datos, se evaluará usar transacciones o un PostgreSQL efímero.
 - **Futuro:** migrar a `testcontainers` para BD efímera por sesión de tests.
+- **Cobertura:** reporte por flujo (auth, OTs, métricas) y procedimiento en entorno limpio en [`docs/COBERTURA_TESTS.md`](../../docs/COBERTURA_TESTS.md).
 
 ## Archivo de Configuración Global (`conftest.py`)
 
@@ -22,7 +23,7 @@ El siguiente código define la configuración global y los *fixtures* reutilizab
 Configuración global de tests para BARB.
 
 Estrategia:
-- Cada test corre contra una base de datos SQLite en memoria aislada.
+- Los tests corren contra la app FastAPI real y el PostgreSQL de `backend/.env` (Postgres real, sin BD en memoria).
 - Los fixtures inyectan las dependencias que la app necesita.
 - No toca datos de desarrollo ni de producción.
 """
