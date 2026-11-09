@@ -19,6 +19,16 @@ Datos ficticios: `backend/seeds/seed_multiempresa.sql` (los aplica `scripts/seed
 > (`alembic upgrade head` fallaba). Se reconstruyó a partir de los índices `ix_ot_*` existentes con `CREATE INDEX IF NOT EXISTS`.
 > Si esa migración existe en otra rama con el mismo id, conservar la original y descartar esta.
 
+### Datos de una empresa (formulario del super_usuario)
+
+El alta y la edición piden solo lo que el sistema usa: nombre, RUT, país, industria, contacto, **máximo de usuarios** (`max_usuarios`, se
+hace cumplir al crear usuarios), estado y notas (más el gerente inicial al crear). **Estados:** `active`, `suspended` y `cancelled`; una
+empresa suspendida o cancelada no puede iniciar sesión.
+
+Se quitaron `plan`, `max_plantas`, `licencia_inicio`/`licencia_fin` (la API ya no los recibe ni los devuelve: nada los usaba, ni los límites ni
+vencimientos) y el estado `demo` (migración `0015_eliminar_estado_demo`: las empresas en `demo` pasan a `active` y el tipo `estado_empresa` queda
+con 3 valores). Las columnas `plan`, `max_plantas` y `licencia_*` siguen en la tabla `empresa` con sus valores por defecto, sin uso.
+
 ## 2. Roles y permisos
 
 Nuevo rol **`super_usuario`**: contraparte comercial de BARB frente a la empresa que contrata el software. No pertenece a ninguna empresa

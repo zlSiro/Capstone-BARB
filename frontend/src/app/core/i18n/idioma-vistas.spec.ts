@@ -119,8 +119,8 @@ describe('Cambio de idioma en cada vista', () => {
     f.detectChanges();
     for (const r of http.match(() => true)) r.flush([]);
     ciclo(f, i18n, {
-      es: ['Empresas (0)', '+ Nueva empresa', 'Licencia hasta', 'No hay empresas que coincidan.'],
-      en: ['Companies (0)', '+ New company', 'License until', 'No companies match.'],
+      es: ['Empresas (0)', '+ Nueva empresa', 'Usuarios', 'No hay empresas que coincidan.'],
+      en: ['Companies (0)', '+ New company', 'Users', 'No companies match.'],
     });
   });
 
