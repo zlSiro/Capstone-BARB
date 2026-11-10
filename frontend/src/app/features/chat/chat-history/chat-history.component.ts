@@ -4,6 +4,7 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { ChatService } from '../../../core/services/chat.service';
 import { SessionListItem, SessionMessage } from '../../../core/models/chat.model';
+import { tituloCorto } from '../../../core/utils/chat-titulo';
 import { ToastService } from '../../../core/services/toast.service';
 import { I18nService } from '../../../core/i18n/i18n.service';
 import { TranslatePipe } from '../../../core/i18n/translate.pipe';
@@ -32,6 +33,9 @@ export class ChatHistoryComponent {
   readonly loadingDetail = signal(false);
 
   readonly hasSelection = computed(() => this.selectedId() !== null);
+
+  /** Título corto para la tabla (ver `core/utils/chat-titulo.ts`). */
+  protected readonly tituloCorto = tituloCorto;
 
   constructor() {
     this.loadSessions();

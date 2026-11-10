@@ -37,12 +37,13 @@
 
       <!-- Tabla de sesiones -->
       <div class="lg:col-span-3 bg-superficie rounded-control border border-borde overflow-hidden">
+        <div class="overflow-x-auto">
         <table class="w-full text-sm">
           <thead class="bg-superficie-2 text-tinta ">
             <tr>
-              <th class="text-left px-4 py-3 font-medium">{{ 'chatHistory.date' | translate }}</th>
+              <th class="text-left px-4 py-3 font-medium whitespace-nowrap">{{ 'chatHistory.date' | translate }}</th>
               <th class="text-left px-4 py-3 font-medium">{{ 'chatHistory.titleIssue' | translate }}</th>
-              <th class="text-left px-4 py-3 font-medium">{{ 'chatHistory.machine' | translate }}</th>
+              <th class="text-left px-4 py-3 font-medium whitespace-nowrap">{{ 'chatHistory.machine' | translate }}</th>
               <th class="text-left px-4 py-3 font-medium w-16"></th>
             </tr>
           </thead>
@@ -57,10 +58,10 @@
                 <td class="px-4 py-3 text-tinta-suave whitespace-nowrap">
                   {{ formatDate(s.saved_at) }}
                 </td>
-                <td class="px-4 py-3 text-tinta font-medium">
-                  {{ s.titulo }}
+                <td class="px-4 py-3 text-tinta font-medium" [title]="s.titulo">
+                  {{ tituloCorto(s.titulo) }}
                 </td>
-                <td class="px-4 py-3 text-tinta-suave ">
+                <td class="px-4 py-3 text-tinta-suave whitespace-nowrap">
                   {{ s.machine_name || '—' }}
                 </td>
                 <td class="px-4 py-3 text-right">
@@ -77,6 +78,7 @@
             }
           </tbody>
         </table>
+        </div>
       </div>
 
       <!-- Panel de detalle -->

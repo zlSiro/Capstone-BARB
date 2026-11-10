@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 
 from barb.core.db import fetch_all, fetch_one
 
@@ -24,11 +25,23 @@ logger = logging.getLogger("barb.chat_repo")
 # ---------------------------------------------------------------------------
 
 def _make_titulo(primer_mensaje: str) -> str:
-    """Genera un título corto a partir del primer mensaje del usuario."""
-    text = (primer_mensaje or "").strip().replace("\n", " ")
+    """Genera un título corto (primera frase, máx. 48 caracteres) del primer mensaje.
+
+    Antes se guardaba el prompt completo recortado a 60 caracteres, así que el
+    historial mostraba prompts largos casi idénticos. Ahora se toma la primera
+    frase con sentido; si no hay puntuación, se recorta a 48 caracteres.
+    """
+    text = " ".join((primer_mensaje or "").split())
     if not text:
         return "Conversación sin título"
-    return text[:60] + ("…" if len(text) > 60 else "")
+
+    # Primera frase: primer punto/exclamación/interrogación seguido de espacio o fin.
+    fin = re.search(r"[.!?](\s|$)", text)
+    frase = text[: fin.start()].strip() if fin else text
+    if not frase:
+        frase = text
+
+    return frase[:48].rstrip() + ("…" if len(frase) > 48 else "")
 
 
 def _normalize_messages(raw) -> list[dict]:
