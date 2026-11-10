@@ -133,9 +133,11 @@ async def _buscar_maquinas(empresa_id: int, consulta: str) -> list[dict]:
     """
     filas = await fetch_all(
         """
-        SELECT m.maquina_id, m.nombre, m.codigo, p.nombre AS planta
+        SELECT m.maquina_id, m.nombre, m.codigo, p.nombre AS planta,
+               d.nombre AS disciplina
           FROM maquina m
           JOIN planta  p ON p.planta_id = m.planta_id
+          LEFT JOIN disciplina d ON d.disciplina_id = m.disciplina_id
          WHERE p.empresa_id = %(empresa)s
          ORDER BY m.nombre
          LIMIT %(limite)s
@@ -160,6 +162,61 @@ async def _buscar_maquinas(empresa_id: int, consulta: str) -> list[dict]:
     if len(buenas) >= 2 and buenas[0].puntaje - buenas[1].puntaje < 0.05:
         return [c.maquina for c in buenas[:_MAX_MAQUINAS]]
     return [c.maquina for c in buenas[:1]]
+
+
+def _menciona_exactamente(texto: str, nombre: str, codigo: str) -> bool:
+    """True si el código o el nombre completo aparecen literalmente en `texto`.
+
+    Un nombre de una sola palabra («Prensa») es demasiado genérico: se exige el código
+    para no confundir «la prensa B3» con la máquina «Prensa» de otra planta.
+    """
+    normalizado = _normalizar(texto)
+    valor_codigo = _normalizar(codigo)
+    if valor_codigo and re.search(rf"(?<!\w){re.escape(valor_codigo)}(?!\w)", normalizado):
+        return True
+
+    valor_nombre = _normalizar(nombre)
+    if len(valor_nombre.split()) < 2:
+        return False
+    return bool(
+        valor_nombre
+        and re.search(rf"(?<!\w){re.escape(valor_nombre)}(?!\w)", normalizado)
+    )
+
+
+async def identificar_maquina(empresa_id: int, texto: str) -> dict | None:
+    """
+    Máquina inequívoca mencionada en `texto`, o None si no hay una sola candidata.
+
+    Se usa al crear una sesión de chat para poblar el equipo del historial (CGBIDA-454).
+    Es deliberadamente conservadora: exige que el **código o el nombre completo** aparezcan
+    literalmente. La búsqueda difusa de las tools sirve para responder, pero como etiqueta
+    persistente confundiría «prensa B3» con otra «Prensa» de la empresa. También ignora los
+    mensajes de creación de planta, donde la máquina se menciona como dato, no como tema.
+
+    Si la búsqueda falla o hay ambigüedad, devuelve None: el chat debe crearse igual.
+    """
+    if not (texto or "").strip():
+        return None
+
+    normalizado = _normalizar(texto)
+    if re.search(r"\b(crear|crea|creo|creando|creación)\b.*\bplanta\b", normalizado):
+        return None
+
+    try:
+        maquinas = await _buscar_maquinas(empresa_id, texto)
+    except Exception:  # noqa: BLE001 — no bloquear la creación de la sesión
+        logger.exception(
+            "No se pudo identificar la máquina del primer mensaje (empresa %s)", empresa_id
+        )
+        return None
+
+    exactas = {
+        m["maquina_id"]: m
+        for m in maquinas
+        if _menciona_exactamente(texto, m.get("nombre") or "", m.get("codigo") or "")
+    }
+    return next(iter(exactas.values())) if len(exactas) == 1 else None
 
 
 async def _resumen_maquina(empresa_id: int, maquina: dict) -> str:
