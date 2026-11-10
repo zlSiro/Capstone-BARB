@@ -398,9 +398,9 @@ async def test_proponer_planta_exige_ubicacion(db_pool):
 
 
 @pytest.mark.asyncio
-async def test_proponer_planta_rechaza_ubicacion_duplicada(client, ctx):
-    """QA 05-11: dos plantas se quisieron crear en la misma comuna. La tool avisa con la
-    planta que ya la ocupa (a nivel chat; la regla dura es propuesta a Samuel/JP)."""
+async def test_proponer_planta_permite_misma_ubicacion_con_nombre_distinto(client, ctx):
+    """Regla de producto: dos plantas pueden compartir comuna si el nombre es distinto
+    (p. ej. «Planta Norte» y «Planta Sur» en la misma comuna)."""
     ubicacion = f"Comuna {ctx['marca']}"
     r = await client.post(
         "/api/plantas/completa",
@@ -412,8 +412,26 @@ async def test_proponer_planta_rechaza_ubicacion_duplicada(client, ctx):
     salida = await HERRAMIENTAS["proponer_planta_completa"].ainvoke(
         {"nombre": f"Planta Otra {ctx['marca']}", "ubicacion": ubicacion, "maquinas": []}
     )
-    assert "no se permiten dos plantas" in salida
+    assert salida.startswith(_PREFIJO_PROPUESTA_PLANTA)
     assert ubicacion in salida
+
+
+@pytest.mark.asyncio
+async def test_proponer_planta_rechaza_mismo_nombre_y_ubicacion(client, ctx):
+    """Solo se bloquea cuando coinciden ubicación Y nombre (dos homónimas confunden)."""
+    ubicacion = f"Comuna {ctx['marca']}"
+    nombre = f"Planta Original {ctx['marca']}"
+    r = await client.post(
+        "/api/plantas/completa",
+        headers=ctx["tokens"]["gerente"],
+        json={"nombre": nombre, "ubicacion": ubicacion},
+    )
+    assert r.status_code == 201, r.text
+
+    salida = await HERRAMIENTAS["proponer_planta_completa"].ainvoke(
+        {"nombre": nombre, "ubicacion": ubicacion, "maquinas": []}
+    )
+    assert "mismo nombre" in salida
     assert not salida.startswith(_PREFIJO_PROPUESTA_PLANTA)
 
 

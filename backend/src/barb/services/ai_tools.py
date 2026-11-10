@@ -1512,8 +1512,9 @@ def crear_tools(
         Args:
             nombre: Nombre de la planta (2 a 120 caracteres).
             maquinas: Equipos a crear. Máximo 15 por alta.
-            ubicacion: Comuna o dirección. Obligatoria y única: no puede repetir la
-                ubicación de otra planta de la empresa.
+            ubicacion: Comuna o dirección. Obligatoria. Dos plantas pueden compartir
+                ubicación si tienen nombre distinto; solo se bloquea cuando coinciden
+                ubicación Y nombre.
         """
         if not _puede_gestionar(rol):
             return PERMISO_DENEGADO
@@ -1522,9 +1523,10 @@ def crear_tools(
         if len(nombre_limpio) < 2:
             return "Necesito un nombre de planta de al menos 2 caracteres."
 
-        # Ubicación obligatoria y única (QA del 05-11 en prod: «Puente Alto» quedó sin
-        # ubicación, y luego dos plantas se quisieron crear en la misma comuna). El
-        # schema del endpoint la sigue dejando opcional; acá la exigimos para que el
+        # Ubicación obligatoria (QA del 05-11 en prod: «Puente Alto» quedó sin
+        # ubicación). Dos plantas pueden compartir comuna si el nombre es distinto;
+        # solo se bloquea cuando coinciden ubicación Y nombre (regla de producto).
+        # El schema del endpoint la sigue dejando opcional; acá la exigimos para que el
         # «sí» del usuario siempre nazca con la planta bien catalogada. La regla
         # autoritativa en el service/BD queda como propuesta al equipo (HU-20).
         ubicacion_limpia = " ".join((ubicacion or "").split())
@@ -1544,14 +1546,18 @@ def crear_tools(
                 "y vuelve a llamar esta herramienta con ESE dato literal."
             )
 
+        # Solo se bloquea si coinciden ubicación Y nombre: dos plantas homónimas en
+        # la misma comuna confunden al operador. Distinto nombre en la misma comuna
+        # es válido (p. ej. «Planta Norte» y «Planta Sur» en Lampa).
         repetida = await fetch_one(
             "SELECT nombre FROM planta WHERE empresa_id = %(e)s AND lower(ubicacion) = lower(%(u)s)",
             {"e": empresa_id, "u": ubicacion_limpia},
         )
-        if repetida:
+        if repetida and str(repetida["nombre"]).strip().lower() == nombre_limpio.lower():
             return (
-                f"La ubicación «{ubicacion_limpia}» ya la tiene la planta «{repetida['nombre']}»: "
-                "no se permiten dos plantas en la misma ubicación. Cambia la ubicación, o el alta va por el mantenedor."
+                f"Ya existe una planta llamada «{nombre_limpio}» en esa ubicación. "
+                "No se permiten dos plantas con el mismo nombre en la misma ubicación. "
+                "Cambia el nombre o la ubicación."
             )
 
         equipos = [m.model_dump() for m in (maquinas or [])]
