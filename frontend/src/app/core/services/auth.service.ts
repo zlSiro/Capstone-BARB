@@ -7,6 +7,8 @@ import { environment } from '../../../environments/environment';
 
 const TOKEN_KEY = 'barb_token';
 const USER_KEY = 'barb_user';
+/** Marca persistente: tras un login correcto el usuario debe confirmar sus privilegios antes de usar la herramienta. */
+const PRIVILEGIOS_KEY = 'barb_privilegios_pendiente';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
@@ -15,14 +17,24 @@ export class AuthService {
   private apiUrl = environment.apiUrl;
 
   user = signal<User | null>(this.loadUser());
+  /** `true` mientras el usuario no haya confirmado el aviso de privilegios (sobrevive a recargar la página). */
+  readonly privilegiosPendientes = signal(this.isLoggedIn() && localStorage.getItem(PRIVILEGIOS_KEY) === '1');
 
   login(email: string, password: string) {
     return this.http.post<LoginResponse>(`${this.apiUrl}/auth/login`, { email, password })
       .pipe(tap(res => {
         localStorage.setItem(TOKEN_KEY, res.token);
         localStorage.setItem(USER_KEY, JSON.stringify(res.user));
+        localStorage.setItem(PRIVILEGIOS_KEY, '1');
         this.user.set(res.user);
+        this.privilegiosPendientes.set(true);
       }));
+  }
+
+  /** El usuario confirmó que comprende los privilegios de su perfil. */
+  aceptarPrivilegios(): void {
+    localStorage.removeItem(PRIVILEGIOS_KEY);
+    this.privilegiosPendientes.set(false);
   }
 
   logout() {
@@ -44,6 +56,8 @@ export class AuthService {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
     localStorage.removeItem('barb_tenant_empresa_id'); // empresa elegida por el super_usuario
+    localStorage.removeItem(PRIVILEGIOS_KEY);
+    this.privilegiosPendientes.set(false);
     this.user.set(null);
     this.router.navigate(['/login']);
   }

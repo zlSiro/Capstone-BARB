@@ -20,6 +20,14 @@ class Anfitrion {
 @Component({ imports: [ModalComponent], template: `<app-modal title="Sin pie"><p>Contenido</p></app-modal>` })
 class SinPie {}
 
+@Component({
+  imports: [ModalComponent],
+  template: `<app-modal title="Obligatorio" [dismissible]="false" (closed)="cerrado()"><p>Lee esto</p></app-modal>`,
+})
+class Obligatorio {
+  cerrado = vi.fn();
+}
+
 function montar<T>(tipo: new () => T) {
   TestBed.configureTestingModule({ imports: [tipo as never] });
   const fixture = TestBed.createComponent(tipo);
@@ -71,5 +79,21 @@ describe('ModalComponent (hoja en móvil, diálogo en escritorio)', () => {
     const { el } = montar(SinPie);
     const pie = Array.from(el.querySelectorAll('div')).find((d) => d.className.includes('empty:hidden'))!;
     expect(pie.children.length).toBe(0);
+  });
+
+  describe('obligatorio (dismissible = false)', () => {
+    it('no tiene botón de cierre', () => {
+      const { el } = montar(Obligatorio);
+      expect(el.querySelector('button[aria-label="Cerrar"]')).toBeNull();
+    });
+
+    it('no se cierra con ESC ni con el clic en el velo', () => {
+      const { fixture, el } = montar(Obligatorio);
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      (el.querySelector('.fixed.inset-0') as HTMLElement).click();
+      fixture.detectChanges();
+      expect(fixture.componentInstance.cerrado).not.toHaveBeenCalled();
+      expect(el.querySelector('[role="dialog"]')).not.toBeNull();
+    });
   });
 });

@@ -3,7 +3,7 @@
 Fuente de verdad: `backend/src/barb/core/permissions.py` (matrices `RUTAS` y `ACCIONES`), con las reglas adicionales de
 `routers/users.py`, `routers/empresas.py`, `routers/work_orders.py`, `routers/avisos.py` y `core/work_order_states.py`.
 El frontend la replica en `frontend/src/app/core/permissions/permissions.ts` (solo controla qué se muestra; el backend es quien valida).
-**Cualquier cambio de permisos debe hacerse en los tres lugares** (backend, frontend y este documento). Los tests
+**Cualquier cambio de permisos debe hacerse en los tres lugares** (backend, frontend y este documento) y reflejarse en el aviso de privilegios que se muestra tras el login (`frontend/src/app/core/i18n/textos/privilegios.ts`, ES/EN). Los tests
 `backend/tests/test_permissions.py` y `frontend/src/app/core/permissions/permissions.spec.ts` verifican que no se desalineen.
 
 Leyenda: ✔ acceso total · 👁 solo lectura · propio = solo lo suyo · — sin acceso

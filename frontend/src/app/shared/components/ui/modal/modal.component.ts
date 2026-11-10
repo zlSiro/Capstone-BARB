@@ -22,11 +22,11 @@ const FOCUSABLES =
 @Component({
   selector: 'app-modal',
   imports: [Icon, TranslatePipe],
-  host: { '(document:keydown.escape)': 'closed.emit()' },
+  host: { '(document:keydown.escape)': 'cerrar()' },
   template: `
     <div
       class="fixed inset-0 z-50 flex animate-[velo-aparece_160ms_ease-out] items-end justify-center bg-velo md:items-center md:p-6"
-      (click)="closed.emit()">
+      (click)="cerrar()">
       <div
         #dialog
         role="dialog"
@@ -57,13 +57,15 @@ const FOCUSABLES =
                 <p class="codigo text-base leading-tight text-accion">{{ badge() }}</p>
               </div>
             }
-            <button
-              type="button"
-              (click)="closed.emit()"
-              class="-mr-2 -mt-1 inline-flex size-12 items-center justify-center rounded-control text-tinta-suave transition-colors hover:bg-superficie-2 hover:text-tinta md:size-10"
-              [attr.aria-label]="'sistema.cerrar' | translate">
-              <app-icon name="x" [size]="22" />
-            </button>
+            @if (dismissible()) {
+              <button
+                type="button"
+                (click)="closed.emit()"
+                class="-mr-2 -mt-1 inline-flex size-12 items-center justify-center rounded-control text-tinta-suave transition-colors hover:bg-superficie-2 hover:text-tinta md:size-10"
+                [attr.aria-label]="'sistema.cerrar' | translate">
+                <app-icon name="x" [size]="22" />
+              </button>
+            }
           </div>
         </div>
 
@@ -82,6 +84,11 @@ export class ModalComponent {
   readonly title = input.required<string>();
   readonly subtitle = input<string>('');
   readonly size = input<'md' | 'lg' | 'xl'>('md');
+  /**
+   * `false` = diálogo obligatorio: no se cierra con ESC, con el clic en el velo ni con la X; solo con la acción de su pie
+   * (p. ej. el aviso de privilegios tras el login).
+   */
+  readonly dismissible = input(true);
   /** Identificador que se muestra en la esquina superior derecha (p. ej. el reporte de falla que originó la OT). */
   readonly badge = input<string | null>(null);
   /** Rótulo pequeño sobre la insignia. */
@@ -110,6 +117,10 @@ export class ModalComponent {
       // Devuelve el foco a quien abrió el diálogo, si sigue en pantalla.
       if (this.previo && document.contains(this.previo)) this.previo.focus();
     });
+  }
+
+  protected cerrar(): void {
+    if (this.dismissible()) this.closed.emit();
   }
 
   /** Mantiene Tab / Shift+Tab dentro del diálogo mientras está abierto. */
