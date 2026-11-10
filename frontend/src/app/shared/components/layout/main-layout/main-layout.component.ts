@@ -9,16 +9,18 @@ import { Aviso } from '../../../../core/models';
 import { AvisosPendientes } from '../../../../core/services/avisos-pendientes';
 import { Conexion } from '../../../../core/services/conexion';
 import { ReportarFallaUi } from '../../../../core/services/reportar-falla-ui';
+import { AuthService } from '../../../../core/services/auth.service';
 import { ReportarFalla } from '../../../../features/avisos/reportar-falla';
 import { BottomNav } from '../bottom-nav/bottom-nav';
 import { HeaderComponent } from '../header/header.component';
 import { SidebarComponent } from '../sidebar/sidebar.component';
 import { Icon } from '../../ui/icon/icon';
+import { PrivilegiosModalComponent } from '../privilegios-modal/privilegios-modal.component';
 import { ToastComponent } from '../../ui/toast/toast.component';
 
 @Component({
   selector: 'app-main-layout',
-  imports: [RouterOutlet, HeaderComponent, SidebarComponent, BottomNav, ToastComponent, ReportarFalla, Icon, TranslatePipe],
+  imports: [RouterOutlet, HeaderComponent, SidebarComponent, BottomNav, ToastComponent, ReportarFalla, PrivilegiosModalComponent, Icon, TranslatePipe],
   template: `
     <a
       href="#contenido"
@@ -41,6 +43,10 @@ import { ToastComponent } from '../../ui/toast/toast.component';
       </div>
       <app-bottom-nav />
       <app-toast />
+      <!-- Tras el login el usuario debe confirmar sus privilegios antes de usar la herramienta. -->
+      @if (auth.privilegiosPendientes()) {
+        <app-privilegios-modal />
+      }
       @defer (when reportarUi.abierto()) {
         @if (reportarUi.abierto()) {
           <app-reportar-falla (closed)="reportarUi.cerrar()" (created)="alCrear($event)" />
@@ -53,6 +59,7 @@ export class MainLayoutComponent {
   private readonly router = inject(Router);
   private readonly permissions = inject(PermissionsService);
   private readonly avisos = inject(AvisosPendientes);
+  protected readonly auth = inject(AuthService);
   protected readonly reportarUi = inject(ReportarFallaUi);
   protected readonly conexion = inject(Conexion);
 
