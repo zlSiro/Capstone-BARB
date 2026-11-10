@@ -2,8 +2,7 @@
 // EMPRESAS (mantenedor del super_usuario) — contrato de /api/empresas
 // =============================================================================
 
-export type PlanEmpresa = 'trial' | 'starter' | 'professional' | 'enterprise';
-export type EstadoEmpresa = 'active' | 'suspended' | 'cancelled' | 'demo';
+export type EstadoEmpresa = 'active' | 'suspended' | 'cancelled';
 
 export interface Empresa {
   empresa_id: number;
@@ -14,12 +13,8 @@ export interface Empresa {
   contacto_nombre: string | null;
   contacto_email: string | null;
   contacto_telefono: string | null;
-  plan: PlanEmpresa;
   estado: EstadoEmpresa;
   max_usuarios: number;
-  max_plantas: number;
-  licencia_inicio: string | null;
-  licencia_fin: string | null;
   notas: string | null;
   created_at: string | null;
   // Contadores para la grilla
@@ -51,12 +46,8 @@ export interface EmpresaPayload {
   contacto_nombre: string | null;
   contacto_email: string | null;
   contacto_telefono: string | null;
-  plan: PlanEmpresa;
   estado: EstadoEmpresa;
   max_usuarios: number;
-  max_plantas: number;
-  licencia_inicio: string | null;
-  licencia_fin: string | null;
   notas: string | null;
 }
 

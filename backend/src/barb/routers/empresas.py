@@ -26,8 +26,7 @@ router = APIRouter(dependencies=[Depends(require_action("gestionar_empresas"))])
 # través de maquina -> planta porque ORDEN_TRABAJO no guarda empresa_id.
 _EMPRESA_SELECT = """
     SELECT e.empresa_id, e.nombre, e.rut, e.pais, e.industria, e.contacto_nombre, e.contacto_email,
-           e.contacto_telefono, e.plan, e.estado, e.max_usuarios, e.max_plantas,
-           e.licencia_inicio, e.licencia_fin, e.notas, e.created_at, e.updated_at,
+           e.contacto_telefono, e.estado, e.max_usuarios, e.notas, e.created_at, e.updated_at,
            (SELECT COUNT(*) FROM usuario u WHERE u.empresa_id = e.empresa_id AND u.activo)      AS usuarios_activos,
            (SELECT COUNT(*) FROM usuario u WHERE u.empresa_id = e.empresa_id)                   AS usuarios_total,
            (SELECT COUNT(*) FROM documento d WHERE d.empresa_id = e.empresa_id)                 AS documentos,
@@ -50,12 +49,8 @@ def _serialize(row: dict) -> dict:
         "contacto_nombre": row["contacto_nombre"],
         "contacto_email": row["contacto_email"],
         "contacto_telefono": row["contacto_telefono"],
-        "plan": row["plan"],
         "estado": row["estado"],
         "max_usuarios": int(row["max_usuarios"]),
-        "max_plantas": int(row["max_plantas"]),
-        "licencia_inicio": row["licencia_inicio"].isoformat() if row["licencia_inicio"] else None,
-        "licencia_fin": row["licencia_fin"].isoformat() if row["licencia_fin"] else None,
         "notas": row["notas"],
         "created_at": row["created_at"].isoformat() if row["created_at"] else None,
         "usuarios_activos": int(row["usuarios_activos"]),
@@ -94,10 +89,9 @@ async def create_empresa(payload: EmpresaCreateRequest, sesion: dict = Depends(g
             await cur.execute(
                 """
                 INSERT INTO empresa (nombre, rut, pais, industria, contacto_nombre, contacto_email, contacto_telefono,
-                                     plan, estado, max_usuarios, max_plantas, licencia_inicio, licencia_fin, notas)
+                                     estado, max_usuarios, notas)
                 VALUES (%(nombre)s, %(rut)s, %(pais)s, %(industria)s, %(contacto_nombre)s, %(contacto_email)s,
-                        %(contacto_telefono)s, %(plan)s, %(estado)s, %(max_usuarios)s, %(max_plantas)s,
-                        %(licencia_inicio)s, %(licencia_fin)s, %(notas)s)
+                        %(contacto_telefono)s, %(estado)s, %(max_usuarios)s, %(notas)s)
                 RETURNING empresa_id
                 """,
                 data,

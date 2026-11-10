@@ -19,8 +19,8 @@ from __future__ import annotations
 from barb.core.db import fetch_one
 from barb.routers import stats
 
-ADMIN_E1 = ("admin@barb.com", "admin123")
-ADMIN_E2 = ("admin@mineranorte.cl", "minera123")
+GERENTE_E1 = ("gerente1@planta.com", "gerente123")
+GERENTE_E2 = ("gerente@mineranorte.cl", "minera123")
 TECNICO = ("carlos@planta.com", "tecnico123")
 
 RUTA = "/api/stats/financial-impact"
@@ -43,7 +43,7 @@ async def _login(client, creds) -> dict:
     return {"Authorization": f"Bearer {r.json()['token']}"}
 
 
-async def _stats(client, creds=ADMIN_E1, qs: str = "") -> dict:
+async def _stats(client, creds=GERENTE_E1, qs: str = "") -> dict:
     h = await _login(client, creds)
     r = await client.get(f"{RUTA}{qs}", headers=h)
     assert r.status_code == 200, r.text
@@ -63,6 +63,10 @@ async def test_contrato_del_endpoint_tiene_las_claves_exactas(client):
     ordenes vencidas o demoradas).
     ACTUALIZADO A PROPOSITO en CGBIDA-438: se agrego la clave `salud_operacional` (indice
     compuesto de SLA, MTBF y backlog para el semaforo).
+    ACTUALIZADO A PROPOSITO en HU-18 (roles): se agrego `financieros_visibles`; solo el gerente recibe los campos
+    de costo (ver test_stats_kpis_financieros.py), por eso este contrato se mide con el gerente.
+    ACTUALIZADO A PROPOSITO en el rediseno del dashboard (CGBIDA-516/517): se agregaron
+    `top_5_peor_mttr` y `top_5_peor_mtbf`, y el semaforo paso a la forma simplificada.
 
     Esta asercion es un guardarrail: se toca cuando el contrato cambia a proposito, nunca
     para que una prueba pase.
@@ -70,7 +74,8 @@ async def test_contrato_del_endpoint_tiene_las_claves_exactas(client):
     d = await _stats(client)
     assert set(d) == {
         "financials", "trend14Days", "machines", "machines_por_costo", "impacto_anual",
-        "por_tipo", "estancadas", "salud_operacional",
+        "por_tipo", "estancadas", "salud_operacional", "financieros_visibles",
+        "top_5_peor_mttr", "top_5_peor_mtbf",
     }, sorted(d)
 
 
@@ -93,7 +98,7 @@ async def test_el_costo_por_maquina_respeta_el_rango(client):
     """Como el filtro de fecha va en el ON del JOIN, un rango corto debe bajar el costo."""
     # Una sola sesión: dos logins seguidos en la misma prueba chocan con el control de
     # sesiones y el segundo responde 401.
-    h = await _login(client, ADMIN_E1)
+    h = await _login(client, GERENTE_E1)
     completo = (await client.get(RUTA, headers=h)).json()
     corto = (await client.get(f"{RUTA}?days=7", headers=h)).json()
     total_completo = sum(m["costo_total"] for m in completo["machines"])
@@ -585,8 +590,8 @@ async def test_los_supuestos_salen_de_config_y_no_del_codigo(client):
 
 async def test_dos_empresas_ven_metricas_distintas(client):
     """El volumen ampliado no debe haber filtrado datos entre empresas."""
-    d1 = await _stats(client, ADMIN_E1)
-    d2 = await _stats(client, ADMIN_E2)
+    d1 = await _stats(client, GERENTE_E1)
+    d2 = await _stats(client, GERENTE_E2)
 
     assert d1["financials"] != d2["financials"], "las dos empresas ven exactamente lo mismo"
     # El costo directo es el indicador más directo de fuga de datos.
@@ -595,7 +600,7 @@ async def test_dos_empresas_ven_metricas_distintas(client):
 
 async def test_el_costo_de_cada_empresa_cuadra_con_su_propia_suma(client):
     """Contra la BD: cada empresa ve SU costo, ni el de otra ni el total."""
-    for creds, empresa_id in ((ADMIN_E1, 1), (ADMIN_E2, 2)):
+    for creds, empresa_id in ((GERENTE_E1, 1), (GERENTE_E2, 2)):
         d = await _stats(client, creds)
         fila = await fetch_one(
             """
@@ -620,7 +625,7 @@ async def test_el_mtbf_de_cada_empresa_cuadra_con_su_propia_ventana(client):
     espejar al endpoint: si la inactividad se sumara sobre todas las órdenes y no solo
     las correctivas, el valor coincidiría con la interpretación incorrecta.
     """
-    for creds, empresa_id in ((ADMIN_E1, 1), (ADMIN_E2, 2)):
+    for creds, empresa_id in ((GERENTE_E1, 1), (GERENTE_E2, 2)):
         mtbf = (await _stats(client, creds))["financials"]["mtbfHours"]
         fila = await fetch_one(
             """
@@ -658,7 +663,7 @@ async def test_el_mttr_corresponde_solo_a_las_completadas(client):
     Es la mutación M4 de CGBIDA-409: si el `FILTER` de estado desapareciera, el promedio
     incluiría órdenes en curso y el valor no cuadraría. Se contrasta contra la BD.
     """
-    for creds, empresa_id in ((ADMIN_E1, 1), (ADMIN_E2, 2)):
+    for creds, empresa_id in ((GERENTE_E1, 1), (GERENTE_E2, 2)):
         mttr = (await _stats(client, creds))["financials"]["mttr"]
         fila = await fetch_one(
             """
@@ -702,7 +707,7 @@ async def test_tecnico_recibe_403(client):
 
 async def test_rango_invalido_devuelve_422(client):
     """`days` es ge=1: un cero o un negativo no son válidos."""
-    h = await _login(client, ADMIN_E1)
+    h = await _login(client, GERENTE_E1)
     for qs in ("?days=0", "?days=-5"):
         assert (await client.get(f"{RUTA}{qs}", headers=h)).status_code == 422, qs
 
@@ -716,6 +721,6 @@ async def test_la_base_caida_da_503_y_no_ceros(client, monkeypatch):
             raise psycopg.OperationalError("sin conexión")
 
     monkeypatch.setattr(stats, "pool", _PoolCaido())
-    h = await _login(client, ADMIN_E1)
+    h = await _login(client, GERENTE_E1)
     r = await client.get(RUTA, headers=h)
     assert r.status_code == 503, r.text

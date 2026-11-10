@@ -47,6 +47,7 @@ import { I18nService } from '../../../../core/i18n/i18n.service';
             [attr.viewBox]="'0 0 ' + LADO + ' ' + LADO"
             [attr.width]="LADO"
             [attr.height]="LADO"
+            class="h-auto w-[260px] max-w-full"
             role="img"
             [attr.aria-label]="t().strategyTitle"
             (mousemove)="mover($event)"
@@ -189,6 +190,9 @@ export class TipoDonutComponent {
 
   // Geometría del legacy: `innerRadius={60} outerRadius={90}` dentro de un `height={260}`.
   // El lienzo se dimensiona con el diámetro exterior más un margen para el trazo.
+  // La geometría se mantiene en 90/60/200 (réplica del legacy). El tamaño en pantalla lo
+  // agranda la clase `w-[260px]` del SVG: escalar por CSS conserva las proporciones y los
+  // ángulos, y evita reescribir los cálculos de los arcos.
   protected readonly RADIO_EXT = 90;
   protected readonly RADIO_INT = 60;
   protected readonly LADO = 200;

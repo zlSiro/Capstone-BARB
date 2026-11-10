@@ -1,5 +1,4 @@
 import { Component, computed, inject, signal } from '@angular/core';
-import { DatePipe } from '@angular/common';
 import { Router } from '@angular/router';
 
 import { Empresa, EstadoEmpresa } from '../../core/models';
@@ -15,14 +14,12 @@ import { I18nService } from '../../core/i18n/i18n.service';
 // Con `get`: el texto se calcula al leerlo, así sigue el idioma elegido.
 const ESTADO_LABEL: Record<EstadoEmpresa, string> = {
   get active() { return textoActual('empresas.activa'); },
-  get demo() { return textoActual('empresas.demo'); },
   get suspended() { return textoActual('empresas.suspendida'); },
   get cancelled() { return textoActual('empresas.cancelada'); },
 };
 
 const ESTADO_STYLE: Record<EstadoEmpresa, string> = {
   active: 'bg-ok-suave text-ok',
-  demo: 'bg-accion-suave text-accion',
   suspended: 'bg-media-suave text-media',
   cancelled: 'bg-peligro-suave text-peligro',
 };
@@ -30,7 +27,7 @@ const ESTADO_STYLE: Record<EstadoEmpresa, string> = {
 /** Mantenedor de empresas (solo super_usuario): alta, edición, suspensión/reactivación y acceso a sus gerentes. Por auditoría no se eliminan. */
 @Component({
   selector: 'app-empresas',
-  imports: [DatePipe, EmpresaFormModalComponent, TranslatePipe],
+  imports: [EmpresaFormModalComponent, TranslatePipe],
   template: `
     <section class="flex flex-col gap-4" aria-labelledby="empresas-title">
       <div class="flex flex-wrap items-center justify-between gap-3">
@@ -70,12 +67,10 @@ const ESTADO_STYLE: Record<EstadoEmpresa, string> = {
             <thead class="bg-superficie-2 text-sm text-tinta-suave">
               <tr>
                 <th scope="col" class="px-4 py-2 text-left">{{ 'empresas.empresa' | translate }}</th>
-                <th scope="col" class="px-4 py-2 text-left">{{ 'empresas.plan' | translate }}</th>
                 <th scope="col" class="px-4 py-2 text-left">{{ 'empresas.estado' | translate }}</th>
                 <th scope="col" class="px-4 py-2 text-right">{{ 'empresas.usuarios' | translate }}</th>
                 <th scope="col" class="px-4 py-2 text-right">{{ 'empresas.docs' | translate }}</th>
                 <th scope="col" class="px-4 py-2 text-right">{{ 'empresas.ots' | translate }}</th>
-                <th scope="col" class="px-4 py-2 text-left">{{ 'empresas.licencia_hasta' | translate }}</th>
                 <th scope="col" class="px-4 py-2 text-left">{{ 'empresas.acciones' | translate }}</th>
               </tr>
             </thead>
@@ -86,7 +81,6 @@ const ESTADO_STYLE: Record<EstadoEmpresa, string> = {
                     <div class="font-medium">{{ e.nombre }}</div>
                     <div class="text-sm text-tinta-suave">{{ e.rut || ('empresas.sin_rut' | translate) }} · {{ e.industria || ('empresas.sin_industria' | translate) }}</div>
                   </td>
-                  <td class="px-4 py-2 capitalize" [attr.data-label]="'empresas.plan' | translate">{{ e.plan }}</td>
                   <td class="px-4 py-2" [attr.data-label]="'empresas.estado' | translate">
                     <span class="rounded-control px-2 py-1 text-sm font-medium" [class]="estadoStyle(e.estado)">
                       {{ estadoLabel(e.estado) }}
@@ -97,7 +91,6 @@ const ESTADO_STYLE: Record<EstadoEmpresa, string> = {
                   </td>
                   <td class="px-4 py-2 text-right" [attr.data-label]="'empresas.docs' | translate">{{ e.documentos }}</td>
                   <td class="px-4 py-2 text-right" [attr.data-label]="'empresas.ots' | translate">{{ e.ordenes_trabajo }}</td>
-                  <td class="px-4 py-2" [attr.data-label]="'empresas.licencia_hasta' | translate">{{ e.licencia_fin ? (e.licencia_fin | date: 'dd-MM-yyyy') : '—' }}</td>
                   <td class="px-4 py-2" [attr.data-label]="'empresas.acciones' | translate">
                     <div class="flex flex-wrap gap-1">
                       <button type="button" class="btn-secondary" (click)="openEdit(e)" [attr.aria-label]="'empresas.editar_2' | translate: { v0: e.nombre }">{{ 'empresas.editar' | translate }}</button>

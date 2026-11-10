@@ -610,7 +610,7 @@ async def crear_ot_aprobada(
 # Permisos y plantas (HU-26: Skills de topología)
 # ---------------------------------------------------------------------------
 
-# El mantenedor es de gerente/admin (misma matriz que `require_route("plantas")`). Se
+# El mantenedor es del admin (misma matriz que `require_route("plantas")`). Se
 # replica acá porque las tools no pasan por las dependencias de FastAPI: el Depends del
 # router nunca se ejecuta cuando la escritura la hace una tool.
 # ---------------------------------------------------------------------------
@@ -671,7 +671,7 @@ PERMISO_DENEGADO = _mensaje_sin_permiso("plantas")
 
 
 def _puede_gestionar(rol: str | None) -> bool:
-    """El mantenedor es de gerente/admin: mismo permiso que el endpoint usaría."""
+    """El mantenedor es del admin: mismo permiso que el endpoint usaría."""
     try:
         return puede_acceder_ruta(rol or "", "plantas") is True
     except Exception:  # noqa: BLE001 — ruta no definida en la matriz

@@ -21,7 +21,7 @@ import pathlib
 from barb.core.db import fetch_all
 from barb.routers import stats
 
-ADMIN_E1 = ("admin@barb.com", "admin123")
+GERENTE_E1 = ("gerente1@planta.com", "gerente123")
 STATS_PY = pathlib.Path(stats.__file__)
 
 
@@ -39,6 +39,7 @@ def _fila_financiera(costo: float) -> _Fila:
     return _Fila(
         mttr=100, costo_total_acumulado=costo, downtime_evitado_min=0, ahorro_inactividad=0,
         total_completadas=4, completadas_en_sla=4, total_ots=10, abiertas=6,
+        downtime_total_min=120,
     )
 
 
@@ -102,7 +103,7 @@ def _montar(monkeypatch, costo: float):
 
 
 async def _costo(client, qs: str = ""):
-    h = await _login(client, ADMIN_E1)
+    h = await _login(client, GERENTE_E1)
     r = await client.get(f"/api/stats/financial-impact{qs}", headers=h)
     assert r.status_code == 200, r.text
     return r.json()["financials"]["costo_total_acumulado"]
@@ -185,7 +186,7 @@ async def test_el_costo_no_cambia_con_el_rango_temporal(client, monkeypatch):
 
 async def test_costo_real_excluye_canceladas_contra_la_bd(client):
     """El valor real debe coincidir con la suma que excluye las canceladas."""
-    h = await _login(client, ADMIN_E1)
+    h = await _login(client, GERENTE_E1)
     r = await client.get("/api/stats/financial-impact", headers=h)
     costo = r.json()["financials"]["costo_total_acumulado"]
 

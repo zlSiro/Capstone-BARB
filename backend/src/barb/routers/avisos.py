@@ -2,8 +2,9 @@
 Avisos de falla: del reporte en planta a la decisión del supervisor.
 
 Quienes trabajan en planta (operador, técnico, supervisor, ingeniero, gerente) reportan una falla. El aviso
-llega a un repositorio que supervisor y gerente ven completo; ellos deciden si se genera una OT para atenderlo
-o si se descarta (con motivo). Quien reportó solo ve sus propios avisos y en qué quedaron.
+llega a un repositorio que supervisor y gerente ven completo; solo el supervisor decide si se genera una OT para
+atenderlo o si se descarta (con motivo). El gerente consulta, no decide. Quien reportó solo ve sus propios avisos y
+en qué quedaron.
 
 Los avisos viven en la tabla `aviso_falla` (migración 0012), con las columnas del formulario «Reportar falla»:
 
@@ -36,7 +37,7 @@ from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from barb.core.config import settings
 from barb.core.db import fetch_all, fetch_one, transaction
-from barb.core.permissions import get_sesion_actual, puede_ejecutar_accion, require_action, resolver_empresa
+from barb.core.permissions import ROLES_REPOSITORIO_AVISOS, get_sesion_actual, require_action, resolver_empresa
 from barb.routers.work_orders import (
     _ensure_machine_exists,
     _ensure_technician_exists,
@@ -131,7 +132,7 @@ def _alcance(sesion: dict) -> tuple[str, dict]:
     """Empresa de la sesión + visibilidad: supervisor/gerente ven todo; el resto, solo lo que reportó."""
     clausulas = ["(%(empresa_id)s::int IS NULL OR p.empresa_id = %(empresa_id)s)"]
     params: dict = {"empresa_id": resolver_empresa(sesion)}
-    if not puede_ejecutar_accion(sesion["rol"], "gestionar_avisos"):
+    if sesion["rol"] not in ROLES_REPOSITORIO_AVISOS:
         clausulas.append("af.reportado_por = %(uid)s")
         params["uid"] = sesion["usuario_id"]
     return " AND ".join(clausulas), params

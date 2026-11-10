@@ -1,7 +1,7 @@
 import { Component, inject, input, linkedSignal, output, signal } from '@angular/core';
 import { FormField, email, form, min, required, validate } from '@angular/forms/signals';
 
-import { Empresa, EmpresaCreada, EmpresaPayload, EstadoEmpresa, PlanEmpresa } from '../../core/models';
+import { Empresa, EmpresaCreada, EmpresaPayload, EstadoEmpresa } from '../../core/models';
 import { EmpresasService } from '../../core/services/empresas.service';
 import { ToastService } from '../../core/services/toast.service';
 import { apiErrorMessage } from '../../core/utils/http-error';
@@ -19,12 +19,8 @@ interface EmpresaFormModel {
   contacto_nombre: string;
   contacto_email: string;
   contacto_telefono: string;
-  plan: PlanEmpresa;
   estado: EstadoEmpresa;
   max_usuarios: number;
-  max_plantas: number;
-  licencia_inicio: string;
-  licencia_fin: string;
   notas: string;
   // Solo al crear: primer usuario (gerente) de la empresa
   crearAdmin: boolean;
@@ -33,16 +29,8 @@ interface EmpresaFormModel {
   adminPassword: string;
 }
 
-const PLANES: { value: PlanEmpresa; label: string }[] = [
-  { value: 'trial', label: 'Trial' },
-  { value: 'starter', label: 'Starter' },
-  { value: 'professional', label: 'Professional' },
-  { value: 'enterprise', label: 'Enterprise' },
-];
-
 const ESTADOS: { value: EstadoEmpresa; label: string }[] = [
   { value: 'active', get label() { return textoActual('empresas.activa'); } },
-  { value: 'demo', get label() { return textoActual('empresas.demo'); } },
   { value: 'suspended', get label() { return textoActual('empresas.suspendida'); } },
   { value: 'cancelled', get label() { return textoActual('empresas.cancelada'); } },
 ];
@@ -56,12 +44,8 @@ function toModel(e: Empresa | null): EmpresaFormModel {
     contacto_nombre: e?.contacto_nombre ?? '',
     contacto_email: e?.contacto_email ?? '',
     contacto_telefono: e?.contacto_telefono ?? '',
-    plan: e?.plan ?? 'trial',
     estado: e?.estado ?? 'active',
     max_usuarios: e?.max_usuarios ?? 10,
-    max_plantas: e?.max_plantas ?? 1,
-    licencia_inicio: e?.licencia_inicio ?? '',
-    licencia_fin: e?.licencia_fin ?? '',
     notas: e?.notas ?? '',
     crearAdmin: !e,
     adminNombre: '',
@@ -106,14 +90,6 @@ function toModel(e: Empresa | null): EmpresaFormModel {
           <label for="emp-industria" class="fld-label">{{ 'empresas.industria' | translate }}</label>
           <input id="emp-industria" type="text" class="fld-input" [formField]="f.industria" [attr.placeholder]="'empresas.mineria_manufactura' | translate" />
         </div>
-        <div>
-          <label for="emp-plan" class="fld-label">{{ 'empresas.plan' | translate }}</label>
-          <select id="emp-plan" class="fld-input" [formField]="f.plan">
-            @for (p of planes; track p.value) {
-              <option [value]="p.value">{{ p.label }}</option>
-            }
-          </select>
-        </div>
 
         <div>
           <label for="emp-cnombre" class="fld-label">{{ 'empresas.contacto' | translate }}</label>
@@ -134,25 +110,6 @@ function toModel(e: Empresa | null): EmpresaFormModel {
           <input id="emp-maxu" type="number" class="fld-input" [formField]="f.max_usuarios" />
           @if (f.max_usuarios().touched() && f.max_usuarios().invalid()) {
             <p role="alert" class="fld-error">{{ f.max_usuarios().errors()[0]?.message | translate }}</p>
-          }
-        </div>
-        <div>
-          <label for="emp-maxp" class="fld-label">{{ 'empresas.max_plantas' | translate }}</label>
-          <input id="emp-maxp" type="number" class="fld-input" [formField]="f.max_plantas" />
-          @if (f.max_plantas().touched() && f.max_plantas().invalid()) {
-            <p role="alert" class="fld-error">{{ f.max_plantas().errors()[0]?.message | translate }}</p>
-          }
-        </div>
-
-        <div>
-          <label for="emp-lini" class="fld-label">{{ 'empresas.licencia_desde' | translate }}</label>
-          <input id="emp-lini" type="date" class="fld-input" [formField]="f.licencia_inicio" />
-        </div>
-        <div>
-          <label for="emp-lfin" class="fld-label">{{ 'empresas.licencia_hasta' | translate }}</label>
-          <input id="emp-lfin" type="date" class="fld-input" [formField]="f.licencia_fin" />
-          @if (f.licencia_fin().touched() && f.licencia_fin().invalid()) {
-            <p role="alert" class="fld-error">{{ f.licencia_fin().errors()[0]?.message | translate }}</p>
           }
         </div>
 
@@ -234,7 +191,6 @@ export class EmpresaFormModalComponent {
   readonly closed = output<void>();
   readonly saved = output<Empresa>();
 
-  protected readonly planes = PLANES;
   protected readonly estados = ESTADOS;
   protected readonly submitting = signal(false);
   /** Aviso de bienvenida del gerente creado junto con la empresa (incluye su contraseña). */
@@ -254,13 +210,6 @@ export class EmpresaFormModalComponent {
       value().trim() ? undefined : { kind: 'blank', message: 'empresas.ingresa_el_nombre_de' });
     email(p.contacto_email, { message: 'empresas.email_de_contacto_invalido' });
     min(p.max_usuarios, 1, { message: 'empresas.debe_ser_al_menos' });
-    min(p.max_plantas, 1, { message: 'Debe ser al menos 1.' });
-    validate(p.licencia_fin, ({ value, valueOf }) => {
-      const ini = valueOf(p.licencia_inicio);
-      return ini && value() && value() < ini
-        ? { kind: 'range', message: 'empresas.la_licencia_no_puede' }
-        : undefined;
-    });
     // Gerente inicial: solo se valida si se eligió crearlo
     required(p.adminNombre, { message: 'empresas.ingresa_el_nombre_del', when: ({ valueOf }) => valueOf(p.crearAdmin) });
     required(p.adminEmail, { message: 'empresas.ingresa_el_email_del', when: ({ valueOf }) => valueOf(p.crearAdmin) });
@@ -286,12 +235,8 @@ export class EmpresaFormModalComponent {
       contacto_nombre: nullable(m.contacto_nombre),
       contacto_email: nullable(m.contacto_email),
       contacto_telefono: nullable(m.contacto_telefono),
-      plan: m.plan,
       estado: m.estado,
       max_usuarios: Number(m.max_usuarios),
-      max_plantas: Number(m.max_plantas),
-      licencia_inicio: m.licencia_inicio || null,
-      licencia_fin: m.licencia_fin || null,
       notas: nullable(m.notas),
     };
 

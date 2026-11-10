@@ -19,6 +19,16 @@ Datos ficticios: `backend/seeds/seed_multiempresa.sql` (los aplica `scripts/seed
 > (`alembic upgrade head` fallaba). Se reconstruyó a partir de los índices `ix_ot_*` existentes con `CREATE INDEX IF NOT EXISTS`.
 > Si esa migración existe en otra rama con el mismo id, conservar la original y descartar esta.
 
+### Datos de una empresa (formulario del super_usuario)
+
+El alta y la edición piden solo lo que el sistema usa: nombre, RUT, país, industria, contacto, **máximo de usuarios** (`max_usuarios`, se
+hace cumplir al crear usuarios), estado y notas (más el gerente inicial al crear). **Estados:** `active`, `suspended` y `cancelled`; una
+empresa suspendida o cancelada no puede iniciar sesión.
+
+Se quitaron `plan`, `max_plantas`, `licencia_inicio`/`licencia_fin` (la API ya no los recibe ni los devuelve: nada los usaba, ni los límites ni
+vencimientos) y el estado `demo` (migración `0015_eliminar_estado_demo`: las empresas en `demo` pasan a `active` y el tipo `estado_empresa` queda
+con 3 valores). Las columnas `plan`, `max_plantas` y `licencia_*` siguen en la tabla `empresa` con sus valores por defecto, sin uso.
+
 ## 2. Roles y permisos
 
 Nuevo rol **`super_usuario`**: contraparte comercial de BARB frente a la empresa que contrata el software. No pertenece a ninguna empresa
@@ -28,9 +38,9 @@ dashboard, órdenes de trabajo, topología, DocChat ni documentos (matriz y endp
 | Clave | Quién | Uso |
 |---|---|---|
 | ruta `empresas` / acción `gestionar_empresas` | solo `super_usuario` | Mantenedor de empresas |
-| ruta `usuarios`, acciones `ver_usuarios` / `gestionar_usuarios` | `gerente` y `admin` (solo su empresa); `super_usuario` solo sobre gerentes | Mantenedor de perfiles |
-| ruta `documentos` | `engineer`, `gerente`, `admin` (operador/técnico/supervisor: solo ver) | Documentación de la empresa |
-| acciones `subir_documentos`, `eliminar_documentos` | `engineer`, `gerente`, `admin` | Subir / activar-excluir / eliminar |
+| ruta `usuarios`, acciones `ver_usuarios` / `gestionar_usuarios` | gestión **en cascada**, solo en su empresa: `super_usuario` → gerentes · `gerente` → administradores · `admin` → operador, técnico, supervisor e ingeniero | Mantenedor de perfiles |
+| ruta `documentos` | `engineer` y `admin` (operador/técnico/supervisor/gerente: solo ver) | Documentación de la empresa |
+| acciones `subir_documentos`, `eliminar_documentos` | `engineer`, `admin` | Subir / activar-excluir / eliminar |
 
 ## 3. Aislamiento por empresa (cómo se garantiza)
 
@@ -72,7 +82,7 @@ se rechazan al subir (422); los límites de rate/tokens siguen siendo en memoria
 ## 6. Frontend
 
 * `/empresas` (mantenedor, solo super): crear con gerente inicial, editar, suspender/reactivar, eliminar, atajo a los gerentes de la empresa.
-* `/usuarios`: alta/edición/activar/eliminar de perfiles (gerente y admin de empresa). Para el super solo lista y crea gerentes.
+* `/usuarios`: alta/edición/activar/eliminar de perfiles en cascada (el gerente gestiona administradores; el admin, los perfiles operativos). Para el super solo lista y crea gerentes. Cada empresa conserva al menos un supervisor activo (409).
 * `/documentos`: subir, excluir/incluir en la IA, eliminar (no disponible para el super).
 * Menú lateral y página inicial dependen del rol (super → `/empresas`, único ítem junto a `/usuarios`). La cabecera ya no tiene selector de empresa.
 

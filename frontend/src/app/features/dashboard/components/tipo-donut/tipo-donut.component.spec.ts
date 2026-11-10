@@ -380,3 +380,20 @@ describe('TipoDonutComponent', () => {
 
 
 
+
+describe('tamano en pantalla (UX)', () => {
+  it('la geometria del SVG se mantiene en 200x200', () => {
+    const { el } = setup(REAL);
+    const svg = el.querySelector('svg')!;
+    expect(svg.getAttribute('viewBox')).toBe('0 0 200 200');
+  });
+
+  it('el SVG se agranda por CSS a 260 px sin deformarse', () => {
+    const { el } = setup(REAL);
+    const svg = el.querySelector('svg')!;
+    const clase = svg.getAttribute('class') ?? '';
+    expect(clase).toContain('w-[260px]');
+    // h-auto conserva la proporcion: es un cuadrado, no un rectangulo estirado.
+    expect(clase).toContain('h-auto');
+  });
+});

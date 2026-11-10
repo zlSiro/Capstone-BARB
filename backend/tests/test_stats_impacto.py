@@ -30,7 +30,7 @@ from barb.routers import stats
 # las expectativas de estas pruebas siguen siendo válidas sin editarlas.
 SIN_BARB = stats.settings.impact_without_barb_minutes
 
-ADMIN_E1 = ("admin@barb.com", "admin123")
+GERENTE_E1 = ("gerente1@planta.com", "gerente123")
 STATS_PY = pathlib.Path(stats.__file__)
 
 
@@ -74,6 +74,7 @@ def _mock_pool(incidentes: int, tiempo_promedio: float | None):
             return _Fila(
                 mttr=100, costo_total_acumulado=1000, downtime_evitado_min=0, ahorro_inactividad=0,
                 total_completadas=4, completadas_en_sla=4, total_ots=10, abiertas=6,
+                downtime_total_min=120,
             )
 
         async def fetchall(self):
@@ -115,7 +116,7 @@ def _montar(monkeypatch, incidentes: int, tiempo_promedio: float | None):
 
 
 async def _impacto(client, qs: str = ""):
-    h = await _login(client, ADMIN_E1)
+    h = await _login(client, GERENTE_E1)
     r = await client.get(f"/api/stats/financial-impact{qs}", headers=h)
     assert r.status_code == 200, r.text
     return r.json()["impacto_anual"]
@@ -175,7 +176,7 @@ async def test_impacto_con_rango_corto_ni_se_ejecuta_la_query(client, monkeypatc
     await _impacto(client, "?days=30")
     ejecutadas = [sql for sql, _ in p.conn.cursor_obj.llamadas]
     assert not any("incidentes_periodo" in s for s in ejecutadas), "se ejecutó la consulta de impacto"
-    assert len(ejecutadas) == 6, f"esperaba 6 consultas, hubo {len(ejecutadas)}"
+    assert len(ejecutadas) == 7, f"esperaba 7 consultas, hubo {len(ejecutadas)}"
 
 
 async def test_supuestos_se_devuelven_siempre(client, monkeypatch):

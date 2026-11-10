@@ -189,3 +189,25 @@ describe('AlertaEstancadasComponent', () => {
     });
   });
 });
+
+describe('desglose con solapamiento (UX)', () => {
+  it('aclara cuantas estan en ambas categorias', () => {
+    // 13 vencidas + 6 demoradas sobre 15 totales => 4 estan en ambas.
+    const { el } = setup({ total: 15, vencidas: 13, demoradas: 6, umbral_dias: 7 });
+    const chip = el.querySelector('[data-testid="banner-ambas"]');
+    expect(chip).not.toBeNull();
+    expect(chip!.textContent).toContain('4');
+  });
+
+  it('no muestra el chip cuando no hay solapamiento', () => {
+    const { el } = setup({ total: 8, vencidas: 5, demoradas: 3, umbral_dias: 7 });
+    expect(el.querySelector('[data-testid="banner-ambas"]')).toBeNull();
+  });
+
+  it('el chip convive con los de vencidas y demoradas', () => {
+    const { el } = setup({ total: 15, vencidas: 13, demoradas: 6, umbral_dias: 7 });
+    expect(el.querySelector('[data-testid="banner-vencidas"]')).not.toBeNull();
+    expect(el.querySelector('[data-testid="banner-demoradas"]')).not.toBeNull();
+    expect(el.querySelector('[data-testid="banner-ambas"]')).not.toBeNull();
+  });
+});
