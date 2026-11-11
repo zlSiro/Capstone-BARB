@@ -206,6 +206,81 @@ describe('WorkOrdersListComponent — cambio de estado', () => {
 });
 
 
+describe('WorkOrdersListComponent — abrir la OT pinchando cualquier parte de la fila', () => {
+  const DETALLE = (r: { method: string; url: string }) => r.method === 'GET' && r.url.endsWith('/work-orders/OT-2026-0001');
+  const celdas = (el: HTMLElement) => Array.from(el.querySelectorAll('[data-testid="fila-ot"] td')) as HTMLElement[];
+
+  it('cada dato de la fila abre la orden: descripción, máquina, técnico, prioridad, estado y fecha', () => {
+    // El N° OT (índice 0) tiene su propio botón; las demás celdas se prueban una por una.
+    const probadas = ['Vibración anormal', 'Compresor A1', 'Carlos', 'Alta', 'Pendiente', '2026'];
+    for (const texto of probadas) {
+      const { fixture, http, el } = setup();
+      const celda = celdas(el).find(td => td.textContent?.includes(texto));
+      expect(celda, `celda con «${texto}»`).toBeDefined();
+      // Se pincha el texto mismo (no el td): el clic burbujea hasta la fila.
+      const objetivo = (celda!.querySelector('p, span') as HTMLElement | null) ?? celda!;
+      objetivo.click();
+      fixture.detectChanges();
+
+      expect(el.querySelector('app-ot-detail-sheet'), `detalle tras pinchar «${texto}»`).not.toBeNull();
+      http.expectOne(DETALLE).flush(ORDER);
+      fixture.destroy();
+      TestBed.resetTestingModule();
+    }
+  });
+
+  it('pinchar el espacio vacío de la celda también la abre', () => {
+    const { fixture, http, el } = setup();
+    celdas(el)[2].click();
+    fixture.detectChanges();
+    expect(el.querySelector('app-ot-detail-sheet')).not.toBeNull();
+    http.expectOne(DETALLE).flush(ORDER);
+  });
+
+  it('el botón con el N° OT sigue funcionando y abre la orden una sola vez', () => {
+    const { fixture, http, el } = setup();
+    (el.querySelector('[data-testid="fila-ot"] button') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(el.querySelector('app-ot-detail-sheet')).not.toBeNull();
+    http.expectOne(DETALLE).flush(ORDER); // expectOne falla si se hubieran pedido dos
+    http.verify();
+  });
+
+  it('usar el selector de estado no abre la orden (solo propone el cambio)', () => {
+    const { fixture, http, el } = setup();
+    const select = el.querySelector('tbody select') as HTMLSelectElement;
+    select.click();
+    select.value = 'in_progress';
+    select.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    expect(el.querySelector('app-ot-detail-sheet')).toBeNull();
+    expect(el.querySelector('app-ot-status-change-dialog')).not.toBeNull();
+    http.verify();
+  });
+
+  it('si el usuario está seleccionando texto para copiarlo, no se abre', () => {
+    const { fixture, http, el } = setup();
+    const parrafo = el.querySelector('[data-testid="fila-ot"] p') as HTMLElement;
+    const rango = document.createRange();
+    rango.selectNodeContents(parrafo);
+    const seleccion = window.getSelection()!;
+    seleccion.removeAllRanges();
+    seleccion.addRange(rango);
+
+    parrafo.click();
+    fixture.detectChanges();
+    expect(el.querySelector('app-ot-detail-sheet')).toBeNull();
+    http.verify();
+    seleccion.removeAllRanges();
+  });
+
+  it('las filas se ven pinchables', () => {
+    const { el } = setup();
+    expect(el.querySelector('[data-testid="fila-ot"]')!.classList).toContain('cursor-pointer');
+  });
+});
+
+
 describe('WorkOrdersListComponent — botón «+ Crear OT» por rol', () => {
   function montarConRol(role: string) {
     TestBed.configureTestingModule({

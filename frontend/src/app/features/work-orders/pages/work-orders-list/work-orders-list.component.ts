@@ -90,8 +90,10 @@ import { I18nService } from '../../../../core/i18n/i18n.service';
             <tbody>
               @for (ot of filtered(); track ot.ot_id) {
                 <tr
-                  class="border-t border-borde transition-colors hover:bg-superficie-2"
-                  [class.bg-media-suave]="recentlyChanged().has(ot.numero_ot)">
+                  class="cursor-pointer border-t border-borde transition-colors hover:bg-superficie-2"
+                  [class.bg-media-suave]="recentlyChanged().has(ot.numero_ot)"
+                  data-testid="fila-ot"
+                  (click)="onRowClick($event, ot)">
                   <td class="whitespace-nowrap px-4 py-2" [attr.data-label]="'ot.n_ot' | translate">
                     <button
                       type="button"
@@ -309,6 +311,18 @@ export class WorkOrdersListComponent implements OnInit {
   // ---------------------------------------------------------------------------
   // Detalle
   // ---------------------------------------------------------------------------
+
+  /**
+   * Toda la fila abre la OT. Se ignora el clic si viene de un control propio de la fila (el selector de estado, un botón
+   * o un enlace: cada uno hace lo suyo) o si el usuario estaba seleccionando texto para copiarlo.
+   * El botón con el N° OT sigue siendo el camino para teclado y lectores de pantalla.
+   */
+  protected onRowClick(event: MouseEvent, order: WorkOrder): void {
+    const objetivo = event.target as HTMLElement | null;
+    if (objetivo?.closest('select, option, button, a, input, textarea, label')) return;
+    if (window.getSelection()?.toString()) return;
+    this.openDetail(order);
+  }
 
   protected openDetail(order: WorkOrder): void {
     this.detail.set(order);
