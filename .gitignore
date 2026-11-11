@@ -12,3 +12,6 @@ CLAUDE.md
 
 .vscode/*
 !.vscode/extensions.json
+
+# Angular
+.angular/

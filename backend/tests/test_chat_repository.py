@@ -8,7 +8,6 @@ import pytest_asyncio
 from barb.core.db import execute, fetch_one
 from barb.services import chat_repository
 
-
 # =============================================================================
 # Fixtures
 # =============================================================================
@@ -61,7 +60,7 @@ async def test_create_session_autogenera_titulo(cleanup_sessions, seeded_ids):
     sid = await chat_repository.create_session(
         usuario_id=seeded_ids["usuario_id"],
         empresa_id=seeded_ids["empresa_id"],
-        primer_mensaje="Este es un mensaje de prueba muy largo que debería truncarse a 60 caracteres o menos para el título",
+        primer_mensaje="Este es un mensaje de prueba muy largo que debería truncarse a 48 caracteres o menos para el título",
     )
     cleanup_sessions.append(sid)
 
@@ -71,9 +70,62 @@ async def test_create_session_autogenera_titulo(cleanup_sessions, seeded_ids):
     )
     assert row is not None
     titulo = row["titulo"]
-    assert len(titulo) <= 61  # 60 + "…"
+    assert len(titulo) <= 48
     assert "Este es un mensaje" in titulo
-    assert titulo.endswith("…")
+    assert not titulo.endswith("…")
+    # Se corta en palabra completa, no a mitad de una.
+    assert not titulo.endswith(" ")
+    palabras = "Este es un mensaje de prueba muy largo que debería truncarse a 48 caracteres o menos para el título"
+    assert titulo.split()[-1] in palabras.split()
+
+
+@pytest.mark.asyncio
+async def test_create_session_guarda_equipo_y_titulo_segmentado(cleanup_sessions, seeded_ids):
+    sid = await chat_repository.create_session(
+        usuario_id=seeded_ids["usuario_id"],
+        empresa_id=seeded_ids["empresa_id"],
+        primer_mensaje=(
+            "Necesito saber por qué la bomba PUMP-E4 está vibrando demasiado "
+            "y qué debo revisar primero"
+        ),
+    )
+    cleanup_sessions.append(sid)
+
+    row = await fetch_one(
+        """
+        SELECT titulo, machine_name, plant_name, discipline
+        FROM chat_session WHERE session_id = %(sid)s
+        """,
+        {"sid": sid},
+    )
+    assert row is not None
+    assert row["titulo"] == "PUMP-E4 — vibrando demasiado"
+    assert row["machine_name"] == "Pump E4"
+    assert row["plant_name"] == "Planta Central San Bernardo"
+    assert row["discipline"] == "Hidráulica"
+
+
+@pytest.mark.asyncio
+async def test_create_session_sin_maquina_no_guarda_equipo(cleanup_sessions, seeded_ids):
+    sid = await chat_repository.create_session(
+        usuario_id=seeded_ids["usuario_id"],
+        empresa_id=seeded_ids["empresa_id"],
+        primer_mensaje="¿Cuál es el torque recomendado para los pernos del chancador?",
+    )
+    cleanup_sessions.append(sid)
+
+    row = await fetch_one(
+        """
+        SELECT titulo, machine_name, plant_name, discipline
+        FROM chat_session WHERE session_id = %(sid)s
+        """,
+        {"sid": sid},
+    )
+    assert row is not None
+    assert row["machine_name"] is None
+    assert row["plant_name"] is None
+    assert row["discipline"] is None
+    assert not row["titulo"].endswith("…")
 
 
 @pytest.mark.asyncio
@@ -90,6 +142,30 @@ async def test_create_session_titulo_fallback(cleanup_sessions, seeded_ids):
         {"sid": sid},
     )
     assert row["titulo"] == "Conversación sin título"
+
+
+# =============================================================================
+# _make_titulo (sin BD)
+# =============================================================================
+
+def test_make_titulo_usa_codigo_y_problema():
+    maquina = {"nombre": "Pump E4", "codigo": "PUMP-E4"}
+    titulo = chat_repository._make_titulo(
+        "Necesito saber por qué la bomba PUMP-E4 está vibrando demasiado "
+        "y qué debo revisar primero",
+        maquina,
+    )
+    assert titulo == "PUMP-E4 — vibrando demasiado"
+
+
+def test_make_titulo_sin_maquina_corta_en_palabra_y_sin_elipsis():
+    titulo = chat_repository._make_titulo(
+        "Este es un mensaje de prueba muy largo que debería truncarse a 48 "
+        "caracteres o menos para el título"
+    )
+    assert len(titulo) <= 48
+    assert not titulo.endswith("…")
+    assert titulo.startswith("Este es un mensaje")
 
 
 # =============================================================================

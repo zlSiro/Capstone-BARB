@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 
 from barb.core.db import fetch_all, fetch_one
 
@@ -23,12 +24,139 @@ logger = logging.getLogger("barb.chat_repo")
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_titulo(primer_mensaje: str) -> str:
-    """Genera un título corto a partir del primer mensaje del usuario."""
-    text = (primer_mensaje or "").strip().replace("\n", " ")
+_MAX_TITULO = 48
+_MAX_PROBLEMA = 40
+
+# Muletillas con las que la gente abre una consulta. No aportan al título y hacen que
+# todas las filas empiecen igual («Necesito saber…»).
+_MULETILLAS = re.compile(
+    r"^(?:hola|buenas|buenos días|buenas tardes|buenas noches|por favor|"
+    r"necesito saber|necesito|quisiera saber|quisiera|me gustaría saber|me gustaría|"
+    r"quiero saber|quiero|puedes decirme|podrías decirme|me puedes decir|"
+    r"me podrías decir|ayúdame a|ayudame a|dime|saber|por qué|porque|qué|que)"
+    r"\b[\s,;:.\-–—]*",
+    re.IGNORECASE,
+)
+
+# Conectores que quedan pegados al problema después de quitar el equipo («PUMP-E4 está
+# vibrando» → «vibrando»).
+_CONECTORES = re.compile(
+    r"^(?:está|esta|están|estan|tiene|tienen|presenta|presentan|hace|hacen|"
+    r"con|que|por|porque|debido a|a causa de)\b[\s,;:.¿?¡!\-–—]*",
+    re.IGNORECASE,
+)
+
+
+_STOPWORDS_FINALES = frozenset(
+    {
+        "a", "al", "con", "de", "del", "el", "en", "la", "las", "los",
+        "o", "para", "por", "un", "una", "unas", "unos", "y",
+    }
+)
+
+
+def _recortar_palabras_finales(texto: str) -> str:
+    """Quita puntuación y conectores sueltos al final de un título truncado."""
+    limpio = (texto or "").strip(" ,;:.-–—")
+    while limpio:
+        cabeza, _, ultima = limpio.rpartition(" ")
+        if not cabeza or ultima.lower() not in _STOPWORDS_FINALES:
+            break
+        limpio = cabeza.rstrip(" ,;:.-–—")
+    return limpio
+
+
+def _sin_muletillas(texto: str) -> str:
+    limpio = " ".join((texto or "").split())
+    while limpio:
+        nuevo = _MULETILLAS.sub("", limpio, count=1).strip()
+        if nuevo == limpio:
+            break
+        limpio = nuevo
+    return limpio
+
+
+def _frase_corta(texto: str, maximo: int = _MAX_TITULO) -> str:
+    """Primera frase, sin muletillas y cortada en palabra completa (sin puntos suspensivos)."""
+    text = _sin_muletillas(texto)
     if not text:
         return "Conversación sin título"
-    return text[:60] + ("…" if len(text) > 60 else "")
+
+    fin = re.search(r"[.!?](\s|$)", text)
+    frase = text[: fin.start()].strip() if fin else text
+    if not frase:
+        frase = text
+
+    # El título no lleva signos de apertura («¿Cuál es…» → «Cuál es…»).
+    frase = frase.lstrip("¿¡ ").strip()
+
+    if len(frase) > maximo:
+        frase = frase[:maximo].rsplit(" ", 1)[0].rstrip(" ,;:.-–—")
+
+    frase = _recortar_palabras_finales(frase)
+
+    # Al quitar la muletilla inicial la frase puede quedar en minúscula.
+    frase = frase[:1].upper() + frase[1:] if frase else frase
+    return frase or "Conversación sin título"
+
+
+def _problema_despues_de_maquina(texto: str, nombre: str, codigo: str) -> str:
+    """Texto que sigue a la mención del equipo, ya limpio y acotado."""
+    text = " ".join((texto or "").split())
+    if not text:
+        return ""
+
+    fin = -1
+    for aguja in (codigo, nombre):
+        if not aguja:
+            continue
+        for m in re.finditer(re.escape(aguja), text, flags=re.IGNORECASE):
+            fin = max(fin, m.end())
+
+    if fin < 0:
+        # El usuario puede omitir palabras del nombre («el chancador» en vez de
+        # «Chancador de mandíbulas»): basta con que aparezca un token significativo.
+        for token in re.split(r"\W+", nombre or ""):
+            if len(token) < 2:
+                continue
+            for m in re.finditer(rf"\b{re.escape(token)}\b", text, flags=re.IGNORECASE):
+                fin = max(fin, m.end())
+
+    resto = text[fin:] if fin >= 0 else text
+    resto = re.sub(r"^[\s,;:.¿?¡!\-–—]+", "", resto)
+    while resto:
+        nuevo = _CONECTORES.sub("", resto, count=1).strip()
+        if nuevo == resto:
+            break
+        resto = nuevo
+
+    # Solo la primera cláusula: «vibrando demasiado y qué debo revisar» → «vibrando demasiado».
+    resto = re.split(r"[.;:!?]|\s+y\s+", resto, maxsplit=1)[0].strip()
+    resto = resto.strip(" ,;:.-–—")
+    if len(resto) > _MAX_PROBLEMA:
+        resto = resto[:_MAX_PROBLEMA].rsplit(" ", 1)[0].rstrip(" ,;:.-–—")
+    return _recortar_palabras_finales(resto)
+
+
+def _make_titulo(primer_mensaje: str, maquina: dict | None = None) -> str:
+    """Título del historial.
+
+    Si el primer mensaje identifica una máquina, usa «CÓDIGO — problema» (por ejemplo
+    «PUMP-E4 — vibrando demasiado»). Si no, cae a la primera frase sin muletillas y sin
+    puntos suspensivos.
+    """
+    if maquina:
+        equipo = str(maquina.get("codigo") or maquina.get("nombre") or "").strip()
+        problema = _problema_despues_de_maquina(
+            primer_mensaje,
+            str(maquina.get("nombre") or ""),
+            str(maquina.get("codigo") or ""),
+        )
+        if equipo and problema:
+            return f"{equipo} — {problema}"
+        if equipo:
+            return equipo
+    return _frase_corta(primer_mensaje)
 
 
 def _normalize_messages(raw) -> list[dict]:
@@ -52,23 +180,44 @@ async def create_session(
     empresa_id: int,
     primer_mensaje: str,
 ) -> str:
-    """Crea una sesión nueva y devuelve su UUID (str)."""
+    """Crea una sesión nueva y devuelve su UUID (str).
+
+    Si el primer mensaje menciona una única máquina de la empresa, se guarda también su
+    nombre, planta y disciplina: son las columnas que muestra la columna «Equipo» del
+    historial (CGBIDA-454). La detección es best-effort: si falla o hay ambigüedad, la
+    sesión se crea igual y el título cae al formato de frase.
+    """
+    # Import perezoso: `ai_tools` arrastra LangChain y este módulo lo usan los tests y los
+    # routers de historial, que no necesitan el grafo para listar sesiones.
+    from barb.services.ai_tools import identificar_maquina
+
+    maquina = await identificar_maquina(empresa_id, primer_mensaje)
+
     row = await fetch_one(
         """
-        INSERT INTO chat_session (empresa_id, usuario_id, titulo, messages, metadata)
+        INSERT INTO chat_session (
+            empresa_id, usuario_id, titulo, messages, metadata,
+            machine_name, plant_name, discipline
+        )
         VALUES (
             %(empresa_id)s,
             %(usuario_id)s,
             %(titulo)s,
             '[]'::jsonb,
-            '{}'::jsonb
+            '{}'::jsonb,
+            %(machine_name)s,
+            %(plant_name)s,
+            %(discipline)s
         )
         RETURNING session_id
         """,
         {
             "empresa_id": empresa_id,
             "usuario_id": usuario_id,
-            "titulo": _make_titulo(primer_mensaje),
+            "titulo": _make_titulo(primer_mensaje, maquina),
+            "machine_name": (maquina or {}).get("nombre"),
+            "plant_name": (maquina or {}).get("planta"),
+            "discipline": (maquina or {}).get("disciplina"),
         },
     )
     if not row:

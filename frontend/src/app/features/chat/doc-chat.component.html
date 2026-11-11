@@ -1,22 +1,32 @@
 <!-- frontend/src/app/features/chat/doc-chat.component.html -->
 
-<div class="flex h-full">
+<div class="flex h-full" [style.--ancho-historial]="anchoHistorial() + 'px'">
 
   <!-- ══════════════ SIDEBAR: HISTORIAL ══════════════ -->
-  <aside [attr.aria-label]="'sistema.historial_de_conversaciones' | translate" class="min-w-0 flex-col border-r border-borde bg-superficie md:w-[440px] md:flex-shrink-0" [class]="historialAbierto() ? 'flex w-full' : 'hidden md:flex'">
+  <aside [attr.aria-label]="'sistema.historial_de_conversaciones' | translate" class="min-w-0 flex-col border-r border-borde bg-superficie md:w-[var(--ancho-historial)] md:flex-shrink-0" [class]="claseHistorial()">
 
     <!-- Header sidebar -->
-    <div class="px-4 py-3 border-b border-borde ">
-      <h2 class="text-base font-semibold text-tinta ">
-        <app-icon name="registro" [size]="20" class="mr-1 align-text-bottom" /> {{ 'chatHistory.title' | translate }}
-      </h2>
-      <p class="text-sm text-tinta-suave mt-0.5">
-        {{ 'chatHistory.sidebarSubtitle' | translate }}
-      </p>
+    <div class="px-4 py-3 border-b border-borde flex items-start justify-between gap-2">
+      <div class="min-w-0">
+        <h2 class="text-base font-semibold text-tinta ">
+          <app-icon name="registro" [size]="20" class="mr-1 align-text-bottom" /> {{ 'chatHistory.title' | translate }}
+        </h2>
+        <p class="text-sm text-tinta-suave mt-0.5">
+          {{ 'chatHistory.sidebarSubtitle' | translate }}
+        </p>
+      </div>
+      <button
+        type="button"
+        (click)="colapsarHistorial()"
+        [title]="'chatHistory.hideSidebar' | translate"
+        [attr.aria-label]="'chatHistory.hideSidebar' | translate"
+        aria-expanded="true"
+        class="hidden md:inline-flex size-10 shrink-0 items-center justify-center rounded-control text-tinta-suave hover:bg-superficie-2 hover:text-tinta focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accion"
+      ><app-icon name="atras" [size]="20" /></button>
     </div>
 
     <!-- Tabla de sesiones -->
-    <div class="flex-1 overflow-y-auto">
+    <div class="flex-1 overflow-y-auto overflow-x-auto">
       @if (loadingSessions()) {
         <div class="p-4 text-center text-sm text-tinta-suave ">
           {{ 'common.loading' | translate }}
@@ -37,7 +47,6 @@
             <tr class="text-tinta-suave ">
               <th class="text-left px-3 py-2 font-medium whitespace-nowrap">{{ 'chatHistory.date' | translate }}</th>
               <th class="text-left px-3 py-2 font-medium">{{ 'chatHistory.titleIssue' | translate }}</th>
-              <th class="text-left px-3 py-2 font-medium w-16">{{ 'common.technician' | translate }}</th>
               <th class="text-left px-3 py-2 font-medium w-20">{{ 'chatHistory.machine' | translate }}</th>
               <th class="w-8"></th>
             </tr>
@@ -52,12 +61,12 @@
                 <td class="px-3 py-2 text-tinta-suave whitespace-nowrap align-top">
                   {{ formatDate(s.saved_at) }}
                 </td>
-                <td class="px-3 py-2 text-tinta font-medium align-top">
-                  {{ s.titulo }}
+                <td class="px-3 py-2 text-tinta font-medium align-top" [title]="s.titulo">
+                  {{ tituloCorto(s.titulo) }}
                 </td>
-                <!-- Columnas reservadas para futura HU (Técnico / Equipo) -->
-                <td class="px-3 py-2 align-top"></td>
-                <td class="px-3 py-2 align-top"></td>
+                <td class="px-3 py-2 text-tinta-suave align-top whitespace-nowrap">
+                  {{ s.machine_name || '—' }}
+                </td>
                 <td class="px-1 py-2 text-right align-top">
                   <button
                     (click)="deleteSession(s, $event)"
@@ -74,11 +83,30 @@
     </div>
   </aside>
 
+  <!-- ══════════════ HANDLE DE REDIMENSIÓN (ESCRITORIO) ══════════════ -->
+  @if (!historialColapsado()) {
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      [attr.aria-label]="'chatHistory.resizeSidebar' | translate"
+      [attr.aria-valuemin]="anchoMin"
+      [attr.aria-valuemax]="anchoMax"
+      [attr.aria-valuenow]="anchoHistorial()"
+      tabindex="0"
+      class="hidden md:block w-1.5 shrink-0 touch-none cursor-col-resize bg-transparent transition-colors hover:bg-accion/40 focus-visible:bg-accion/60 focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-accion"
+      (pointerdown)="iniciarRedimension($event)"
+      (pointermove)="moverRedimension($event)"
+      (pointerup)="terminarRedimension($event)"
+      (pointercancel)="terminarRedimension($event)"
+      (keydown)="redimensionarConTeclado($event)"
+    ></div>
+  }
+
   <!-- ══════════════ PANEL DE CHAT ══════════════ -->
   <section [attr.aria-label]="'sistema.conversacion' | translate" class="min-w-0 flex-1 flex-col" [class]="historialAbierto() ? 'hidden md:flex' : 'flex'">
 
     <!-- Header chat -->
-    <div class="px-6 py-4 border-b border-borde flex items-center justify-between bg-superficie ">
+    <div class="px-6 py-4 border-b border-borde flex flex-wrap items-center justify-between gap-2 bg-superficie ">
       <div>
         <h1 class="text-xl font-bold text-tinta ">{{ 'docChat.title' | translate }}</h1>
         <p class="text-sm text-tinta-suave ">
@@ -93,6 +121,19 @@
         <app-icon name="registro" [size]="20" />
         Historial
       </button>
+      @if (historialColapsado()) {
+        <button
+          type="button"
+          class="btn-secondary mr-2 hidden md:inline-flex"
+          (click)="mostrarHistorial()"
+          [title]="'chatHistory.showSidebar' | translate"
+          [attr.aria-label]="'chatHistory.showSidebar' | translate"
+          aria-expanded="false"
+        >
+          <app-icon name="registro" [size]="20" />
+          {{ 'chatHistory.title' | translate }}
+        </button>
+      }
       <button
         (click)="newConversation()"
         class="px-3 py-1.5 text-sm bg-accion text-sobre-accion rounded-control hover:bg-accion-hover transition-colors font-medium"
@@ -167,23 +208,27 @@
       }
 
       <div class="flex items-end gap-2">
-        <app-image-attachment
-          [disabled]="isLoading()"
-          (imageSelected)="onImageSelected($event)"
-          (imageError)="onImageError($event)"
-        />
+        <div class="shrink-0">
+          <app-image-attachment
+            [disabled]="isLoading()"
+            (imageSelected)="onImageSelected($event)"
+            (imageError)="onImageError($event)"
+          />
+        </div>
         <textarea
+          #promptInput
           [(ngModel)]="inputText"
+          (input)="onInputChange()"
           (keydown)="onKeyDown($event)"
           [disabled]="isLoading()"
-          rows="2"
+          rows="1"
           [placeholder]="'docChat.inputPlaceholder' | translate"
-          class="flex-1 resize-none rounded-control border border-borde-control bg-superficie text-tinta px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accion disabled:opacity-50 text-sm"
+          class="flex-1 min-w-0 resize-none overflow-y-auto max-h-48 min-h-11 rounded-control border border-borde-control bg-superficie text-tinta px-4 py-2.5 leading-6 focus:outline-none focus:ring-2 focus:ring-accion disabled:opacity-50 text-sm"
         ></textarea>
         <button
           (click)="sendMessage()"
           [disabled]="isLoading() || !inputText().trim()"
-          class="px-5 py-2 bg-accion text-sobre-accion rounded-control font-medium hover:bg-accion-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          class="shrink-0 px-5 py-2.5 bg-accion text-sobre-accion rounded-control font-medium hover:bg-accion-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {{ 'common.send' | translate }}
         </button>

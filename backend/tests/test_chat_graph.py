@@ -15,7 +15,13 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import tool
 
 from barb.services import chat_graph
-from barb.services.ai_tools import _UMBRAL_PARECIDO, _buscar_maquinas, _puntaje, crear_tools
+from barb.services.ai_tools import (
+    _UMBRAL_PARECIDO,
+    _buscar_maquinas,
+    _puntaje,
+    crear_tools,
+    identificar_maquina,
+)
 from barb.services.chat_graph import crear_grafo
 
 
@@ -211,6 +217,30 @@ async def test_la_tool_no_ve_maquinas_de_otra_empresa(db_pool):
     # La misma búsqueda desde otra empresa no debe encontrarla.
     maquinas_ajenas = await _buscar_maquinas(999, "Compressor A1")
     assert maquinas_ajenas == []
+
+
+@pytest.mark.asyncio
+async def test_identificar_maquina_exige_mencion_exacta(db_pool):
+    """Para etiquetar una sesión no basta el parecido difuso: hace falta código o nombre."""
+    maquina = await identificar_maquina(
+        1, "Necesito saber por qué la bomba PUMP-E4 está vibrando demasiado"
+    )
+    assert maquina is not None
+    assert maquina["codigo"] == "PUMP-E4"
+    assert maquina["disciplina"] == "Hidráulica"
+
+    # «prensa B3» se parece a «Prensa» (otra planta), pero no es su nombre ni su código.
+    assert await identificar_maquina(1, "La prensa B3 pierde presión") is None
+
+
+@pytest.mark.asyncio
+async def test_identificar_maquina_ignora_creacion_de_planta(db_pool):
+    """La máquina mencionada como dato de una planta nueva no es el tema del chat."""
+    texto = (
+        "Crea la planta Lavandería Industrial en Lampa con una sola máquina: "
+        "Lavadora Industrial, código LAV-01, disciplina Mecánica, SLA 8"
+    )
+    assert await identificar_maquina(1, texto) is None
 
 
 @pytest.mark.asyncio

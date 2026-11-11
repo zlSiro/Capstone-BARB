@@ -298,7 +298,9 @@ const base = {
       deleteConfirm: '¿Eliminar la conversación "{title}"? Esta acción no se puede deshacer.',
       deleteSuccess: 'Conversación eliminada', deleteError: 'No se pudo eliminar la conversación',
       sidebarSubtitle: 'Consultas previas realizadas a la IA', sidebarEmpty: 'Sin conversaciones guardadas.',
-      sidebarEmptyHint: 'Inicia una nueva para verla aquí.', loadSessionsError: 'No se pudo cargar el historial.'
+      sidebarEmptyHint: 'Inicia una nueva para verla aquí.', loadSessionsError: 'No se pudo cargar el historial.',
+      hideSidebar: 'Ocultar historial', showSidebar: 'Mostrar historial',
+      resizeSidebar: 'Ajustar el ancho del historial'
     },
     docChat: {
       title: 'DocChat IA', subtitle: 'Consulta al asistente técnico en tiempo real',
@@ -594,7 +596,9 @@ const base = {
       deleteConfirm: 'Delete the conversation "{title}"? This action cannot be undone.',
       deleteSuccess: 'Conversation deleted', deleteError: 'Could not delete the conversation',
       sidebarSubtitle: 'Previous queries made to the AI', sidebarEmpty: 'No saved conversations.',
-      sidebarEmptyHint: 'Start a new one to see it here.', loadSessionsError: 'Could not load the history.'
+      sidebarEmptyHint: 'Start a new one to see it here.', loadSessionsError: 'Could not load the history.',
+      hideSidebar: 'Hide history', showSidebar: 'Show history',
+      resizeSidebar: 'Resize the history panel'
     },
     docChat: {
       title: 'DocChat AI', subtitle: 'Ask the technical assistant in real time',
