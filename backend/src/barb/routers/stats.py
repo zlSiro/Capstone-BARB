@@ -174,9 +174,9 @@ def _get_ot_scope_params(
     La empresa se aplica SIEMPRE, aunque venga un filtro más específico: es lo que
     garantiza que un id suelto de otra empresa devuelva vacío en vez de datos ajenos.
 
-    Los tres filtros de topología ya están soportados por el SQL pero todavía no se
-    exponen en los endpoints (CGBIDA-550): agregarlos es sumar `Query(default=None)` a
-    la firma y pasar el valor acá, sin volver a tocar el fragmento.
+    Los tres filtros de topología los exponen `GET /api/stats/historical` y
+    `GET /api/stats/financial-impact` (CGBIDA-550) y llegan hasta acá ya validados
+    por `_validar_filtros_topologia`.
     """
     fragmento = (
         "AND ot.maquina_id IN ("
@@ -196,6 +196,76 @@ def _get_ot_scope_params(
     return fragmento, params
 
 
+def _a_entero_o_none(valor: object) -> int | None:
+    """El valor como entero, o `None` si no lo es.
+
+    Los tests llaman al endpoint **directo**, sin pasar por FastAPI. En ese caso los
+    defaults de `Query(default=None)` llegan como objetos `Query` y no como `None`, y
+    tomarlos por un filtro válido termina en
+    `psycopg.ProgrammingError: cannot adapt type 'Query'`.
+
+    Normalizar acá deja la firma como la espera FastAPI y garantiza que el cuerpo
+    siempre reciba enteros o None, venga de la URL o de una llamada directa.
+    """
+    if isinstance(valor, bool):  # bool es subclase de int: no es un id
+        return None
+    return valor if isinstance(valor, int) else None
+
+
+async def _validar_filtros_topologia(
+    empresa_id: int | None,
+    planta_id: int | None,
+    disciplina_id: int | None,
+    maquina_id: int | None,
+) -> None:
+    """
+    404 si alguno de los filtros no existe o no es de la empresa de la sesión.
+
+    `ot_scope` ya los acota por empresa, así que un id ajeno devolvería vacío. Pero
+    vacío es un resultado engañoso: el dashboard mostraría todos los KPIs en 0 sin
+    explicar por qué. Es mejor decir que el filtro no corresponde.
+
+    Con `empresa_id` en None (super_usuario) solo se valida que exista, que es lo
+    único que se puede afirmar cuando no hay empresa en la sesión.
+    """
+    if planta_id is not None:
+        fila = await fetch_one(
+            "SELECT 1 FROM planta WHERE planta_id = %(id)s"
+            " AND (%(empresa)s::int IS NULL OR empresa_id = %(empresa)s)",
+            {"id": planta_id, "empresa": empresa_id},
+        )
+        if not fila:
+            raise HTTPException(
+                status_code=404,
+                detail=f"La planta {planta_id} no existe en tu empresa.",
+            )
+
+    if disciplina_id is not None:
+        fila = await fetch_one(
+            "SELECT 1 FROM disciplina WHERE disciplina_id = %(id)s"
+            " AND (%(empresa)s::int IS NULL OR empresa_id = %(empresa)s)",
+            {"id": disciplina_id, "empresa": empresa_id},
+        )
+        if not fila:
+            raise HTTPException(
+                status_code=404,
+                detail=f"La disciplina {disciplina_id} no existe en tu empresa.",
+            )
+
+    if maquina_id is not None:
+        fila = await fetch_one(
+            "SELECT 1 FROM maquina m JOIN planta p ON p.planta_id = m.planta_id"
+            " WHERE m.maquina_id = %(id)s"
+            " AND (%(empresa)s::int IS NULL OR p.empresa_id = %(empresa)s)",
+            {"id": maquina_id, "empresa": empresa_id},
+        )
+        if not fila:
+            raise HTTPException(
+                status_code=404,
+                detail=f"La máquina {maquina_id} no existe en tu empresa.",
+            )
+
+
 @router.get(
     "/api/stats/historical",
     dependencies=[Depends(require_route("dashboard", solo_lectura=True))],
@@ -204,6 +274,9 @@ async def get_historical(
     granularity: str = Query(default="month"),
     days: int | None = Query(default=None, ge=1),
     empresa_id: int | None = Query(default=None),
+    planta_id: int | None = Query(default=None, ge=1),
+    disciplina_id: int | None = Query(default=None, ge=1),
+    maquina_id: int | None = Query(default=None, ge=1),
     sesion: dict = Depends(get_sesion_actual),
 ):
     """Serie histórica por período para los gráficos de línea del dashboard.
@@ -224,7 +297,17 @@ async def get_historical(
     date_filter = (
         "AND ot.fecha_creacion >= NOW() - (%(days)s || ' days')::interval" if days else ""
     )
-    ot_scope, scope_params = _get_ot_scope_params(resolver_empresa(sesion, empresa_id))
+    planta_id = _a_entero_o_none(planta_id)
+    disciplina_id = _a_entero_o_none(disciplina_id)
+    maquina_id = _a_entero_o_none(maquina_id)
+
+    empresa_efectiva = resolver_empresa(sesion, empresa_id)
+    await _validar_filtros_topologia(
+        empresa_efectiva, planta_id, disciplina_id, maquina_id
+    )
+    ot_scope, scope_params = _get_ot_scope_params(
+        empresa_efectiva, planta_id, disciplina_id, maquina_id
+    )
     params.update(scope_params)
 
     sla_target = settings.sla_target_minutes
@@ -392,6 +475,9 @@ def _sin_kpis_financieros(respuesta: dict) -> dict:
 async def get_financial_impact(
     days: int | None = Query(default=None, ge=1),
     empresa_id: int | None = Query(default=None),
+    planta_id: int | None = Query(default=None, ge=1),
+    disciplina_id: int | None = Query(default=None, ge=1),
+    maquina_id: int | None = Query(default=None, ge=1),
     sesion: dict = Depends(get_sesion_actual),
 ):
     date_filter = "AND ot.fecha_creacion >= NOW() - (%(days)s || ' days')::interval" if days else ""
@@ -399,7 +485,17 @@ async def get_financial_impact(
 
     # Multi-empresa: las métricas solo consideran OTs/máquinas de la empresa del usuario
     # (OT -> maquina -> planta -> empresa). NULL = todas (solo super_usuario).
-    ot_scope, scope_params = _get_ot_scope_params(resolver_empresa(sesion, empresa_id))
+    planta_id = _a_entero_o_none(planta_id)
+    disciplina_id = _a_entero_o_none(disciplina_id)
+    maquina_id = _a_entero_o_none(maquina_id)
+
+    empresa_efectiva = resolver_empresa(sesion, empresa_id)
+    await _validar_filtros_topologia(
+        empresa_efectiva, planta_id, disciplina_id, maquina_id
+    )
+    ot_scope, scope_params = _get_ot_scope_params(
+        empresa_efectiva, planta_id, disciplina_id, maquina_id
+    )
     params.update(scope_params)
 
     sla_target = settings.sla_target_minutes
@@ -501,6 +597,9 @@ async def get_financial_impact(
         JOIN planta pl ON pl.planta_id = m.planta_id
         LEFT JOIN orden_trabajo ot ON ot.maquina_id = m.maquina_id {date_filter}
         WHERE (%(empresa_id)s::int IS NULL OR pl.empresa_id = %(empresa_id)s)
+        AND (%(planta_id)s::int IS NULL OR m.planta_id = %(planta_id)s)
+        AND (%(disciplina_id)s::int IS NULL OR m.disciplina_id = %(disciplina_id)s)
+        AND (%(maquina_id)s::int IS NULL OR m.maquina_id = %(maquina_id)s)
         GROUP BY m.maquina_id, m.nombre
         ORDER BY {orden}
         LIMIT 5
@@ -616,6 +715,9 @@ async def get_financial_impact(
          WHERE ot.estado = 'completed' AND ot.tiempo_reparacion_min IS NOT NULL
            {date_filter}
            AND (%(empresa_id)s::int IS NULL OR p.empresa_id = %(empresa_id)s)
+           AND (%(planta_id)s::int IS NULL OR m.planta_id = %(planta_id)s)
+           AND (%(disciplina_id)s::int IS NULL OR m.disciplina_id = %(disciplina_id)s)
+           AND (%(maquina_id)s::int IS NULL OR m.maquina_id = %(maquina_id)s)
          GROUP BY m.maquina_id, m.nombre
          ORDER BY mttr DESC, completadas DESC
          LIMIT 5
@@ -634,6 +736,9 @@ async def get_financial_impact(
            AND ot.estado != 'cancelled'
            AND ot.fecha_creacion >= NOW() - INTERVAL '{MTBF_VENTANA_DIAS} days'
            AND (%(empresa_id)s::int IS NULL OR p.empresa_id = %(empresa_id)s)
+           AND (%(planta_id)s::int IS NULL OR m.planta_id = %(planta_id)s)
+           AND (%(disciplina_id)s::int IS NULL OR m.disciplina_id = %(disciplina_id)s)
+           AND (%(maquina_id)s::int IS NULL OR m.maquina_id = %(maquina_id)s)
          GROUP BY m.maquina_id, m.nombre
         HAVING COUNT(*) >= {MTBF_FALLAS_MINIMAS}
          ORDER BY ({MTBF_VENTANA_HORAS} - COALESCE(SUM(ot.downtime_minutes), 0) / 60.0) / COUNT(*) ASC
