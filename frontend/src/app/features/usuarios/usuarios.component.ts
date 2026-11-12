@@ -39,7 +39,7 @@ import { I18nService } from '../../core/i18n/i18n.service';
             }
           </p>
         </div>
-        <button type="button" class="btn-primary" (click)="openCreate()">{{ 'usuarios.nuevo_usuario' | translate }}</button>
+        <button type="button" class="btn-primary" data-tour="usuarios-nuevo" (click)="openCreate()">{{ 'usuarios.nuevo_usuario' | translate }}</button>
       </div>
 
       <div>

@@ -22,6 +22,7 @@ export interface StatusChangeRequest {
   template: `
     @if (options().length) {
       <select
+        data-tour="ot-estado"
         class="rounded-control border border-borde-control bg-superficie py-1 pl-2 pr-7 text-sm font-medium text-tinta focus:outline-none focus:ring-2 focus:ring-accion"
         [attr.aria-label]="'ot.cambiar_estado_de_la' | translate: { v0: order().numero_ot, v1: currentLabel() }"
         (change)="onChange($event)">

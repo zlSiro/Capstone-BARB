@@ -40,7 +40,7 @@ const RUTAS_CON_SALIDA_PROPIA = ['/topology', '/topologia', '/chat/history'];
 
       <div class="flex items-center gap-1 md:gap-2">
         @if (puedeReportar()) {
-          <button type="button" class="btn-senal hidden md:inline-flex" data-testid="btn-reportar-header" (click)="reportar()">
+          <button type="button" class="btn-senal hidden md:inline-flex" data-testid="btn-reportar-header" data-tour="reportar-falla" (click)="reportar()">
             <app-icon name="alerta" [size]="20" />
             {{ 'nav.reportarFalla' | translate }}
           </button>

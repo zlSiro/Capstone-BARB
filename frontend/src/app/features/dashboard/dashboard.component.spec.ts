@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 
 import { FinancialStats } from '../../core/models';
@@ -79,7 +80,7 @@ function setup(respuesta: FinancialStats | Error = stats(), lang: 'es' | 'en' = 
 
   TestBed.configureTestingModule({
     imports: [DashboardComponent],
-    providers: [{ provide: StatsService, useValue: { getFinancialImpact, getHistorical } }],
+    providers: [provideRouter([]), { provide: StatsService, useValue: { getFinancialImpact, getHistorical } }],
   });
   const fixture = TestBed.createComponent(DashboardComponent);
   fixture.detectChanges();
@@ -291,5 +292,49 @@ describe('dashboard: sin acceso a los KPIs financieros (supervisor, ingeniero)',
     const { el } = setup();
     expect(clavesKpi(el)).toHaveLength(5);
     expect(clavesKpi(el)).toContain('costo');
+  });
+});
+
+describe('dashboard: botón «Explícame»', () => {
+  const boton = (el: HTMLElement) => el.querySelector<HTMLElement>('[data-testid="btn-explicame"]');
+
+  it('está en la cabecera, junto a la moneda y el período', () => {
+    const { el } = setup();
+    const b = boton(el)!;
+    expect(b).not.toBeNull();
+    expect(b.textContent).toContain('Explícame');
+    const grupo = b.closest('app-explicame')!.parentElement!;
+    expect(grupo.querySelector('[data-testid="selector-moneda"]')).not.toBeNull();
+    expect(grupo.querySelector('[data-testid="selector-rango"]')).not.toBeNull();
+  });
+
+  it('abre el panel con el resumen del rango elegido', () => {
+    const { fixture, el } = setup();
+    boton(el)!.click();
+    fixture.detectChanges();
+    expect(el.querySelector('[data-testid="explicame-panel"]')).not.toBeNull();
+    expect(el.querySelector('[data-testid="frase-salud"]')!.textContent).toContain('La planta está en');
+    expect(el.querySelector('[data-testid="explicame-periodo"]')).not.toBeNull();
+  });
+
+  it('«Ver detalle por máquina» abre el desglose de costos que ya existe', () => {
+    const { fixture, el } = setup();
+    boton(el)!.click();
+    fixture.detectChanges();
+    el.querySelector<HTMLElement>('[data-testid="explicame-ver-costos"]')!.click();
+    fixture.detectChanges();
+    expect(el.querySelector('[data-testid="explicame-panel"]')).toBeNull();
+    expect(el.querySelector('[data-testid="modal-costos"]')).not.toBeNull();
+  });
+
+  it('si la carga falla no hay botón (no hay cifras que explicar)', () => {
+    expect(boton(setup(new Error('x')).el)).toBeNull();
+  });
+
+  it('sin acceso a lo financiero el resumen no menciona el costo', () => {
+    const { fixture, el } = setup(statsSinFinanzas());
+    boton(el)!.click();
+    fixture.detectChanges();
+    expect(el.querySelector('[data-testid="frase-costo"]')).toBeNull();
   });
 });

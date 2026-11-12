@@ -71,6 +71,17 @@ const ICONOS = {
   clip: ['M20 11.5 L12 19.5 A5 5 0 0 1 5 12.5 L13 4.5 A3.3 3.3 0 0 1 17.7 9.2 L9.7 17.2 A1.7 1.7 0 0 1 7.3 14.8 L14.5 7.6'],
   'chevron-abajo': ['M6 9 L12 15 L18 9'],
   info: ['M3 12 A9 9 0 1 0 21 12 A9 9 0 1 0 3 12 Z', 'M12 11 V16', 'M12 8 V8.01'],
+  // Ayuda y recorridos guiados.
+  ayuda: ['M3 12 A9 9 0 1 0 21 12 A9 9 0 1 0 3 12 Z', 'M9.2 9.3 A2.8 2.8 0 1 1 13.4 11.7 C12.5 12.2 12 12.8 12 13.8', 'M12 17 V17.01'],
+  adelante: ['M9 5 L16 12 L9 19'],
+  play: ['M8 5 L19 12 L8 19 Z'],
+  foco: [
+    'M4 8 V4 H8',
+    'M16 4 H20 V8',
+    'M20 16 V20 H16',
+    'M8 20 H4 V16',
+    'M9.5 12 A2.5 2.5 0 1 0 14.5 12 A2.5 2.5 0 1 0 9.5 12 Z',
+  ],
 } as const satisfies Record<string, readonly string[]>;
 
 export type IconName = keyof typeof ICONOS;

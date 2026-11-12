@@ -39,7 +39,7 @@ const ESTADO_STYLE: Record<EstadoEmpresa, string> = {
             {{ 'empresas.clientes_de_la_plataforma' | translate }}
           </p>
         </div>
-        <button type="button" class="btn-primary" (click)="openCreate()">{{ 'empresas.nueva_empresa' | translate }}</button>
+        <button type="button" class="btn-primary" data-tour="empresas-nueva" (click)="openCreate()">{{ 'empresas.nueva_empresa' | translate }}</button>
       </div>
 
       <div>
@@ -96,9 +96,9 @@ const ESTADO_STYLE: Record<EstadoEmpresa, string> = {
                       <button type="button" class="btn-secondary" (click)="openEdit(e)" [attr.aria-label]="'empresas.editar_2' | translate: { v0: e.nombre }">{{ 'empresas.editar' | translate }}</button>
                       <button type="button" class="btn-secondary" (click)="goToUsuarios(e)" [attr.aria-label]="'empresas.gerentes_de' | translate: { v0: e.nombre }">{{ 'empresas.gerentes' | translate }}</button>
                       @if (e.estado === 'suspended' || e.estado === 'cancelled') {
-                        <button type="button" class="btn-secondary" (click)="setEstado(e, 'active')" [attr.aria-label]="'empresas.reactivar_2' | translate: { v0: e.nombre }">{{ 'empresas.reactivar' | translate }}</button>
+                        <button type="button" class="btn-secondary" data-tour="empresa-estado" (click)="setEstado(e, 'active')" [attr.aria-label]="'empresas.reactivar_2' | translate: { v0: e.nombre }">{{ 'empresas.reactivar' | translate }}</button>
                       } @else {
-                        <button type="button" class="btn-secondary" (click)="setEstado(e, 'suspended')" [attr.aria-label]="'empresas.suspender_2' | translate: { v0: e.nombre }">{{ 'empresas.suspender' | translate }}</button>
+                        <button type="button" class="btn-secondary" data-tour="empresa-estado" (click)="setEstado(e, 'suspended')" [attr.aria-label]="'empresas.suspender_2' | translate: { v0: e.nombre }">{{ 'empresas.suspender' | translate }}</button>
                       }
                     </div>
                   </td>

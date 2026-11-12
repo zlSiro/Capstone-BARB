@@ -37,4 +37,13 @@ describe('Icon', () => {
     expect(el.style.width).toBe('32px');
     expect(el.style.height).toBe('32px');
   });
+
+  // Íconos de la ayuda y los recorridos guiados: mismo estilo que el resto (trazo de 2 px, malla de 24 × 24).
+  it.each(['ayuda', 'adelante', 'play', 'foco'])('«%s» se dibuja con el mismo trazo que los demás', (nombre) => {
+    const svg = render(nombre).querySelector('svg')!;
+    expect(svg.getAttribute('viewBox')).toBe('0 0 24 24');
+    expect(svg.getAttribute('stroke')).toBe('currentColor');
+    expect(svg.getAttribute('stroke-width')).toBe('2');
+    expect(svg.querySelectorAll('path').length).toBeGreaterThan(0);
+  });
 });

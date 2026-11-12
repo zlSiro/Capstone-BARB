@@ -93,6 +93,7 @@ import { I18nService } from '../../../../core/i18n/i18n.service';
                   class="cursor-pointer border-t border-borde transition-colors hover:bg-superficie-2"
                   [class.bg-media-suave]="recentlyChanged().has(ot.numero_ot)"
                   data-testid="fila-ot"
+                  data-tour="ot-fila"
                   (click)="onRowClick($event, ot)">
                   <td class="whitespace-nowrap px-4 py-2" [attr.data-label]="'ot.n_ot' | translate">
                     <button

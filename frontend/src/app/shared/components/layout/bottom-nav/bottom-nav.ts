@@ -10,7 +10,7 @@ import { ReportarFallaUi } from '../../../../core/services/reportar-falla-ui';
 import { ThemeService } from '../../../../core/services/theme.service';
 import { Icon } from '../../ui/icon/icon';
 import { ModalComponent } from '../../ui/modal/modal.component';
-import { NAV_ITEMS, NavItem } from '../nav-items';
+import { NAV_ITEMS, NavItem, esAyuda } from '../nav-items';
 
 /**
  * Navegación inferior del móvil (la zona que alcanza el pulgar): hasta 3 destinos del rol, «Reportar falla» al centro
@@ -31,6 +31,7 @@ import { NAV_ITEMS, NavItem } from '../nav-items';
               <button
                 type="button"
                 data-testid="btn-reportar-nav"
+                data-tour="reportar-falla"
                 (click)="reportar()"
                 class="-mt-5 inline-flex size-16 flex-col items-center justify-center rounded-full border-4 border-superficie bg-senal text-sobre-senal shadow-md"
                 [attr.aria-label]="'nav.reportarFalla' | translate">
@@ -60,6 +61,7 @@ import { NAV_ITEMS, NavItem } from '../nav-items';
             <button
               type="button"
               data-testid="btn-reportar-nav"
+                data-tour="reportar-falla"
               (click)="reportar()"
               class="-mt-5 inline-flex size-16 items-center justify-center rounded-full border-4 border-superficie bg-senal text-sobre-senal shadow-md"
               [attr.aria-label]="'nav.reportarFalla' | translate">
@@ -127,10 +129,12 @@ export class BottomNav {
 
   protected readonly menuAbierto = signal(false);
 
-  private readonly accesibles = computed<NavItem[]>(() => {
+  private readonly visibles = computed<NavItem[]>(() => {
     this.permissions.role();
-    return NAV_ITEMS.filter((i) => this.permissions.canAccess(i.ruta)).sort((a, b) => a.prioridad - b.prioridad);
+    return NAV_ITEMS.filter((i) => !i.ruta || this.permissions.canAccess(i.ruta)).sort((a, b) => a.prioridad - b.prioridad);
   });
+  /** Destinos candidatos a la barra: todo menos Ayuda, que va siempre en «Más» (aunque al rol le sobre lugar). */
+  private readonly accesibles = computed<NavItem[]>(() => this.visibles().filter((i) => !esAyuda(i)));
 
   protected readonly puedeReportar = computed(() => {
     this.permissions.role();
@@ -144,7 +148,7 @@ export class BottomNav {
     // Si todo cabe sin necesitar «Más», igual se deja «Más» para tema/idioma/salir: se reserva un lugar.
     return this.accesibles().slice(0, Math.min(this.cupo(), n));
   });
-  protected readonly resto = computed(() => this.accesibles().slice(this.principales().length));
+  protected readonly resto = computed(() => [...this.accesibles().slice(this.principales().length), ...this.visibles().filter(esAyuda)]);
 
   /** Posición del botón central: en medio de los destinos. */
   protected readonly mitad = computed(() => Math.ceil(this.principales().length / 2));

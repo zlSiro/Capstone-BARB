@@ -12,6 +12,7 @@ import { AlertaEstancadasComponent } from './components/alerta-estancadas/alerta
 import { CostoDetalleComponent } from './components/costo-detalle/costo-detalle.component';
 import { SlaHistoricoComponent } from './components/sla-historico/sla-historico.component';
 import { TopMaquinasComponent } from './components/top-maquinas/top-maquinas.component';
+import { ExplicameComponent } from './explicame/explicame.component';
 
 /** Rangos del selector temporal (CGBIDA-397). `'all'` = histórico completo. */
 export type RangoTemporal = 7 | 30 | 90 | 'all';
@@ -32,7 +33,7 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, MachineRankingComponent, TipoDonutComponent, AlertaEstancadasComponent, CostoDetalleComponent, SaludOperacionalComponent, SlaHistoricoComponent, TopMaquinasComponent],
+  imports: [CommonModule, MachineRankingComponent, TipoDonutComponent, AlertaEstancadasComponent, CostoDetalleComponent, SaludOperacionalComponent, SlaHistoricoComponent, TopMaquinasComponent, ExplicameComponent],
   template: `
     <!--
       max-w-screen-2xl (1536px) + mx-auto: sin esto el dashboard se estiraba al 100% del
@@ -49,6 +50,9 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
 
         <!-- Moneda y rango temporal, juntos a la derecha de la cabecera. -->
         <div class="flex flex-wrap items-center justify-end gap-2">
+          @if (stats(); as s) {
+            <app-explicame [stats]="s" [rango]="rango()" [etiquetaRango]="etiquetaRango(rango())" (verCostos)="abrirCostos()" />
+          }
           <!--
             Tasa aplicada y su fecha, ANTES del toggle (pedido de Rene): se lee
             [tipo de cambio] [CLP|USD], o sea primero el dato y despues el control que lo
@@ -130,12 +134,13 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
           grafico de escenarios de abajo ya lo explica con mas detalle; con 5 columnas
           cada tarjeta gana ancho y la fila queda continua (6 columnas dejaria un hueco).
         -->
-        <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5" data-tour="dash-kpis">
           @for (kpi of tarjetas(); track kpi.clave) {
             <div
               class="rounded-control border border-borde bg-superficie p-3 
                       "
               [attr.data-testid]="'kpi-' + kpi.clave"
+              [attr.data-tour]="kpi.clave === 'costo' ? 'dash-costo' : null"
             >
               <div class="flex items-start justify-between gap-1">
                 <div class="flex min-w-0 items-center gap-1">
@@ -212,6 +217,7 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
                          transition-colors hover:border-accion focus:border-accion
                          focus:outline-none"
                   data-testid="ver-detalle-costos"
+                  data-tour="dash-costo-detalle"
                 >{{ t().costDetailButton }}</button>
               }
             </div>
@@ -235,7 +241,7 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
           <app-sla-historico class="min-w-0 lg:col-span-2" />
 
           <!-- Salud Operacional (CGBIDA-520): semaforo simplificado con el motivo. -->
-          <app-salud-operacional class="min-w-0" [salud]="salud()" />
+          <app-salud-operacional class="min-w-0" data-tour="dash-salud" [salud]="salud()" />
 
           <!-- El ranking muestra su propio estado vacío si no hay equipos. -->
           <app-machine-ranking
@@ -246,7 +252,7 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
           />
 
           <!-- Top 5 por maquina (CGBIDA-516 y 517): peor MTTR y peor MTBF. -->
-          <app-top-maquinas class="min-w-0" [mttr]="peorMttr()" [mtbf]="peorMtbf()" />
+          <app-top-maquinas class="min-w-0" data-tour="dash-top5" [mttr]="peorMttr()" [mtbf]="peorMtbf()" />
 
           <!-- Dona por tipo de intervencion (CGBIDA-395). Se auto-oculta sin datos. -->
           <app-tipo-donut class="min-w-0" [datos]="porTipo()" />
