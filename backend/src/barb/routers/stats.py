@@ -153,6 +153,49 @@ def _etiqueta_periodo(inicio: datetime, granularity: str) -> str:
     return inicio.strftime("%Y")
 
 
+def _get_ot_scope_params(
+    empresa_id: int | None,
+    planta_id: int | None = None,
+    disciplina_id: int | None = None,
+    maquina_id: int | None = None,
+) -> tuple[str, dict]:
+    """
+    Fragmento SQL que acota las OTs a la empresa (y, si se piden, a una planta,
+    disciplina o máquina) junto con el diccionario de parámetros que espera psycopg.
+
+    Devuelve `(fragmento, params)` en una sola pieza porque separarlos es cómo se
+    desincronizan: un `%(clave)s` en el SQL que nadie liga en el dict explota en
+    tiempo de ejecución, no al importar el módulo.
+
+    El fragmento arranca con `AND`, así que se encadena igual en un `WHERE` que en el
+    `ON` de un `LEFT JOIN`. `None` en cualquiera de los cuatro = sin restricción en esa
+    dimensión; `empresa_id` en `None` solo lo usa el super_usuario.
+
+    La empresa se aplica SIEMPRE, aunque venga un filtro más específico: es lo que
+    garantiza que un id suelto de otra empresa devuelva vacío en vez de datos ajenos.
+
+    Los tres filtros de topología ya están soportados por el SQL pero todavía no se
+    exponen en los endpoints (CGBIDA-550): agregarlos es sumar `Query(default=None)` a
+    la firma y pasar el valor acá, sin volver a tocar el fragmento.
+    """
+    fragmento = (
+        "AND ot.maquina_id IN ("
+        " SELECT m2.maquina_id FROM maquina m2"
+        " JOIN planta p2 ON p2.planta_id = m2.planta_id"
+        " WHERE (%(empresa_id)s::int IS NULL OR p2.empresa_id = %(empresa_id)s)"
+        " AND (%(planta_id)s::int IS NULL OR m2.planta_id = %(planta_id)s)"
+        " AND (%(disciplina_id)s::int IS NULL OR m2.disciplina_id = %(disciplina_id)s)"
+        " AND (%(maquina_id)s::int IS NULL OR m2.maquina_id = %(maquina_id)s))"
+    )
+    params: dict = {
+        "empresa_id": empresa_id,
+        "planta_id": planta_id,
+        "disciplina_id": disciplina_id,
+        "maquina_id": maquina_id,
+    }
+    return fragmento, params
+
+
 @router.get(
     "/api/stats/historical",
     dependencies=[Depends(require_route("dashboard", solo_lectura=True))],
@@ -178,13 +221,11 @@ async def get_historical(
         )
 
     params: dict = {"days": days} if days else {}
-    params["empresa_id"] = resolver_empresa(sesion, empresa_id)
     date_filter = (
         "AND ot.fecha_creacion >= NOW() - (%(days)s || ' days')::interval" if days else ""
     )
-    ot_scope = """AND ot.maquina_id IN (
-        SELECT m2.maquina_id FROM maquina m2 JOIN planta p2 ON p2.planta_id = m2.planta_id
-        WHERE (%(empresa_id)s::int IS NULL OR p2.empresa_id = %(empresa_id)s))"""
+    ot_scope, scope_params = _get_ot_scope_params(resolver_empresa(sesion, empresa_id))
+    params.update(scope_params)
 
     sla_target = settings.sla_target_minutes
     en_sla = (
@@ -358,10 +399,8 @@ async def get_financial_impact(
 
     # Multi-empresa: las métricas solo consideran OTs/máquinas de la empresa del usuario
     # (OT -> maquina -> planta -> empresa). NULL = todas (solo super_usuario).
-    params["empresa_id"] = resolver_empresa(sesion, empresa_id)
-    ot_scope = """AND ot.maquina_id IN (
-        SELECT m2.maquina_id FROM maquina m2 JOIN planta p2 ON p2.planta_id = m2.planta_id
-        WHERE (%(empresa_id)s::int IS NULL OR p2.empresa_id = %(empresa_id)s))"""
+    ot_scope, scope_params = _get_ot_scope_params(resolver_empresa(sesion, empresa_id))
+    params.update(scope_params)
 
     sla_target = settings.sla_target_minutes
     downtime_cost = settings.downtime_cost_per_minute
@@ -609,7 +648,7 @@ async def get_financial_impact(
                 await cur.execute(financials_query, params)
                 f = await cur.fetchone()
 
-                await cur.execute(trend_query, {"empresa_id": params["empresa_id"]})
+                await cur.execute(trend_query, params)
                 trend_rows = await cur.fetchall()
 
                 await cur.execute(machines_query, params)
@@ -623,7 +662,7 @@ async def get_financial_impact(
                 tipo_rows = await cur.fetchall()
 
                 # Las estancadas no leen el rango: solo el filtro por empresa.
-                await cur.execute(estancadas_query, {"empresa_id": params["empresa_id"]})
+                await cur.execute(estancadas_query, params)
                 estancadas_row = await cur.fetchone()
 
                 # Si el rango no justifica un MTBF anual, ni se consulta.
@@ -645,7 +684,7 @@ async def get_financial_impact(
                 # el promedio no es significativo, asi que ni se consulta.
                 peor_mtbf_rows = []
                 if visible:
-                    await cur.execute(peor_mtbf_query, {"empresa_id": params["empresa_id"]})
+                    await cur.execute(peor_mtbf_query, params)
                     peor_mtbf_rows = await cur.fetchall()
 
         mttr = float(f["mttr"])
