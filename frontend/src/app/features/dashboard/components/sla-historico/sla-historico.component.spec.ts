@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { of, throwError } from 'rxjs';
 
-import { HistoricoRespuesta, PeriodoHistorico } from '../../../../core/models';
+import { HistoricoRespuesta, PeriodoHistorico, SIN_FILTROS } from '../../../../core/models';
 import { StatsService } from '../../../../core/services/stats.service';
 import { SlaHistoricoComponent } from './sla-historico.component';
 
@@ -59,7 +59,7 @@ function clic(el: HTMLElement, testid: string): void {
 describe('sla-historico: carga inicial', () => {
   it('pide el último semestre al arrancar', () => {
     const { getHistorical } = setup();
-    expect(getHistorical).toHaveBeenCalledWith('month', 180);
+    expect(getHistorical).toHaveBeenCalledWith('month', 180, SIN_FILTROS);
   });
 
   it('dibuja el SVG con un punto por período', () => {
@@ -99,21 +99,21 @@ describe('sla-historico: selector de ventana', () => {
     const { fixture, el, getHistorical } = setup();
     clic(el, 'rango-hist-anio');
     fixture.detectChanges();
-    expect(getHistorical).toHaveBeenCalledWith('semester', 365);
+    expect(getHistorical).toHaveBeenCalledWith('semester', 365, SIN_FILTROS);
   });
 
   it('3 años pide años de 1095 días', () => {
     const { fixture, el, getHistorical } = setup();
     clic(el, 'rango-hist-tres');
     fixture.detectChanges();
-    expect(getHistorical).toHaveBeenCalledWith('year', 1095);
+    expect(getHistorical).toHaveBeenCalledWith('year', 1095, SIN_FILTROS);
   });
 
   it('5 años pide años de 1825 días', () => {
     const { fixture, el, getHistorical } = setup();
     clic(el, 'rango-hist-cinco');
     fixture.detectChanges();
-    expect(getHistorical).toHaveBeenCalledWith('year', 1825);
+    expect(getHistorical).toHaveBeenCalledWith('year', 1825, SIN_FILTROS);
   });
 
   it('no vuelve a pedir si se elige la ventana activa', () => {

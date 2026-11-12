@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { StatsService } from '../../core/services/stats.service';
 import { CurrencyService, Moneda } from '../../core/services/currency.service';
 import { MtbfUnitService, UnidadMtbf } from '../../core/services/mtbf-unit.service';
-import { FinancialStats } from '../../core/models';
+import { FinancialStats, FiltrosDashboard, SIN_FILTROS } from '../../core/models';
 import { I18nService } from '../../core/i18n/i18n.service';
 import { SaludOperacionalComponent } from './components/salud-operacional/salud-operacional.component';
 import { MachineRankingComponent } from './components/machine-ranking/machine-ranking.component';
@@ -13,6 +13,7 @@ import { CostoDetalleComponent } from './components/costo-detalle/costo-detalle.
 import { SlaHistoricoComponent } from './components/sla-historico/sla-historico.component';
 import { TopMaquinasComponent } from './components/top-maquinas/top-maquinas.component';
 import { ExplicameComponent } from './explicame/explicame.component';
+import { FiltrosDashboardComponent } from './components/filtros-dashboard/filtros-dashboard.component';
 
 /** Rangos del selector temporal (CGBIDA-397). `'all'` = histórico completo. */
 export type RangoTemporal = 7 | 30 | 90 | 'all';
@@ -33,7 +34,7 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, MachineRankingComponent, TipoDonutComponent, AlertaEstancadasComponent, CostoDetalleComponent, SaludOperacionalComponent, SlaHistoricoComponent, TopMaquinasComponent, ExplicameComponent],
+  imports: [CommonModule, MachineRankingComponent, TipoDonutComponent, AlertaEstancadasComponent, CostoDetalleComponent, SaludOperacionalComponent, SlaHistoricoComponent, TopMaquinasComponent, ExplicameComponent, FiltrosDashboardComponent],
   template: `
     <!--
       max-w-screen-2xl (1536px) + mx-auto: sin esto el dashboard se estiraba al 100% del
@@ -113,6 +114,9 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
           </div>
         </div>
       </div>
+
+      <!-- Panel de filtros globales (CGBIDA-550): planta, disciplina y maquina. -->
+      <app-filtros-dashboard (cambio)="onFiltros($event)" />
 
       @if (loading()) {
         <div class="py-10 text-center text-tinta-suave " role="status">
@@ -238,7 +242,7 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
         <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <!-- Evolucion del SLA (CGBIDA-515). Ocupa las dos columnas: el eje X necesita
                ancho para las etiquetas de periodo y la linea se lee mejor. -->
-          <app-sla-historico class="min-w-0 lg:col-span-2" />
+          <app-sla-historico class="min-w-0 lg:col-span-2" [filtros]="filtros()" />
 
           <!-- Salud Operacional (CGBIDA-520): semaforo simplificado con el motivo. -->
           <app-salud-operacional class="min-w-0" data-tour="dash-salud" [salud]="salud()" />
@@ -299,6 +303,15 @@ export class DashboardComponent implements OnInit {
    * viaja al endpoint como `days`; `'all'` no manda el parámetro.
    */
   protected readonly rango = signal<RangoTemporal>('all');
+
+  /**
+   * Filtros de topologia activos (CGBIDA-550).
+   *
+   * Viven aca y no en el panel porque el Dashboard es el duenio de las peticiones: el
+   * panel solo avisa que cambiaron, y este componente vuelve a pedir los KPIs y se los
+   * pasa al grafico historico por input.
+   */
+  protected readonly filtros = signal<FiltrosDashboard>(SIN_FILTROS);
 
   /** Opciones del selector, en el orden del legacy. */
   protected readonly rangos: readonly RangoTemporal[] = [7, 30, 90, 'all'];
@@ -442,6 +455,12 @@ export class DashboardComponent implements OnInit {
     this.cargar();
   }
 
+  /** El panel de filtros cambio: se guardan y se vuelven a pedir los KPIs. */
+  protected onFiltros(nuevos: FiltrosDashboard): void {
+    this.filtros.set(nuevos);
+    this.cargar();
+  }
+
   /** Cambia la moneda de presentación (CGBIDA-432). */
   protected cambiarMoneda(moneda: Moneda): void {
     this.currency.setMoneda(moneda);
@@ -527,7 +546,7 @@ export class DashboardComponent implements OnInit {
   private cargar(): void {
     this.loading.set(true);
     this.error.set(false);
-    this.statsService.getFinancialImpact(this.rango()).subscribe({
+    this.statsService.getFinancialImpact(this.rango(), this.filtros()).subscribe({
       next: (data) => {
         this.stats.set(data);
         this.loading.set(false);

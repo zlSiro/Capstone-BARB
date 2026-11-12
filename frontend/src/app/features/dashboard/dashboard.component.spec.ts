@@ -2,8 +2,9 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 
-import { FinancialStats } from '../../core/models';
+import { FinancialStats, SIN_FILTROS } from '../../core/models';
 import { StatsService } from '../../core/services/stats.service';
+import { CatalogService } from '../../core/services/catalog.service';
 import { DashboardComponent } from './dashboard.component';
 
 /**
@@ -80,7 +81,19 @@ function setup(respuesta: FinancialStats | Error = stats(), lang: 'es' | 'en' = 
 
   TestBed.configureTestingModule({
     imports: [DashboardComponent],
-    providers: [provideRouter([]), { provide: StatsService, useValue: { getFinancialImpact, getHistorical } }],
+    providers: [
+      provideRouter([]),
+      { provide: StatsService, useValue: { getFinancialImpact, getHistorical } },
+      // El panel de filtros (CGBIDA-550) pide los catalogos al construirse.
+      {
+        provide: CatalogService,
+        useValue: {
+          getPlants: () => of([{ id: 7, name: 'Planta Filtro', ubicacion: null }]),
+          getDisciplines: () => of([{ id: 3, name: 'Mecánica' }]),
+          getMachines: () => of([{ id: 70, name: 'Equipo Filtro', discipline_id: 3, plant_id: 7 }]),
+        },
+      },
+    ],
   });
   const fixture = TestBed.createComponent(DashboardComponent);
   fixture.detectChanges();
@@ -126,7 +139,7 @@ describe('dashboard: KPIs', () => {
 
   it('pide los datos con el rango elegido', () => {
     const { getFinancialImpact } = setup();
-    expect(getFinancialImpact).toHaveBeenCalledWith('all');
+    expect(getFinancialImpact).toHaveBeenCalledWith('all', SIN_FILTROS);
   });
 
   it('en ingles cambia la etiqueta de la tarjeta de disponibilidad', () => {
@@ -336,5 +349,43 @@ describe('dashboard: botón «Explícame»', () => {
     boton(el)!.click();
     fixture.detectChanges();
     expect(el.querySelector('[data-testid="frase-costo"]')).toBeNull();
+  });
+});
+
+describe('dashboard: filtros (CGBIDA-550)', () => {
+  it('el panel arranca en toda la empresa', () => {
+    const { getFinancialImpact } = setup();
+    expect(getFinancialImpact).toHaveBeenLastCalledWith('all', SIN_FILTROS);
+  });
+
+  it('elegir una planta en el panel vuelve a pedir los KPIs con ese filtro', () => {
+    const { fixture, el, getFinancialImpact } = setup();
+
+    const selector = el.querySelector<HTMLSelectElement>('[data-testid="filtro-planta"]')!;
+    expect(selector).toBeTruthy();
+    selector.value = '7';
+    selector.dispatchEvent(new Event('change', { bubbles: true }));
+    fixture.detectChanges();
+
+    expect(getFinancialImpact).toHaveBeenLastCalledWith('all', {
+      planta_id: 7,
+      disciplina_id: null,
+      maquina_id: null,
+    });
+  });
+
+  it('limpiar los filtros vuelve a pedir sin restricciones', () => {
+    const { fixture, el, getFinancialImpact } = setup();
+
+    const planta = el.querySelector<HTMLSelectElement>('[data-testid="filtro-planta"]')!;
+    planta.value = '7';
+    planta.dispatchEvent(new Event('change', { bubbles: true }));
+    fixture.detectChanges();
+
+    const limpiar = el.querySelector<HTMLButtonElement>('[data-testid="limpiar-filtros"]')!;
+    limpiar.click();
+    fixture.detectChanges();
+
+    expect(getFinancialImpact).toHaveBeenLastCalledWith('all', SIN_FILTROS);
   });
 });

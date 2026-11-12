@@ -1,8 +1,8 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { StatsService } from '../../../../core/services/stats.service';
 import { I18nService } from '../../../../core/i18n/i18n.service';
-import { PeriodoHistorico } from '../../../../core/models';
+import { FiltrosDashboard, PeriodoHistorico, SIN_FILTROS } from '../../../../core/models';
 
 /** Opciones del selector de ventana histórica (CGBIDA-515). */
 export type RangoHistorico = 'semestre' | 'anio' | 'tres' | 'cinco';
@@ -171,6 +171,14 @@ export class SlaHistoricoComponent {
   protected readonly rangos: readonly RangoHistorico[] = ['semestre', 'anio', 'tres', 'cinco'];
 
   protected readonly rango = signal<RangoHistorico>('semestre');
+
+  /**
+   * Filtros de topologia que manda el Dashboard (CGBIDA-550).
+   *
+   * El componente pide sus propios datos, asi que sin esto el grafico mostraria toda la
+   * empresa mientras los KPIs de arriba estan filtrados por planta.
+   */
+  readonly filtros = input<FiltrosDashboard>(SIN_FILTROS);
   protected readonly periodos = signal<PeriodoHistorico[]>([]);
   protected readonly cargando = signal(true);
   protected readonly error = signal(false);
@@ -181,8 +189,18 @@ export class SlaHistoricoComponent {
   protected readonly claseInactiva =
     'rounded-control px-2 py-1 text-sm font-medium text-tinta-suave ';
 
+  /**
+   * Pide la serie al construirse y cada vez que cambian los filtros.
+   *
+   * `untracked` deja fuera del efecto lo que `cargar()` lee por dentro (el rango): si
+   * no, cambiar de ventana dispararia dos peticiones, una por `cambiarRango()` y otra
+   * por el efecto.
+   */
   constructor() {
-    this.cargar();
+    effect(() => {
+      const filtros = this.filtros();
+      untracked(() => this.cargar(filtros));
+    });
   }
 
   /** Etiqueta del botón según el idioma activo. */
@@ -204,7 +222,7 @@ export class SlaHistoricoComponent {
   protected cambiarRango(r: RangoHistorico): void {
     if (r === this.rango()) return;
     this.rango.set(r);
-    this.cargar();
+    this.cargar(this.filtros());
   }
 
   /**
@@ -275,11 +293,11 @@ export class SlaHistoricoComponent {
     return this.ALTO - this.PAD_INF - fraccion * altoUtil;
   }
 
-  private cargar(): void {
+  private cargar(filtros: FiltrosDashboard): void {
     const { granularity, days } = CONFIG[this.rango()];
     this.cargando.set(true);
     this.error.set(false);
-    this.stats.getHistorical(granularity, days).subscribe({
+    this.stats.getHistorical(granularity, days, filtros).subscribe({
       next: (r) => {
         this.periodos.set(r.periods ?? []);
         this.cargando.set(false);

@@ -225,3 +225,31 @@ export interface FinancialStats {
   /** Top 5 con peor MTBF (menos tiempo entre fallas) — CGBIDA-517. */
   top_5_peor_mtbf?: TopMtbfData[];
 }
+
+// =============================================================================
+// Filtros de topología del Dashboard (CGBIDA-550)
+// =============================================================================
+
+/**
+ * Filtros que acotan los KPIs del Dashboard a una planta, disciplina o máquina.
+ *
+ * `null` en cualquiera de los tres = esa dimensión no acota nada. Los tres en `null`
+ * es el caso por defecto: toda la empresa.
+ */
+export interface FiltrosDashboard {
+  planta_id: number | null;
+  disciplina_id: number | null;
+  maquina_id: number | null;
+}
+
+/** Valor inicial y de "Limpiar filtros": el Dashboard muestra toda la empresa. */
+export const SIN_FILTROS: FiltrosDashboard = {
+  planta_id: null,
+  disciplina_id: null,
+  maquina_id: null,
+};
+
+/** `true` si al menos un filtro está activo. */
+export function hayFiltros(f: FiltrosDashboard): boolean {
+  return f.planta_id !== null || f.disciplina_id !== null || f.maquina_id !== null;
+}
