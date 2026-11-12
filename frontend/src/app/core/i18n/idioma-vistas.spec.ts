@@ -20,6 +20,11 @@ import { ROLE_OPTIONS } from '../../features/usuarios/usuario-form-modal.compone
 import { UsuariosComponent } from '../../features/usuarios/usuarios.component';
 import { priorityMeta, roleLabel, statusMeta, tipoLabel } from '../../features/work-orders/utils/work-order-labels';
 import { WorkOrdersListComponent } from '../../features/work-orders/pages/work-orders-list/work-orders-list.component';
+import { AyudaComponent } from '../../features/ayuda/ayuda.component';
+import { ExplicameComponent } from '../../features/dashboard/explicame/explicame.component';
+import { RecorridosService } from '../../features/ayuda/recorridos.service';
+import { RecorridoCapaComponent } from '../../shared/components/layout/recorrido-capa/recorrido-capa.component';
+import { FinancialStats } from '../models';
 import { I18nService } from './i18n.service';
 
 /**
@@ -237,5 +242,57 @@ describe('Etiquetas que viven fuera de las plantillas siguen el idioma', () => {
     en();
     expect(ROLE_OPTIONS.find((r) => r.value === 'tecnico')?.label).toBe('Technician');
     expect(ROLE_OPTIONS.find((r) => r.value === 'admin')?.label).toBe('Company administrator');
+  });
+
+  // --- Ayuda («Aprende BARB») ---------------------------------------------------------------------------------------
+  describe('ayuda', () => {
+    function prepararAyuda(role: string) {
+      TestBed.configureTestingModule({
+        providers: [
+          provideRouter([{ path: '**', component: Vacio }]),
+          { provide: AuthService, useValue: { user: signal({ id: 1, role, name: 'Ana' }), privilegiosPendientes: signal(false) } },
+        ],
+      });
+      return { i18n: TestBed.inject(I18nService), recorridos: TestBed.inject(RecorridosService) };
+    }
+
+    it('inicio de «Aprende BARB»: título, primeros pasos, recorridos y «Explícame esta pantalla»', () => {
+      const { i18n } = prepararAyuda('tecnico');
+      const f = TestBed.createComponent(AyudaComponent);
+      ciclo(f, i18n, {
+        es: ['Aprende BARB', 'Perfil: Técnico', 'Primeros pasos como Técnico', 'Mostrarme cómo', 'Recorridos guiados', 'Pregúntale a la ayuda', 'Explícame esta pantalla'],
+        en: ['Learn BARB', 'Profile: Technician', 'First steps as Technician', 'Show me how', 'Guided tours', 'Ask the help', 'Explain this screen to me'],
+      });
+    });
+
+    it('burbuja de un recorrido: paso, título, texto y botones', () => {
+      const { i18n, recorridos } = prepararAyuda('tecnico');
+      const f = TestBed.createComponent(RecorridoCapaComponent);
+      f.detectChanges();
+      recorridos.iniciar('iniciar_enviar');
+      ciclo(f, i18n, {
+        es: ['Paso 1 de 5', 'Iniciar y enviar a validación una OT', 'Abre «Órdenes de trabajo»', 'Siguiente', 'Anterior', 'Salir del recorrido'],
+        en: ['Step 1 of 5', 'Start a work order and send it for validation', 'Open “Work orders”', 'Next', 'Back', 'Leave the tour'],
+      });
+      recorridos.salir();
+    });
+
+    it('panel «Explícame este dashboard»: título, pestañas, frases y nota', () => {
+      const { i18n } = prepararAyuda('gerente');
+      const stats = {
+        financials: { ahorro_generado: 0, disponibilidad_planta: 97.4, mttr: 312, efficiency: 87.5, costo_total_acumulado: 4_860_000, mtbfHours: 223.6, mtbf_visible: true },
+        salud_operacional: { estado: 'amarillo', motivo: '2 OT(s) demorada(s) en curso.', sla: 87.5, estancadas: 2, vencidas: 0 },
+      } as unknown as FinancialStats;
+      const f = TestBed.createComponent(ExplicameComponent);
+      f.componentRef.setInput('stats', stats);
+      f.componentRef.setInput('rango', 30);
+      f.detectChanges();
+      (f.nativeElement as HTMLElement).querySelector<HTMLElement>('[data-testid="btn-explicame"]')!.click();
+      ciclo(f, i18n, {
+        es: ['Explícame', 'Explícame este dashboard', 'Resumen', 'Cómo leerlo', 'La planta está en Atención', 'Cumplimiento de SLA · 87,5 %', 'No usa IA ni agrega datos'],
+        en: ['Explain', 'Explain this dashboard', 'Summary', 'How to read it', 'The plant is in Warning', 'SLA compliance · 87.5 %', 'does not use AI'],
+        noEn: ['Cómo leerlo', 'Atención', 'Cumplimiento', 'No usa IA'],
+      });
+    });
   });
 });

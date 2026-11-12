@@ -223,6 +223,7 @@ interface GrupoEnPanel {
             <button
               type="button"
               data-testid="gestionar-activos"
+              data-tour="topo-gestionar"
               (click)="alternarVista()"
               class="inline-flex min-h-11 items-center justify-center rounded-control border border-borde-control bg-superficie px-3 text-sm hover:bg-superficie-2"
             >{{ (vistaActivos() ? 'sistema.volver_al_mapa' : 'sistema.gestionar_activos') | translate }}</button>

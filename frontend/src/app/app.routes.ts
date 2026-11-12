@@ -76,6 +76,20 @@ export const routes: Routes = [
         canActivate: [roleGuard('documentos')],
         loadComponent: () => import('./features/documentos/documentos.component').then(m => m.DocumentosComponent)
       },
+      // Ayuda («Aprende BARB»): contenido fijo del frontend, para toda sesión iniciada. Sin roleGuard a propósito:
+      // lo que cada perfil ve dentro de la ayuda se filtra con la matriz de permisos, no con la ruta.
+      {
+        path: 'ayuda',
+        loadComponent: () => import('./features/ayuda/ayuda.component').then(m => m.AyudaComponent)
+      },
+      {
+        path: 'ayuda/preguntar',
+        loadComponent: () => import('./features/ayuda/ayuda-preguntar.component').then(m => m.AyudaPreguntarComponent)
+      },
+      {
+        path: 'ayuda/guia/:id',
+        loadComponent: () => import('./features/ayuda/ayuda-guia.component').then(m => m.AyudaGuiaComponent)
+      },
       // Redirección según el rol (super_usuario -> /empresas; el resto -> /dashboard o /work-orders)
       { path: '', canActivate: [homeRedirectGuard], children: [] }
     ]

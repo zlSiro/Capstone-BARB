@@ -65,6 +65,7 @@
           <li>
             <article
               class="tag-card"
+              data-tour="aviso-fila"
               [style.--marco]="gravedad(a.severidad).marco"
               [attr.aria-current]="veRepositorio() && detalle()?.aviso_id === a.aviso_id ? 'true' : null">
               <div class="tag-card-cuerpo grid gap-2 p-4 pt-9">
@@ -122,11 +123,11 @@
                     </button>
                   }
                   @if (puedeGestionar() && a.estado === 'pendiente') {
-                    <button type="button" class="btn-primary" [attr.aria-label]="'avisos.generar_ot_desde_el_2' | translate: { v0: a.numero_aviso }" (click)="generando.set(a)">
+                    <button type="button" class="btn-primary" data-tour="aviso-generar" [attr.aria-label]="'avisos.generar_ot_desde_el_2' | translate: { v0: a.numero_aviso }" (click)="generando.set(a)">
                       <app-icon name="orden" [size]="20" />
                       {{ 'avisos.generar_ot' | translate }}
                     </button>
-                    <button type="button" class="btn-danger" [attr.aria-label]="'avisos.descartar_aviso_2' | translate: { v0: a.numero_aviso }" (click)="descartando.set(a)">
+                    <button type="button" class="btn-danger" data-tour="aviso-descartar" [attr.aria-label]="'avisos.descartar_aviso_2' | translate: { v0: a.numero_aviso }" (click)="descartando.set(a)">
                       {{ 'avisos.descartar' | translate }}
                     </button>
                   }
@@ -164,11 +165,11 @@
 
           @if (d.estado === 'pendiente' && puedeGestionar()) {
             <div class="flex flex-wrap gap-2 border-b border-borde pb-4">
-              <button type="button" class="btn-primary" (click)="generando.set(d)">
+              <button type="button" class="btn-primary" data-tour="aviso-generar" (click)="generando.set(d)">
                 <app-icon name="orden" [size]="20" />
                 {{ 'avisos.generar_ot' | translate }}
               </button>
-              <button type="button" class="btn-danger" (click)="descartando.set(d)">{{ 'avisos.descartar' | translate }}</button>
+              <button type="button" class="btn-danger" data-tour="aviso-descartar" (click)="descartando.set(d)">{{ 'avisos.descartar' | translate }}</button>
             </div>
           } @else if (d.estado === 'con_ot') {
             <p class="border-b border-borde pb-4 text-base">

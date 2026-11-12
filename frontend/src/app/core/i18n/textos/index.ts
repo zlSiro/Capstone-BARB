@@ -1,5 +1,6 @@
 // Textos por vista. Cada módulo exporta `{ es, en }` con `en` tipado como `typeof es`.
 import { accesoTextos } from './acceso';
+import { ayudaTextos } from './ayuda';
 import { avisosTextos } from './avisos';
 import { documentosTextos } from './documentos';
 import { empresasTextos } from './empresas';
@@ -13,6 +14,7 @@ import { usuariosTextos } from './usuarios';
 export const textosExtra = {
   es: {
     ...accesoTextos.es,
+    ...ayudaTextos.es,
     ...avisosTextos.es,
     ...documentosTextos.es,
     ...empresasTextos.es,
@@ -25,6 +27,7 @@ export const textosExtra = {
   },
   en: {
     ...accesoTextos.en,
+    ...ayudaTextos.en,
     ...avisosTextos.en,
     ...documentosTextos.en,
     ...empresasTextos.en,

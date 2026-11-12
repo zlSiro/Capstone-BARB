@@ -77,7 +77,7 @@ interface UploadModel {
             <div class="flex flex-wrap items-center gap-3">
               <input id="doc-file" type="file" class="peer sr-only" [accept]="accept" (change)="onFile($event)"
                      aria-labelledby="doc-file-titulo doc-file-boton" [attr.aria-describedby]="fileError() ? 'doc-file-error' : null" />
-              <label id="doc-file-boton" for="doc-file" data-testid="doc-elegir"
+              <label id="doc-file-boton" for="doc-file" data-testid="doc-elegir" data-tour="doc-subir"
                      class="btn-secondary cursor-pointer peer-focus-visible:outline-3 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accion">
                 {{ 'documentos.seleccionar_archivo' | translate }}
               </label>

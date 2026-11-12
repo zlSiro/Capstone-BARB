@@ -16,11 +16,12 @@ import { HeaderComponent } from '../header/header.component';
 import { SidebarComponent } from '../sidebar/sidebar.component';
 import { Icon } from '../../ui/icon/icon';
 import { PrivilegiosModalComponent } from '../privilegios-modal/privilegios-modal.component';
+import { RecorridoCapaComponent } from '../recorrido-capa/recorrido-capa.component';
 import { ToastComponent } from '../../ui/toast/toast.component';
 
 @Component({
   selector: 'app-main-layout',
-  imports: [RouterOutlet, HeaderComponent, SidebarComponent, BottomNav, ToastComponent, ReportarFalla, PrivilegiosModalComponent, Icon, TranslatePipe],
+  imports: [RouterOutlet, HeaderComponent, SidebarComponent, BottomNav, ToastComponent, ReportarFalla, PrivilegiosModalComponent, RecorridoCapaComponent, Icon, TranslatePipe],
   template: `
     <a
       href="#contenido"
@@ -43,6 +44,8 @@ import { ToastComponent } from '../../ui/toast/toast.component';
       </div>
       <app-bottom-nav />
       <app-toast />
+      <!-- Recorridos guiados («Aprende BARB»): se inician solo desde la ayuda, nunca solos. -->
+      <app-recorrido-capa />
       <!-- Tras el login el usuario debe confirmar sus privilegios antes de usar la herramienta. -->
       @if (auth.privilegiosPendientes()) {
         <app-privilegios-modal />
