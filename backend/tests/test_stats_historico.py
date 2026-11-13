@@ -18,7 +18,10 @@ from barb.routers.stats import (
     _periodo_sql,
 )
 
-ADMIN_E1 = ("admin@barb.com", "admin123")
+# El dashboard es de consulta del GERENTE desde el rediseño de roles (f32a4c3,
+# HU-12/502): `admin` quedó con la ruta `dashboard` en False y recibía 403.
+# Por eso estos tests entran como gerente de la empresa 1.
+GERENTE_E1 = ("gerente1@planta.com", "gerente123")
 HIST = "/api/stats/historical"
 FIN = "/api/stats/financial-impact"
 
@@ -87,7 +90,7 @@ async def _login(client, creds) -> dict:
 
 
 async def _historico(client, qs: str = "") -> dict:
-    h = await _login(client, ADMIN_E1)
+    h = await _login(client, GERENTE_E1)
     r = await client.get(f"{HIST}{qs}", headers=h)
     assert r.status_code == 200, r.text
     return r.json()
@@ -139,7 +142,7 @@ async def test_el_mtbf_del_periodo_solo_aparece_con_dos_fallas(client):
 
 
 async def test_granularidad_invalida_da_422(client):
-    h = await _login(client, ADMIN_E1)
+    h = await _login(client, GERENTE_E1)
     r = await client.get(f"{HIST}?granularity=week", headers=h)
     assert r.status_code == 422
 
@@ -149,7 +152,7 @@ async def test_granularidad_invalida_da_422(client):
 # =============================================================================
 
 async def _financial(client) -> dict:
-    h = await _login(client, ADMIN_E1)
+    h = await _login(client, GERENTE_E1)
     r = await client.get(FIN, headers=h)
     assert r.status_code == 200, r.text
     return r.json()

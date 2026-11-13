@@ -4,13 +4,27 @@
 -- Proyecto: BARB (Capstone DUOC UC) · Rama: feat/seed-realista
 --
 -- QUÉ HACE
---   Crea las 3 empresas del informe de datos reales y sus usuarios base
---   (1 admin + 2 gerentes + 3 técnicos por empresa = 18 usuarios).
+--   Carga el catálogo completo de las 3 empresas del informe de datos reales:
+--     3 empresas · 18 usuarios · 11 disciplinas · 6 plantas · 11 máquinas · 28 sensores
 --
 --   Empresa                    RUT             Industria    Dominio
 --   Minera del Norte           77.111.111-1    Minería      mineradelnorte.cl
 --   Planta de Alimentos        77.222.222-2    Alimentos    alimentos.cl
 --   Manufactura Automotriz     77.333.333-3    Automotriz   automotriz.cl
+--
+--   Plantas y equipos (marca y modelo reales, según el informe):
+--   Minera del Norte
+--     Chancado Primario · Chancador de cono Sandvik H8800, Correa Overland
+--     Molienda SAG       · Molino SAG con motor Siemens, Bomba de pulpa KSB
+--   Planta de Alimentos
+--     Planta de Vapor    · Caldera Parker WH395L, Bomba de alimentación Grundfos
+--     Túnel de Frío      · Compresor de Amoníaco
+--   Manufactura Automotriz
+--     Línea de Paletizado· Brazo Robótico KUKA KR 50, PLC de Línea Siemens
+--     Línea de Estampado · Prensa Hidráulica Larzep, Generador de Respaldo
+--
+--   El SLA y el costo de inactividad por equipo salen del informe: la minería es
+--   el caso más caro por minuto detenido (SLA 8-12 h · 3.000-5.000 CLP/min).
 --
 -- CREDENCIALES DE DEMO (bcrypt ya calculado; solo desarrollo/demo)
 --   Minera del Norte       admin@mineradelnorte.cl    / mineria123
@@ -26,7 +40,8 @@
 --   - No toca las empresas que ya existían en la base (Planta Demo BARB,
 --     Minera Norte S.A., etc.). Los RUT 77.* son nuevos, así que no chocan con
 --     el índice único `empresa_rut_key`.
---   - No crea plantas, máquinas ni OTs: eso va en el archivo siguiente.
+--   - No crea órdenes de trabajo, lecturas de sensores ni documentos: eso va en
+--     el 03_operativos.sql.
 --
 -- IDEMPOTENTE
 --   - Empresas: INSERT ... ON CONFLICT (rut) DO NOTHING.
@@ -162,21 +177,243 @@ CROSS JOIN (VALUES
 WHERE e.rut = '77.333.333-3'
   AND NOT EXISTS (SELECT 1 FROM usuario u WHERE u.email = v.email);
 
+-- -----------------------------------------------------------------------------
+-- 3. Disciplinas
+-- -----------------------------------------------------------------------------
+-- `disciplina` cuelga de la EMPRESA (no de la planta): se comparte entre plantas.
+-- Único: (empresa_id, nombre).
+INSERT INTO disciplina (empresa_id, nombre, color)
+SELECT e.empresa_id, v.nombre, v.color
+FROM empresa e
+CROSS JOIN (VALUES
+    ('Mecánica', '#ef4444'),
+    ('Eléctrica', '#f59e0b'),
+    ('Instrumentación', '#3b82f6')
+) AS v(nombre, color)
+WHERE e.rut = '77.111.111-1'
+  AND NOT EXISTS (
+      SELECT 1 FROM disciplina d WHERE d.empresa_id = e.empresa_id AND d.nombre = v.nombre
+  );
+
+INSERT INTO disciplina (empresa_id, nombre, color)
+SELECT e.empresa_id, v.nombre, v.color
+FROM empresa e
+CROSS JOIN (VALUES
+    ('Mecánica', '#ef4444'),
+    ('Eléctrica', '#f59e0b'),
+    ('Instrumentación', '#3b82f6'),
+    ('Refrigeración', '#06b6d4')
+) AS v(nombre, color)
+WHERE e.rut = '77.222.222-2'
+  AND NOT EXISTS (
+      SELECT 1 FROM disciplina d WHERE d.empresa_id = e.empresa_id AND d.nombre = v.nombre
+  );
+
+INSERT INTO disciplina (empresa_id, nombre, color)
+SELECT e.empresa_id, v.nombre, v.color
+FROM empresa e
+CROSS JOIN (VALUES
+    ('Mecánica', '#ef4444'),
+    ('Eléctrica', '#f59e0b'),
+    ('Instrumentación', '#3b82f6'),
+    ('Automatización', '#8b5cf6')
+) AS v(nombre, color)
+WHERE e.rut = '77.333.333-3'
+  AND NOT EXISTS (
+      SELECT 1 FROM disciplina d WHERE d.empresa_id = e.empresa_id AND d.nombre = v.nombre
+  );
+
+-- -----------------------------------------------------------------------------
+-- 4. Plantas (2 por empresa)
+-- -----------------------------------------------------------------------------
+-- `planta` no tiene clave natural única, así que la idempotencia se resuelve con
+-- NOT EXISTS por (empresa_id, nombre).
+INSERT INTO planta (empresa_id, nombre, ubicacion)
+SELECT e.empresa_id, v.nombre, v.ubicacion
+FROM empresa e
+CROSS JOIN (VALUES
+    ('Chancado Primario', 'Calama, Región de Antofagasta, Chile'),
+    ('Molienda SAG', 'Calama, Región de Antofagasta, Chile')
+) AS v(nombre, ubicacion)
+WHERE e.rut = '77.111.111-1'
+  AND NOT EXISTS (SELECT 1 FROM planta p WHERE p.empresa_id = e.empresa_id AND p.nombre = v.nombre);
+
+INSERT INTO planta (empresa_id, nombre, ubicacion)
+SELECT e.empresa_id, v.nombre, v.ubicacion
+FROM empresa e
+CROSS JOIN (VALUES
+    ('Planta de Vapor', 'San Bernardo, Región Metropolitana, Chile'),
+    ('Túnel de Frío', 'San Bernardo, Región Metropolitana, Chile')
+) AS v(nombre, ubicacion)
+WHERE e.rut = '77.222.222-2'
+  AND NOT EXISTS (SELECT 1 FROM planta p WHERE p.empresa_id = e.empresa_id AND p.nombre = v.nombre);
+
+INSERT INTO planta (empresa_id, nombre, ubicacion)
+SELECT e.empresa_id, v.nombre, v.ubicacion
+FROM empresa e
+CROSS JOIN (VALUES
+    ('Línea de Paletizado', 'Quilicura, Región Metropolitana, Chile'),
+    ('Línea de Estampado', 'Quilicura, Región Metropolitana, Chile')
+) AS v(nombre, ubicacion)
+WHERE e.rut = '77.333.333-3'
+  AND NOT EXISTS (SELECT 1 FROM planta p WHERE p.empresa_id = e.empresa_id AND p.nombre = v.nombre);
+
+-- -----------------------------------------------------------------------------
+-- 5. Máquinas (equipos reales con marca y modelo)
+-- -----------------------------------------------------------------------------
+-- Se resuelve la planta por nombre y la disciplina por nombre dentro de la misma
+-- empresa. `maquina` tiene UNIQUE (planta_id, codigo), así que el código interno
+-- es el que da la idempotencia.
+-- SLA y costo de inactividad salen del informe: minería es lo más caro por minuto
+-- detenido (SLA 8-12 h · 3.000-5.000 CLP/min).
+INSERT INTO maquina (planta_id, disciplina_id, nombre, codigo, sla_horas, costo_inactividad_minuto)
+SELECT p.planta_id, d.disciplina_id, v.nombre, v.codigo, v.sla_horas, v.costo
+FROM empresa e
+CROSS JOIN (VALUES
+    ('Chancado Primario', 'Mecánica',        'Chancador de cono Sandvik H8800', 'CHA-001', 8,  5000),
+    ('Chancado Primario', 'Mecánica',        'Correa Overland',                 'COR-001', 10, 3000),
+    ('Molienda SAG',      'Eléctrica',       'Molino SAG con motor Siemens',    'MOL-001', 12, 4500),
+    ('Molienda SAG',      'Mecánica',        'Bomba de pulpa KSB',              'BOM-001', 8,  3500)
+) AS v(planta, disciplina, nombre, codigo, sla_horas, costo)
+JOIN planta p ON p.empresa_id = e.empresa_id AND p.nombre = v.planta
+LEFT JOIN disciplina d ON d.empresa_id = e.empresa_id AND d.nombre = v.disciplina
+WHERE e.rut = '77.111.111-1'
+  AND NOT EXISTS (
+      SELECT 1 FROM maquina m WHERE m.planta_id = p.planta_id AND m.codigo = v.codigo
+  );
+
+INSERT INTO maquina (planta_id, disciplina_id, nombre, codigo, sla_horas, costo_inactividad_minuto)
+SELECT p.planta_id, d.disciplina_id, v.nombre, v.codigo, v.sla_horas, v.costo
+FROM empresa e
+CROSS JOIN (VALUES
+    ('Planta de Vapor', 'Mecánica',      'Caldera Parker WH395L',             'CAL-001', 6, 4000),
+    ('Planta de Vapor', 'Mecánica',      'Bomba de alimentación Grundfos',    'BOM-002', 6, 3000),
+    ('Túnel de Frío',   'Refrigeración', 'Compresor de Amoníaco',             'COM-001', 4, 5000)
+) AS v(planta, disciplina, nombre, codigo, sla_horas, costo)
+JOIN planta p ON p.empresa_id = e.empresa_id AND p.nombre = v.planta
+LEFT JOIN disciplina d ON d.empresa_id = e.empresa_id AND d.nombre = v.disciplina
+WHERE e.rut = '77.222.222-2'
+  AND NOT EXISTS (
+      SELECT 1 FROM maquina m WHERE m.planta_id = p.planta_id AND m.codigo = v.codigo
+  );
+
+INSERT INTO maquina (planta_id, disciplina_id, nombre, codigo, sla_horas, costo_inactividad_minuto)
+SELECT p.planta_id, d.disciplina_id, v.nombre, v.codigo, v.sla_horas, v.costo
+FROM empresa e
+CROSS JOIN (VALUES
+    ('Línea de Paletizado', 'Automatización',  'Brazo Robótico KUKA KR 50',   'ROB-001', 8, 4000),
+    ('Línea de Paletizado', 'Automatización',  'PLC de Línea Siemens',        'PLC-001', 4, 6000),
+    ('Línea de Estampado',  'Mecánica',        'Prensa Hidráulica Larzep',    'PRE-001', 8, 3500),
+    ('Línea de Estampado',  'Eléctrica',       'Generador de Respaldo',       'GEN-001', 6, 5000)
+) AS v(planta, disciplina, nombre, codigo, sla_horas, costo)
+JOIN planta p ON p.empresa_id = e.empresa_id AND p.nombre = v.planta
+LEFT JOIN disciplina d ON d.empresa_id = e.empresa_id AND d.nombre = v.disciplina
+WHERE e.rut = '77.333.333-3'
+  AND NOT EXISTS (
+      SELECT 1 FROM maquina m WHERE m.planta_id = p.planta_id AND m.codigo = v.codigo
+  );
+
+-- -----------------------------------------------------------------------------
+-- 6. Sensores (2-3 por máquina, los que alimentan las lecturas del 03_)
+-- -----------------------------------------------------------------------------
+-- `sensor.codigo` es ÚNICO GLOBAL, por eso se prefija con el código de la máquina.
+INSERT INTO sensor (maquina_id, nombre, codigo)
+SELECT m.maquina_id, v.nombre, v.codigo
+FROM empresa e
+CROSS JOIN (VALUES
+    -- Minera del Norte
+    ('CHA-001', 'Vibración de carcasa',    'CHA-001-VIB'),
+    ('CHA-001', 'Temperatura de aceite',   'CHA-001-TEMP'),
+    ('CHA-001', 'Corriente del motor',     'CHA-001-AMP'),
+    ('COR-001', 'Velocidad de banda',      'COR-001-VEL'),
+    ('COR-001', 'Temperatura de rodamiento', 'COR-001-TEMP'),
+    ('MOL-001', 'Vibración de chumacera',  'MOL-001-VIB'),
+    ('MOL-001', 'Temperatura de devanado', 'MOL-001-TEMP'),
+    ('MOL-001', 'Velocidad de giro',       'MOL-001-RPM'),
+    ('BOM-001', 'Presión de descarga',     'BOM-001-PRES'),
+    ('BOM-001', 'Vibración de eje',        'BOM-001-VIB'),
+    ('BOM-001', 'Corriente del motor',     'BOM-001-AMP')
+) AS v(maquina_codigo, nombre, codigo)
+JOIN planta p ON p.empresa_id = e.empresa_id
+JOIN maquina m ON m.planta_id = p.planta_id AND m.codigo = v.maquina_codigo
+WHERE e.rut = '77.111.111-1'
+  AND NOT EXISTS (SELECT 1 FROM sensor s WHERE s.codigo = v.codigo);
+
+INSERT INTO sensor (maquina_id, nombre, codigo)
+SELECT m.maquina_id, v.nombre, v.codigo
+FROM empresa e
+CROSS JOIN (VALUES
+    -- Planta de Alimentos
+    ('CAL-001', 'Presión de vapor',        'CAL-001-PRES'),
+    ('CAL-001', 'Temperatura de gases',    'CAL-001-TEMP'),
+    ('CAL-001', 'Nivel de agua',           'CAL-001-NIV'),
+    ('BOM-002', 'Presión de descarga',     'BOM-002-PRES'),
+    ('BOM-002', 'Caudal de alimentación',  'BOM-002-CAUD'),
+    ('COM-001', 'Presión de alta',         'COM-001-PALT'),
+    ('COM-001', 'Presión de baja',         'COM-001-PBAJ'),
+    ('COM-001', 'Temperatura de descarga', 'COM-001-TEMP')
+) AS v(maquina_codigo, nombre, codigo)
+JOIN planta p ON p.empresa_id = e.empresa_id
+JOIN maquina m ON m.planta_id = p.planta_id AND m.codigo = v.maquina_codigo
+WHERE e.rut = '77.222.222-2'
+  AND NOT EXISTS (SELECT 1 FROM sensor s WHERE s.codigo = v.codigo);
+
+INSERT INTO sensor (maquina_id, nombre, codigo)
+SELECT m.maquina_id, v.nombre, v.codigo
+FROM empresa e
+CROSS JOIN (VALUES
+    -- Manufactura Automotriz
+    ('ROB-001', 'Temperatura de servo',    'ROB-001-TEMP'),
+    ('ROB-001', 'Vibración de eje',        'ROB-001-VIB'),
+    ('PLC-001', 'Temperatura de gabinete', 'PLC-001-TEMP'),
+    ('PLC-001', 'Voltaje de control',      'PLC-001-VOLT'),
+    ('PRE-001', 'Presión hidráulica',      'PRE-001-PRES'),
+    ('PRE-001', 'Temperatura de aceite',   'PRE-001-TEMP'),
+    ('GEN-001', 'Temperatura de refrigerante', 'GEN-001-TEMP'),
+    ('GEN-001', 'Voltaje de salida',       'GEN-001-VOLT'),
+    ('GEN-001', 'Nivel de combustible',    'GEN-001-NIV')
+) AS v(maquina_codigo, nombre, codigo)
+JOIN planta p ON p.empresa_id = e.empresa_id
+JOIN maquina m ON m.planta_id = p.planta_id AND m.codigo = v.maquina_codigo
+WHERE e.rut = '77.333.333-3'
+  AND NOT EXISTS (SELECT 1 FROM sensor s WHERE s.codigo = v.codigo);
+
 COMMIT;
 
 -- -----------------------------------------------------------------------------
--- Verificación (solo lectura): debería mostrar 3 empresas y 18 usuarios, con 6
--- por empresa y los roles 1 admin / 2 gerentes / 3 técnicos.
+-- Verificación (solo lectura): catálogo completo por empresa.
+-- Esperado: 18 usuarios · 11 disciplinas · 6 plantas · 11 máquinas · 28 sensores.
 -- -----------------------------------------------------------------------------
 SELECT e.nombre,
        e.industria,
        e.rut,
-       count(u.usuario_id)                                        AS usuarios,
-       count(*) FILTER (WHERE u.rol = 'admin')                    AS admins,
-       count(*) FILTER (WHERE u.rol = 'gerente')                  AS gerentes,
-       count(*) FILTER (WHERE u.rol = 'tecnico')                  AS tecnicos
+       (SELECT count(*) FROM usuario u WHERE u.empresa_id = e.empresa_id)     AS usuarios,
+       (SELECT count(*) FROM disciplina d WHERE d.empresa_id = e.empresa_id)  AS disciplinas,
+       (SELECT count(*) FROM planta p WHERE p.empresa_id = e.empresa_id)      AS plantas,
+       (SELECT count(*)
+          FROM maquina m JOIN planta p ON p.planta_id = m.planta_id
+         WHERE p.empresa_id = e.empresa_id)                                  AS maquinas,
+       (SELECT count(*)
+          FROM sensor s
+          JOIN maquina m ON m.maquina_id = s.maquina_id
+          JOIN planta p ON p.planta_id = m.planta_id
+         WHERE p.empresa_id = e.empresa_id)                                  AS sensores
 FROM empresa e
-LEFT JOIN usuario u ON u.empresa_id = e.empresa_id
 WHERE e.rut IN ('77.111.111-1', '77.222.222-2', '77.333.333-3')
-GROUP BY e.empresa_id, e.nombre, e.industria, e.rut
 ORDER BY e.nombre;
+
+-- Detalle de equipos, para revisar de un vistazo planta → disciplina → máquina.
+SELECT e.nombre AS empresa,
+       p.nombre AS planta,
+       m.codigo,
+       m.nombre AS maquina,
+       d.nombre AS disciplina,
+       m.sla_horas,
+       m.costo_inactividad_minuto AS costo_min,
+       (SELECT count(*) FROM sensor s WHERE s.maquina_id = m.maquina_id) AS sensores
+FROM maquina m
+JOIN planta p ON p.planta_id = m.planta_id
+JOIN empresa e ON e.empresa_id = p.empresa_id
+LEFT JOIN disciplina d ON d.disciplina_id = m.disciplina_id
+WHERE e.rut IN ('77.111.111-1', '77.222.222-2', '77.333.333-3')
+ORDER BY e.nombre, p.nombre, m.codigo;
