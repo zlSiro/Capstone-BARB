@@ -86,19 +86,30 @@ describe('salud-operacional: colores e iconos', () => {
   });
 });
 
-describe('salud-operacional: linea simple', () => {
-  it('muestra el SLA con un decimal', () => {
-    const { el } = setup(datos({ sla: 91.25 }));
-    expect(texto(el, 'sla-salud')).toContain('91.3%');
+describe('salud-operacional: sin linea de SLA duplicada', () => {
+  it('no repite el SLA ni las vencidas debajo del semaforo', () => {
+    // CGBIDA-550: el semaforo y su motivo ya dicen las dos cosas.
+    const { el } = setup(datos({ sla: 91.25, vencidas: 7 }));
+
+    expect(el.querySelector('[data-testid="sla-salud"]')).toBeNull();
+    expect(el.querySelector('[data-testid="resumen-salud"]')).toBeNull();
+    expect(el.querySelector('[data-testid="vencidas-salud"]')).toBeNull();
   });
 
-  it('las OTs vencidas se dicen una sola vez, en el motivo del backend', () => {
-    // CGBIDA-550: la linea de abajo repetia el conteo que ya explica el motivo.
-    const { el } = setup(datos({ vencidas: 7, motivo: '7 OT(s) vencida(s) sin cerrar.' }));
+  it('los contadores llevan color en el numero', () => {
+    const { el } = setup(
+      datos({ desglose: { completadas: 4, en_curso: 2, pendientes: 1 } }),
+    );
 
-    expect(el.querySelector('[data-testid="vencidas-salud"]')).toBeNull();
-    const apariciones = (el.textContent ?? '').match(/7 OT\(s\) vencida/g) ?? [];
-    expect(apariciones).toHaveLength(1);
+    const color = (clave: string) =>
+      el
+        .querySelector(`[data-testid="desglose-${clave}"] p`)
+        ?.getAttribute('class') ?? '';
+
+    // Verde / azul / naranja: los tokens del tema (ok, accion, alerta).
+    expect(color('completadas')).toContain('text-ok');
+    expect(color('en-curso')).toContain('text-accion');
+    expect(color('pendientes')).toContain('text-alerta');
   });
 });
 
@@ -110,9 +121,9 @@ describe('salud-operacional: sin datos', () => {
     expect(luz.style.background).toBe('var(--neutro)');
   });
 
-  it('sin datos el SLA se muestra con guion', () => {
+  it('sin datos los contadores quedan en 0', () => {
     const { el } = setup(null);
-    expect(texto(el, 'sla-salud')).toContain('—');
+    expect(texto(el, "desglose-completadas")).toContain("0");
   });
 
   it('sin datos el motivo es el aviso de falta de historial', () => {

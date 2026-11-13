@@ -109,13 +109,15 @@ const MIL = new Intl.NumberFormat('es-CL');
         </figcaption>
 
         <!--
-          El SVG se mide con un ResizeObserver y el viewBox usa ese ancho (CGBIDA-550):
-          con un viewBox fijo de 420 y el SVG centrado y acotado a 480 px, el gráfico
-          quedaba con un hueco enorme a la izquierda en la tarjeta ancha.
+          El SVG ocupa el ancho de la tarjeta y se alinea a la IZQUIERDA (CGBIDA-550).
+          El ancho sale de medir el contenedor; si por lo que sea la medición no llega
+          (o el viewBox queda más angosto que la caja), xMinYMid pega el dibujo al
+          borde izquierdo y deja el espacio sobrante a la derecha, en vez de centrarlo.
         -->
         <svg
           [attr.viewBox]="'0 0 ' + ANCHO() + ' ' + ALTO"
           [attr.height]="ALTO"
+          preserveAspectRatio="xMinYMid meet"
           class="w-full"
           role="img"
           [attr.aria-label]="t().topMachinesTitle"

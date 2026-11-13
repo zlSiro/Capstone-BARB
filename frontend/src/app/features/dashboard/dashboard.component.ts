@@ -166,27 +166,6 @@ import { FiltrosDashboardComponent } from './components/filtros-dashboard/filtro
               <p class="mt-1 text-2xl font-bold" [class]="kpi.color">{{ kpi.valor }}</p>
               <p class="mt-1 text-sm text-tinta-suave ">{{ kpi.descripcion }}</p>
               <!--
-                Sub-panel de accion rapida (CGBIDA-550): en MTTR y MTBF dice cual es el
-                peor equipo. La tarjeta dejaba de estar vacia y da un dato accionable
-                sin abrir el Top 5.
-              -->
-              @if (kpi.accion) {
-                <div
-                  class="mt-2 border-t border-borde pt-2"
-                  [attr.data-testid]="'kpi-top1-' + kpi.clave"
-                >
-                  <p class="text-[11px] uppercase tracking-wide text-tinta-suave">
-                    {{ kpi.accion.etiqueta }}
-                  </p>
-                  <p class="mt-0.5 truncate text-sm font-semibold text-tinta">
-                    {{ kpi.accion.nombre }}
-                  </p>
-                  <p class="text-xs font-semibold tabular-nums text-tinta-suave">
-                    {{ kpi.accion.valor }}
-                  </p>
-                </div>
-              }
-              <!--
                 Detalle de costos (CGBIDA-518). El boton vive SOLO en la tarjeta de Costo
                 Directo y abre un modal con el desglose por maquina.
               -->
@@ -362,11 +341,6 @@ export class DashboardComponent implements OnInit {
     const notaMoneda =
       this.currency.moneda() === 'USD' && !this.currency.sinTasa() ? ` ${tx.kpiUsdNote}` : '';
 
-    // Sub-panel de accion rapida de las tarjetas de MTTR y MTBF (CGBIDA-550): el peor
-    // equipo de cada ranking, que ya viene en la misma respuesta del backend.
-    const peorMttr = this.peorMttr()[0];
-    const peorMtbf = this.peorMtbf()[0];
-
     const todas = [
       // Orden pedido en el rediseno (CGBIDA-515): el SLA primero, que es el indicador
       // que el supervisor mira al entrar. Despues la Disponibilidad, que reemplaza al
@@ -378,7 +352,6 @@ export class DashboardComponent implements OnInit {
         descripcion: tx.efficiencySub,
         color: 'text-ok ',
         tooltip: '',
-        accion: null,
       },
       {
         clave: 'disponibilidad',
@@ -387,7 +360,6 @@ export class DashboardComponent implements OnInit {
         descripcion: tx.disponibilidadSub,
         color: 'text-ok ',
         tooltip: '',
-        accion: null,
       },
       {
         clave: 'mttr',
@@ -396,13 +368,6 @@ export class DashboardComponent implements OnInit {
         descripcion: tx.mttrSub,
         color: 'text-tinta ',
         tooltip: '',
-        accion: peorMttr
-          ? {
-              etiqueta: tx.kpiTop1Mttr,
-              nombre: peorMttr.name,
-              valor: `${peorMttr.mttr}m`,
-            }
-          : null,
       },
       {
         clave: 'costo',
@@ -426,13 +391,6 @@ export class DashboardComponent implements OnInit {
           ? 'text-tinta '
           : 'text-sm font-medium text-media ',
         tooltip: '',
-        accion: peorMtbf
-          ? {
-              etiqueta: tx.kpiTop1Mtbf,
-              nombre: peorMtbf.name,
-              valor: this.mtbf.formatear(peorMtbf.mtbf_hours, this.sufijoMtbf()),
-            }
-          : null,
       }
     ];
     // El costo directo es financiero: el backend no lo manda a quien no es gerente, y acá no se dibuja.

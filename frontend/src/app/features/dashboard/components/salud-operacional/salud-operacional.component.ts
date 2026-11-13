@@ -62,31 +62,14 @@ import { I18nService } from '../../../../core/i18n/i18n.service';
         </div>
 
         <!--
-          El SLA en un badge y no en una linea de texto (CGBIDA-550). Antes esta linea
-          repetia las OTs vencidas que ya dice el motivo del backend; ahora el numero de
-          vencidas aparece UNA sola vez, en el motivo, y aca queda solo el SLA resaltado.
+          Desglose de OTs del período (CGBIDA-550). La linea con el SLA y las vencidas se
+          eliminó: el semáforo y su motivo ya dicen las dos cosas, y repetirlas era ruido.
         -->
-        <p class="inline-flex w-fit items-baseline gap-1.5 rounded-full border border-borde
-                 bg-superficie-alt px-2.5 py-1" data-testid="resumen-salud">
-          <span class="text-xs font-medium uppercase tracking-wide text-tinta-suave">
-            {{ t().healthComponentSla }}
-          </span>
-          <span class="text-sm font-extrabold tabular-nums" data-testid="sla-salud">
-            {{ slaTexto() }}
-          </span>
-        </p>
-
-        <!-- Desglose de OTs del período (CGBIDA-550): el espacio que antes quedaba vacio
-             ahora dice como se reparte el trabajo. -->
         <div class="grid grid-cols-3 gap-2" data-testid="desglose-salud">
           @for (c of contadores(); track c.clave) {
-            <div
-              class="rounded-control border px-2 py-1.5 text-center"
-              [class]="c.clase"
-              [attr.data-testid]="'desglose-' + c.clave"
-            >
-              <p class="text-lg font-extrabold leading-none">{{ c.valor }}</p>
-              <p class="mt-0.5 text-xs font-medium">{{ c.etiqueta }}</p>
+            <div [class]="c.clase" [attr.data-testid]="'desglose-' + c.clave">
+              <p [class]="c.color" class="text-lg font-extrabold leading-none">{{ c.valor }}</p>
+              <p class="mt-0.5 text-xs font-medium text-tinta-suave">{{ c.etiqueta }}</p>
             </div>
           }
         </div>
@@ -129,13 +112,6 @@ export class SaludOperacionalComponent {
     return m && m.trim() ? m : this.t().healthInsufficient;
   });
 
-  /** SLA del período, con un decimal. Guion si no vino. */
-  protected readonly slaTexto = computed(() => {
-    const sla = this.salud()?.sla;
-    return typeof sla === 'number' ? `${sla.toFixed(1)}%` : '—';
-  });
-
-
   /**
    * Los tres contadores del desglose (CGBIDA-550).
    *
@@ -145,30 +121,36 @@ export class SaludOperacionalComponent {
    *
    * Si el backend no manda `desglose` (versión anterior) los contadores muestran 0: es
    * preferible a inventar los números.
+   *
+   * `clase` va completa y literal en el TS porque un `[class]` con un string reemplaza el
+   * atributo `class` entero: si la caja dejara sus clases en el template, las perdería.
+   * Colores del tema: `ok` = verde, `accion` = azul, `alerta` = naranja.
    */
   protected readonly contadores = computed(() => {
     const t = this.t();
     const d = this.salud()?.desglose;
-    // Las clases van completas y literales en el TS: si se armaran en el template,
-    // Tailwind no las veria y las borraria del CSS.
+    const caja = 'rounded-control border px-2 py-1.5 text-center';
     return [
       {
         clave: 'completadas',
         valor: d?.completadas ?? 0,
         etiqueta: t.healthDesgloseCompletadas,
-        clase: 'border-ok/40 bg-ok-suave text-ok',
+        clase: `${caja} border-ok bg-ok-suave`,
+        color: 'text-ok',
       },
       {
         clave: 'en-curso',
         valor: d?.en_curso ?? 0,
         etiqueta: t.healthDesgloseEnCurso,
-        clase: 'border-accion/40 bg-accion-suave text-accion',
+        clase: `${caja} border-accion bg-accion-suave`,
+        color: 'text-accion',
       },
       {
         clave: 'pendientes',
         valor: d?.pendientes ?? 0,
         etiqueta: t.healthDesglosePendientes,
-        clase: 'border-media/40 bg-media-suave text-media',
+        clase: `${caja} border-alerta bg-alerta-suave`,
+        color: 'text-alerta',
       },
     ];
   });

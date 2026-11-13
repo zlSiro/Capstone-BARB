@@ -44,7 +44,7 @@ import {
         Titulo arriba y selectores abajo, alineados a la izquierda (CGBIDA-550): antes el
         titulo competia por el espacio con los selectores y quedaban repartidos.
       -->
-      <div class="mb-2 flex items-center gap-2">
+      <div class="mb-2 flex items-center justify-start gap-2 text-left">
         <h2 class="text-xs font-semibold uppercase tracking-wide text-tinta-suave">
           {{ t().filtersTitle }}
         </h2>
@@ -58,7 +58,8 @@ import {
         }
       </div>
 
-      <div class="flex flex-wrap items-end gap-3">
+      <!-- Selectores alineados a la izquierda, sin centrar ni repartir (CGBIDA-550). -->
+      <div class="flex flex-wrap items-end justify-start gap-3 text-left">
 
         <!-- Planta: la única que arranca habilitada. -->
         <div>

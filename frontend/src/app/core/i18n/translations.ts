@@ -145,9 +145,6 @@ const base = {
       // efficiency, directCost, mtbf y savingsGenerated ya existian; estas son los
       // subtitulos que faltaban para que cada tarjeta diga QUE mide.
       mttrSub: 'Tiempo medio de reparacion de las OTs completadas.',
-      // Sub-panel de accion rapida en las tarjetas de MTTR y MTBF (CGBIDA-550).
-      kpiTop1Mttr: 'Equipo mas lento en reparar',
-      kpiTop1Mtbf: 'Equipo mas propenso a fallar',
       savingsSub: 'Inactividad evitada por las OTs completadas, valorizada.',
       impactCardTitle: 'Impacto Anual Proyectado',
       impactCardSub: 'Comparativa de escenarios del modelo BARB.',
@@ -474,9 +471,6 @@ const base = {
       roiTitle: 'Projected Annual Impact (BARB v1.0 Model)',
       roiSubtitle: 'Based on $2,000 CLP/min of operational downtime.',
       mttrSub: 'Average repair time of completed WOs.',
-      // Quick-action sub-panel in the MTTR and MTBF cards (CGBIDA-550).
-      kpiTop1Mttr: 'Slowest equipment to repair',
-      kpiTop1Mtbf: 'Most failure-prone equipment',
       savingsSub: 'Downtime avoided by completed WOs, valued.',
       impactCardTitle: 'Projected Annual Impact',
       impactCardSub: 'BARB model scenario comparison.',
