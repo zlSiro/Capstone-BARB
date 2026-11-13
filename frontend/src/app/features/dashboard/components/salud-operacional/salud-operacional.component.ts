@@ -36,38 +36,43 @@ import { I18nService } from '../../../../core/i18n/i18n.service';
         <p class="text-sm text-tinta-suave ">{{ t().healthCardSub }}</p>
       </figcaption>
 
-      <div class="flex flex-1 flex-col items-center justify-center gap-4 py-4">
-        <!-- Semaforo grande: el estado se lee sin interpretar nada. -->
-        <div class="flex items-center gap-5">
+      <div class="flex flex-1 flex-col justify-center gap-3 py-2">
+        <!-- Semaforo y estado en una sola fila: antes el circulo de 96px empujaba todo
+             hacia abajo y dejaba medio tarjeta vacia (CGBIDA-550). -->
+        <div class="flex items-center gap-4">
           <span
-            class="flex h-24 w-24 shrink-0 items-center justify-center rounded-full
-                   text-4xl font-extrabold text-white shadow-lg"
+            class="flex h-16 w-16 shrink-0 items-center justify-center rounded-full
+                   text-2xl font-extrabold text-white shadow-lg"
             [style.background]="color()"
             role="img"
             [attr.aria-label]="t().healthCardTitle + ': ' + etiquetaEstado()"
             data-testid="luz-salud"
           >{{ icono() }}</span>
-          <p
-            class="text-3xl font-extrabold leading-tight"
-            [style.color]="color()"
-            data-testid="estado-salud"
-          >{{ etiquetaEstado() }}</p>
+          <div class="min-w-0">
+            <p
+              class="text-2xl font-extrabold leading-tight"
+              [style.color]="color()"
+              data-testid="estado-salud"
+            >{{ etiquetaEstado() }}</p>
+            <!-- Motivo: lo redacta el backend, no se arma en el frontend. -->
+            <p class="text-sm font-medium text-tinta " data-testid="motivo-salud">
+              {{ motivo() }}
+            </p>
+          </div>
         </div>
 
-        <!-- Motivo: lo redacta el backend, no se arma en el frontend. -->
-        <p
-          class="max-w-md text-center text-sm font-medium text-tinta "
-          data-testid="motivo-salud"
-        >{{ motivo() }}</p>
-
-        <!-- Linea simple con las dos cifras que sostienen el color. -->
-        <p class="text-sm text-tinta-suave " data-testid="resumen-salud">
-          <span data-testid="sla-salud">{{ t().healthComponentSla }} {{ slaTexto() }}</span>
-          <span class="mx-2 text-borde-control ">·</span>
-          <span data-testid="vencidas-salud">
-            {{ vencidas() }} {{ t().healthOtsVencidas }}
-          </span>
-        </p>
+        <!--
+          Desglose de OTs del período (CGBIDA-550). La linea con el SLA y las vencidas se
+          eliminó: el semáforo y su motivo ya dicen las dos cosas, y repetirlas era ruido.
+        -->
+        <div class="grid grid-cols-3 gap-2" data-testid="desglose-salud">
+          @for (c of contadores(); track c.clave) {
+            <div [class]="c.clase" [attr.data-testid]="'desglose-' + c.clave">
+              <p [class]="c.color" class="text-lg font-extrabold leading-none">{{ c.valor }}</p>
+              <p class="mt-0.5 text-xs font-medium text-tinta-suave">{{ c.etiqueta }}</p>
+            </div>
+          }
+        </div>
       </div>
     </figure>
   `
@@ -107,13 +112,48 @@ export class SaludOperacionalComponent {
     return m && m.trim() ? m : this.t().healthInsufficient;
   });
 
-  /** SLA del período, con un decimal. Guion si no vino. */
-  protected readonly slaTexto = computed(() => {
-    const sla = this.salud()?.sla;
-    return typeof sla === 'number' ? `${sla.toFixed(1)}%` : '—';
+  /**
+   * Los tres contadores del desglose (CGBIDA-550).
+   *
+   * `pendientes` no es "todo lo abierto": es lo que todavía no tiene a nadie trabajando.
+   * La distinción importa para el supervisor, que acciona distinto sobre una OT en curso
+   * que sobre una sin asignar.
+   *
+   * Si el backend no manda `desglose` (versión anterior) los contadores muestran 0: es
+   * preferible a inventar los números.
+   *
+   * `clase` va completa y literal en el TS porque un `[class]` con un string reemplaza el
+   * atributo `class` entero: si la caja dejara sus clases en el template, las perdería.
+   * Colores del tema: `ok` = verde, `accion` = azul, `alerta` = naranja.
+   */
+  protected readonly contadores = computed(() => {
+    const t = this.t();
+    const d = this.salud()?.desglose;
+    const caja = 'rounded-control border px-2 py-1.5 text-center';
+    return [
+      {
+        clave: 'completadas',
+        valor: d?.completadas ?? 0,
+        etiqueta: t.healthDesgloseCompletadas,
+        clase: `${caja} border-ok bg-ok-suave`,
+        color: 'text-ok',
+      },
+      {
+        clave: 'en-curso',
+        valor: d?.en_curso ?? 0,
+        etiqueta: t.healthDesgloseEnCurso,
+        clase: `${caja} border-accion bg-accion-suave`,
+        color: 'text-accion',
+      },
+      {
+        clave: 'pendientes',
+        valor: d?.pendientes ?? 0,
+        etiqueta: t.healthDesglosePendientes,
+        clase: `${caja} border-alerta bg-alerta-suave`,
+        color: 'text-alerta',
+      },
+    ];
   });
-
-  protected readonly vencidas = computed(() => this.salud()?.vencidas ?? 0);
 }
 
 const COLOR_POR_ESTADO: Record<EstadoSalud, string> = {

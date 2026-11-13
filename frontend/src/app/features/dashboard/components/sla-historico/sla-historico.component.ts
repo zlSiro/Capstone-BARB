@@ -1,28 +1,20 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import {
+  Component,
+  DestroyRef,
+  ElementRef,
+  afterNextRender,
+  computed,
+  effect,
+  inject,
+  input,
+  signal,
+  untracked,
+  viewChild,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { StatsService } from '../../../../core/services/stats.service';
 import { I18nService } from '../../../../core/i18n/i18n.service';
-import { PeriodoHistorico } from '../../../../core/models';
-
-/** Opciones del selector de ventana histórica (CGBIDA-515). */
-export type RangoHistorico = 'semestre' | 'anio' | 'tres' | 'cinco';
-
-/** Granularidad y ventana que pide cada opción. */
-interface ConfigRango {
-  granularity: 'month' | 'semester' | 'year';
-  days: number;
-}
-
-/**
- * Mapa opción -> (granularidad, días). El backend no tiene una unidad "semestre":
- * para el último año se piden semestres (2 puntos) y para 3/5 años, años.
- */
-const CONFIG: Record<RangoHistorico, ConfigRango> = {
-  semestre: { granularity: 'month', days: 180 },
-  anio: { granularity: 'semester', days: 365 },
-  tres: { granularity: 'year', days: 1095 },
-  cinco: { granularity: 'year', days: 1825 },
-};
+import { FiltrosDashboard, PeriodoHistorico, SIN_FILTROS } from '../../../../core/models';
 
 /** Un punto ya proyectado a coordenadas SVG. */
 interface Punto {
@@ -38,9 +30,10 @@ interface Punto {
  * SVG dibujado a mano, sin librerías: el proyecto ya resolvió así el backlog y la dona,
  * y sumar una dependencia de charts por una línea de 24 puntos no se justifica.
  *
- * - El componente **pide sus propios datos** con `granularity` + `days`, así que no
- *   depende de la respuesta de `financial-impact` ni de cuándo se cargó el dashboard.
- * - El selector cambia la ventana y vuelve a pedir: 6 meses, 1 año, 3 años o 5 años.
+ * - El componente **pide sus propios datos**, así que no depende de la respuesta de
+ *   `financial-impact` ni de cuándo se cargó el dashboard.
+ * - La ventana ya no se elige acá: la manda el panel de filtros global (CGBIDA-550) y
+ *   el gráfico solo reacciona. Así el gráfico y los KPIs muestran el mismo período.
  * - Los colores salen de tokens (`stroke-accion`, `fill-tinta-suave`), por lo que el
  *   modo oscuro funciona sin código extra.
  */
@@ -50,31 +43,14 @@ interface Punto {
   imports: [CommonModule],
   template: `
     <figure
-      class="flex h-full flex-col rounded-control border border-borde bg-superficie p-5 "
+      #lienzo
+      class="relative flex h-full flex-col rounded-control border border-borde bg-superficie p-5 "
       data-testid="sla-historico"
     >
       <figcaption class="mb-3 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 class="text-sm font-extrabold text-tinta ">{{ t().historyTitle }}</h2>
           <p class="text-sm text-tinta-suave ">{{ t().historySub }}</p>
-        </div>
-
-        <!-- Selector de ventana: botones y no un select, son cuatro opciones fijas. -->
-        <div
-          class="flex flex-wrap items-center gap-1 rounded-control border border-borde-control p-0.5"
-          role="group"
-          [attr.aria-label]="t().historyTitle"
-          data-testid="selector-historico"
-        >
-          @for (r of rangos; track r) {
-            <button
-              type="button"
-              [attr.aria-pressed]="rango() === r"
-              [attr.data-testid]="'rango-hist-' + r"
-              (click)="cambiarRango(r)"
-              [class]="rango() === r ? claseActiva : claseInactiva"
-            >{{ etiquetaRango(r) }}</button>
-          }
         </div>
       </figcaption>
 
@@ -92,8 +68,9 @@ interface Punto {
         </p>
       } @else {
         <svg
-          [attr.viewBox]="'0 0 ' + ANCHO + ' ' + ALTO"
-          class="h-[240px] w-full"
+          [attr.viewBox]="'0 0 ' + ANCHO() + ' ' + ALTO"
+          [attr.height]="ALTO"
+          class="w-full"
           role="img"
           [attr.aria-label]="t().historySvgLabel"
           data-testid="hist-svg"
@@ -102,7 +79,7 @@ interface Punto {
           @for (g of guias(); track g.valor) {
             <line
               [attr.x1]="PAD_IZQ"
-              [attr.x2]="ANCHO - PAD_DER"
+              [attr.x2]="ANCHO() - PAD_DER"
               [attr.y1]="g.y"
               [attr.y2]="g.y"
               class="stroke-borde "
@@ -129,15 +106,18 @@ interface Punto {
           />
 
           @for (p of puntos(); track p.etiqueta) {
+            <!-- Sin el elemento title del SVG: el tooltip nativo del navegador es un cuadro
+                 blanco que rompe el tema oscuro. El de abajo usa los tokens del tema. -->
             <circle
               [attr.cx]="p.x"
               [attr.cy]="p.y"
-              r="3.5"
-              class="fill-accion "
+              [attr.r]="indiceActivo() === $index ? 5 : 3.5"
+              class="fill-accion cursor-pointer "
               data-testid="hist-punto"
-            >
-              <title>{{ p.etiqueta }}: {{ p.valor }}%</title>
-            </circle>
+              (mouseenter)="entrar($index, $event)"
+              (mousemove)="mover($event)"
+              (mouseleave)="salir()"
+            />
             @if (mostrarEtiqueta($index)) {
               <text
                 [attr.x]="p.x"
@@ -150,61 +130,140 @@ interface Punto {
           }
         </svg>
       }
+
+      <!--
+        Tooltip del punto. Mismo patrón que el de la dona (CGBIDA-550): posicionado de forma
+        absoluta dentro de la tarjeta, con los tokens del tema (bg-superficie, text-tinta)
+        para que respete el modo oscuro. Se invierte el desplazamiento en la mitad derecha
+        o inferior para que no se corte contra el borde.
+      -->
+      @if (puntoActivo(); as p) {
+        @if (puntero(); as pos) {
+          <div
+            class="pointer-events-none absolute z-50 rounded-control border border-borde bg-superficie
+                   px-3 py-2 text-sm shadow-lg "
+            [style.left.px]="pos.x + (pos.derecha ? -14 : 14)"
+            [style.top.px]="pos.y + (pos.abajo ? -14 : 14)"
+            [class.-translate-x-full]="pos.derecha"
+            [class.-translate-y-full]="pos.abajo"
+            data-testid="hist-tooltip"
+          >
+            <p class="flex items-center gap-2 font-semibold text-tinta ">
+              <span class="inline-block h-2 w-2 rounded-full bg-accion"></span>
+              {{ p.etiqueta }}
+            </p>
+            <p class="text-tinta-suave ">
+              {{ t().healthComponentSla }}: <strong class="text-tinta ">{{ p.valor }}%</strong>
+            </p>
+          </div>
+        }
+      }
     </figure>
   `,
 })
 export class SlaHistoricoComponent {
   private stats = inject(StatsService);
   private i18n = inject(I18nService);
+  private destroyRef = inject(DestroyRef);
+
+  /** El host, para posicionar el tooltip relativo a la tarjeta (igual que la dona). */
+  private host = inject(ElementRef<HTMLElement>);
 
   protected readonly t = computed(() => this.i18n.tree().financial);
 
-  // Lienzo del SVG. El viewBox es fijo y el SVG escala con `w-full`: así el trazo no
-  // engorda en pantallas grandes.
-  protected readonly ANCHO = 720;
-  protected readonly ALTO = 240;
+  /** Índice del punto bajo el cursor, o `null`. */
+  protected readonly indiceActivo = signal<number | null>(null);
+
+  /**
+   * Posición del cursor relativa a la tarjeta, más en qué cuadrante está.
+   *
+   * `derecha` y `abajo` deciden si el tooltip se dibuja a la derecha/abajo del cursor o al
+   * revés, para que no se corte contra el borde de la tarjeta.
+   */
+  protected readonly puntero = signal<
+    { x: number; y: number; derecha: boolean; abajo: boolean } | null
+  >(null);
+
+  /** Punto activo, para el tooltip. */
+  protected readonly puntoActivo = computed(() => {
+    const i = this.indiceActivo();
+    return i === null ? null : (this.puntos()[i] ?? null);
+  });
+
+  // Lienzo del SVG.
+  //
+  // El ancho NO es una constante: se mide el contenedor con un ResizeObserver y el
+  // viewBox usa ese ancho. Con un viewBox fijo de 720 y `w-full` el dibujo quedaba
+  // centrado y sobraban cientos de px en blanco a los lados, que es justo lo que se
+  // veia en la tarjeta ancha (CGBIDA-550). Como el viewBox y el ancho del elemento
+  // coinciden, la escala es 1:1 y el trazo tampoco engorda.
+  private readonly anchoMedido = signal(720);
+  protected readonly ANCHO = computed(() => Math.max(320, Math.round(this.anchoMedido())));
+  protected readonly ALTO = 220;
+
+  /** Contenedor del SVG, para medirlo. */
+  private readonly lienzo = viewChild<ElementRef<HTMLElement>>('lienzo');
   protected readonly PAD_IZQ = 34;
   protected readonly PAD_DER = 12;
   protected readonly PAD_SUP = 12;
   protected readonly PAD_INF = 26;
 
-  protected readonly rangos: readonly RangoHistorico[] = ['semestre', 'anio', 'tres', 'cinco'];
-
-  protected readonly rango = signal<RangoHistorico>('semestre');
+  /**
+   * Filtros de topologia que manda el Dashboard (CGBIDA-550).
+   *
+   * El componente pide sus propios datos, asi que sin esto el grafico mostraria toda la
+   * empresa mientras los KPIs de arriba estan filtrados por planta.
+   *
+   * Incluye el rango temporal: el grafico ya no tiene selector propio (CGBIDA-550).
+   */
+  readonly filtros = input<FiltrosDashboard>(SIN_FILTROS);
   protected readonly periodos = signal<PeriodoHistorico[]>([]);
   protected readonly cargando = signal(true);
   protected readonly error = signal(false);
 
-  /** Clases del botón activo/inactivo (se guardan completas para Tailwind). */
-  protected readonly claseActiva =
-    'rounded-control px-2 py-1 text-sm font-semibold bg-accion text-sobre-accion';
-  protected readonly claseInactiva =
-    'rounded-control px-2 py-1 text-sm font-medium text-tinta-suave ';
+  /** Entra en un punto: lo marca y arranca a seguir el cursor. */
+  protected entrar(indice: number, evento: MouseEvent): void {
+    this.indiceActivo.set(indice);
+    this.mover(evento);
+  }
 
+  /** Sigue el cursor dentro de la tarjeta. */
+  protected mover(evento: MouseEvent): void {
+    const r = this.host.nativeElement.getBoundingClientRect();
+    const x = evento.clientX - r.left;
+    const y = evento.clientY - r.top;
+    this.puntero.set({ x, y, derecha: x > r.width / 2, abajo: y > r.height / 2 });
+  }
+
+  /** Sale del punto: se oculta el tooltip. */
+  protected salir(): void {
+    this.indiceActivo.set(null);
+    this.puntero.set(null);
+  }
+
+  /**
+   * Pide la serie al construirse y cada vez que cambian los filtros.
+   *
+   * `untracked` deja fuera del efecto lo que `cargar()` lee por dentro (el rango): si
+   * no, cambiar de ventana dispararia dos peticiones, una por `cambiarRango()` y otra
+   * por el efecto.
+   */
   constructor() {
-    this.cargar();
-  }
+    effect(() => {
+      const filtros = this.filtros();
+      untracked(() => this.cargar(filtros));
+    });
 
-  /** Etiqueta del botón según el idioma activo. */
-  protected etiquetaRango(r: RangoHistorico): string {
-    const t = this.t();
-    switch (r) {
-      case 'anio':
-        return t.historyYear;
-      case 'tres':
-        return t.historyThree;
-      case 'cinco':
-        return t.historyFive;
-      default:
-        return t.historySemester;
-    }
-  }
-
-  /** Cambia la ventana y vuelve a pedir la serie. */
-  protected cambiarRango(r: RangoHistorico): void {
-    if (r === this.rango()) return;
-    this.rango.set(r);
-    this.cargar();
+    afterNextRender(() => {
+      const nodo = this.lienzo()?.nativeElement;
+      // En jsdom (tests) no hay ResizeObserver: se queda con el ancho por defecto.
+      if (!nodo || typeof ResizeObserver === 'undefined') return;
+      const observador = new ResizeObserver(([entrada]) => {
+        this.anchoMedido.set(entrada.contentRect.width);
+      });
+      observador.observe(nodo);
+      this.destroyRef.onDestroy(() => observador.disconnect());
+    });
   }
 
   /**
@@ -241,7 +300,7 @@ export class SlaHistoricoComponent {
     const ps = this.periodos();
     const n = ps.length;
     if (n === 0) return [];
-    const anchoUtil = this.ANCHO - this.PAD_IZQ - this.PAD_DER;
+    const anchoUtil = this.ANCHO() - this.PAD_IZQ - this.PAD_DER;
     return ps.map((p, i) => ({
       x: this.PAD_IZQ + (n === 1 ? anchoUtil / 2 : (i / (n - 1)) * anchoUtil),
       y: this.yDe(p.sla),
@@ -275,11 +334,10 @@ export class SlaHistoricoComponent {
     return this.ALTO - this.PAD_INF - fraccion * altoUtil;
   }
 
-  private cargar(): void {
-    const { granularity, days } = CONFIG[this.rango()];
+  private cargar(filtros: FiltrosDashboard): void {
     this.cargando.set(true);
     this.error.set(false);
-    this.stats.getHistorical(granularity, days).subscribe({
+    this.stats.getHistorical(filtros).subscribe({
       next: (r) => {
         this.periodos.set(r.periods ?? []);
         this.cargando.set(false);

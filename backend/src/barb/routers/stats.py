@@ -53,7 +53,15 @@ SALUD_SLA_ROJO = 85.0      # % de cumplimiento piso
 VERDE, AMARILLO, ROJO = "verde", "amarillo", "rojo"
 
 
-def _semaforo_operacional(*, sla: float, estancadas: int, vencidas: int) -> dict:
+def _semaforo_operacional(
+    *,
+    sla: float,
+    estancadas: int,
+    vencidas: int,
+    completadas: int = 0,
+    en_curso: int = 0,
+    pendientes: int = 0,
+) -> dict:
     """Semáforo de dos señales. `estancadas` incluye a las `vencidas`.
 
     Reglas, de peor a mejor:
@@ -62,11 +70,21 @@ def _semaforo_operacional(*, sla: float, estancadas: int, vencidas: int) -> dict
       verde    -> ninguna de las dos cosas.
 
     El motivo va en texto porque un color sin explicación no es accionable.
+    Además devuelve el `desglose` de OTs del período (completadas / en curso /
+    pendientes), que la tarjeta pinta como contadores (CGBIDA-550).
+
     """
     base = {
         "sla": round(sla, 1),
         "estancadas": int(estancadas),
         "vencidas": int(vencidas),
+        # Desglose del período para la tarjeta (CGBIDA-550). Va dentro del semáforo
+        # porque es el mismo universo: las OTs del alcance consultado.
+        "desglose": {
+            "completadas": int(completadas),
+            "en_curso": int(en_curso),
+            "pendientes": int(pendientes),
+        },
     }
     if vencidas >= 1:
         return {**base, "estado": ROJO, "motivo": f"{int(vencidas)} OT(s) vencida(s) sin cerrar."}
@@ -111,7 +129,11 @@ def _disponibilidad(horas_totales: float, downtime_min: float) -> float:
 
 
 # --- Series históricas (CGBIDA-515, 516, 517) --------------------------------
-GRANULARIDADES = ("month", "semester", "year")
+# `day` y `week` existen para que el filtro global de rango del Dashboard pueda mostrar
+# los ultimos 7 o 30 dias con resolucion util (CGBIDA-550). Antes solo habia mes o mas,
+# y un rango de 30 dias caia entero en un unico punto del grafico.
+GRANULARIDADES = ("day", "week", "month", "semester", "year", "5year")
+
 
 
 def _periodo_sql(granularity: str) -> str:
@@ -120,6 +142,11 @@ def _periodo_sql(granularity: str) -> str:
     Postgres no tiene `semester`: se trunca al año y se le suman 0 o 6 meses según si
     el mes cae en el primer o el segundo semestre.
     """
+    if granularity == "day":
+        return "date_trunc('day', ot.fecha_creacion)"
+    if granularity == "week":
+        # date_trunc('week') arranca en lunes (ISO).
+        return "date_trunc('week', ot.fecha_creacion)"
     if granularity == "month":
         return "date_trunc('month', ot.fecha_creacion)"
     if granularity == "semester":
@@ -127,17 +154,34 @@ def _periodo_sql(granularity: str) -> str:
             "date_trunc('year', ot.fecha_creacion) + make_interval(months => "
             "((EXTRACT(MONTH FROM ot.fecha_creacion)::int - 1) / 6) * 6)"
         )
+    if granularity == "5year":
+        # Bloque de 5 años alineado a los múltiplos de 5: 2020-2024, 2025-2029, ...
+        # Se usa mod() y no el operador `%` porque en el SQL de psycopg el signo de
+        # porcentaje es el marcador de parámetros: un `%` suelto rompe la consulta.
+        return (
+            "date_trunc('year', ot.fecha_creacion) - make_interval(years => "
+            "mod(EXTRACT(YEAR FROM ot.fecha_creacion)::int, 5))"
+        )
     return "date_trunc('year', ot.fecha_creacion)"
 
 
 def _horas_del_periodo(inicio: datetime, granularity: str) -> float:
     """Horas calendario del período que empieza en `inicio` (denominador del MTBF)."""
-    if granularity == "month":
+    if granularity == "day":
+        dias = 1
+    elif granularity == "week":
+        dias = 7
+    elif granularity == "month":
         dias = calendar.monthrange(inicio.year, inicio.month)[1]
     elif granularity == "semester":
         dias = sum(
             calendar.monthrange(inicio.year, ((inicio.month - 1 + i) % 12) + 1)[1]
             for i in range(6)
+        )
+    elif granularity == "5year":
+        dias = sum(
+            366 if calendar.isleap(anio) else 365
+            for anio in range(inicio.year, inicio.year + 5)
         )
     else:
         dias = 366 if calendar.isleap(inicio.year) else 365
@@ -146,11 +190,129 @@ def _horas_del_periodo(inicio: datetime, granularity: str) -> float:
 
 def _etiqueta_periodo(inicio: datetime, granularity: str) -> str:
     """Etiqueta corta para el eje X del gráfico: 2026-03, 2026-S1 o 2026."""
+    if granularity in ("day", "week"):
+        return inicio.strftime("%Y-%m-%d")
     if granularity == "month":
         return inicio.strftime("%Y-%m")
     if granularity == "semester":
         return inicio.strftime("%Y") + ("-S1" if inicio.month <= 6 else "-S2")
+    if granularity == "5year":
+        # Rango cerrado y legible: 2020-2024, no 2020.
+        return f"{inicio.year}-{inicio.year + 4}"
     return inicio.strftime("%Y")
+
+
+def _get_ot_scope_params(
+    empresa_id: int | None,
+    planta_id: int | None = None,
+    disciplina_id: int | None = None,
+    maquina_id: int | None = None,
+) -> tuple[str, dict]:
+    """
+    Fragmento SQL que acota las OTs a la empresa (y, si se piden, a una planta,
+    disciplina o máquina) junto con el diccionario de parámetros que espera psycopg.
+
+    Devuelve `(fragmento, params)` en una sola pieza porque separarlos es cómo se
+    desincronizan: un `%(clave)s` en el SQL que nadie liga en el dict explota en
+    tiempo de ejecución, no al importar el módulo.
+
+    El fragmento arranca con `AND`, así que se encadena igual en un `WHERE` que en el
+    `ON` de un `LEFT JOIN`. `None` en cualquiera de los cuatro = sin restricción en esa
+    dimensión; `empresa_id` en `None` solo lo usa el super_usuario.
+
+    La empresa se aplica SIEMPRE, aunque venga un filtro más específico: es lo que
+    garantiza que un id suelto de otra empresa devuelva vacío en vez de datos ajenos.
+
+    Los tres filtros de topología los exponen `GET /api/stats/historical` y
+    `GET /api/stats/financial-impact` (CGBIDA-550) y llegan hasta acá ya validados
+    por `_validar_filtros_topologia`.
+    """
+    fragmento = (
+        "AND ot.maquina_id IN ("
+        " SELECT m2.maquina_id FROM maquina m2"
+        " JOIN planta p2 ON p2.planta_id = m2.planta_id"
+        " WHERE (%(empresa_id)s::int IS NULL OR p2.empresa_id = %(empresa_id)s)"
+        " AND (%(planta_id)s::int IS NULL OR m2.planta_id = %(planta_id)s)"
+        " AND (%(disciplina_id)s::int IS NULL OR m2.disciplina_id = %(disciplina_id)s)"
+        " AND (%(maquina_id)s::int IS NULL OR m2.maquina_id = %(maquina_id)s))"
+    )
+    params: dict = {
+        "empresa_id": empresa_id,
+        "planta_id": planta_id,
+        "disciplina_id": disciplina_id,
+        "maquina_id": maquina_id,
+    }
+    return fragmento, params
+
+
+def _a_entero_o_none(valor: object) -> int | None:
+    """El valor como entero, o `None` si no lo es.
+
+    Los tests llaman al endpoint **directo**, sin pasar por FastAPI. En ese caso los
+    defaults de `Query(default=None)` llegan como objetos `Query` y no como `None`, y
+    tomarlos por un filtro válido termina en
+    `psycopg.ProgrammingError: cannot adapt type 'Query'`.
+
+    Normalizar acá deja la firma como la espera FastAPI y garantiza que el cuerpo
+    siempre reciba enteros o None, venga de la URL o de una llamada directa.
+    """
+    if isinstance(valor, bool):  # bool es subclase de int: no es un id
+        return None
+    return valor if isinstance(valor, int) else None
+
+
+async def _validar_filtros_topologia(
+    empresa_id: int | None,
+    planta_id: int | None,
+    disciplina_id: int | None,
+    maquina_id: int | None,
+) -> None:
+    """
+    404 si alguno de los filtros no existe o no es de la empresa de la sesión.
+
+    `ot_scope` ya los acota por empresa, así que un id ajeno devolvería vacío. Pero
+    vacío es un resultado engañoso: el dashboard mostraría todos los KPIs en 0 sin
+    explicar por qué. Es mejor decir que el filtro no corresponde.
+
+    Con `empresa_id` en None (super_usuario) solo se valida que exista, que es lo
+    único que se puede afirmar cuando no hay empresa en la sesión.
+    """
+    if planta_id is not None:
+        fila = await fetch_one(
+            "SELECT 1 FROM planta WHERE planta_id = %(id)s"
+            " AND (%(empresa)s::int IS NULL OR empresa_id = %(empresa)s)",
+            {"id": planta_id, "empresa": empresa_id},
+        )
+        if not fila:
+            raise HTTPException(
+                status_code=404,
+                detail=f"La planta {planta_id} no existe en tu empresa.",
+            )
+
+    if disciplina_id is not None:
+        fila = await fetch_one(
+            "SELECT 1 FROM disciplina WHERE disciplina_id = %(id)s"
+            " AND (%(empresa)s::int IS NULL OR empresa_id = %(empresa)s)",
+            {"id": disciplina_id, "empresa": empresa_id},
+        )
+        if not fila:
+            raise HTTPException(
+                status_code=404,
+                detail=f"La disciplina {disciplina_id} no existe en tu empresa.",
+            )
+
+    if maquina_id is not None:
+        fila = await fetch_one(
+            "SELECT 1 FROM maquina m JOIN planta p ON p.planta_id = m.planta_id"
+            " WHERE m.maquina_id = %(id)s"
+            " AND (%(empresa)s::int IS NULL OR p.empresa_id = %(empresa)s)",
+            {"id": maquina_id, "empresa": empresa_id},
+        )
+        if not fila:
+            raise HTTPException(
+                status_code=404,
+                detail=f"La máquina {maquina_id} no existe en tu empresa.",
+            )
 
 
 @router.get(
@@ -161,6 +323,9 @@ async def get_historical(
     granularity: str = Query(default="month"),
     days: int | None = Query(default=None, ge=1),
     empresa_id: int | None = Query(default=None),
+    planta_id: int | None = Query(default=None, ge=1),
+    disciplina_id: int | None = Query(default=None, ge=1),
+    maquina_id: int | None = Query(default=None, ge=1),
     sesion: dict = Depends(get_sesion_actual),
 ):
     """Serie histórica por período para los gráficos de línea del dashboard.
@@ -168,7 +333,7 @@ async def get_historical(
     No toca el esquema: agrupa `orden_trabajo` por `DATE_TRUNC` y calcula por período
     SLA (%), MTTR (min), MTBF (h), disponibilidad (%) y volumen de OTs.
 
-    `granularity`: `month` | `semester` | `year`. Con `days` se acota la ventana; sin
+    `granularity`: `day` | `week` | `month` | `semester` | `year` | `5year`. Con `days` se acota la ventana; sin
     `days` se devuelve todo el histórico disponible.
     """
     if granularity not in GRANULARIDADES:
@@ -178,13 +343,21 @@ async def get_historical(
         )
 
     params: dict = {"days": days} if days else {}
-    params["empresa_id"] = resolver_empresa(sesion, empresa_id)
     date_filter = (
         "AND ot.fecha_creacion >= NOW() - (%(days)s || ' days')::interval" if days else ""
     )
-    ot_scope = """AND ot.maquina_id IN (
-        SELECT m2.maquina_id FROM maquina m2 JOIN planta p2 ON p2.planta_id = m2.planta_id
-        WHERE (%(empresa_id)s::int IS NULL OR p2.empresa_id = %(empresa_id)s))"""
+    planta_id = _a_entero_o_none(planta_id)
+    disciplina_id = _a_entero_o_none(disciplina_id)
+    maquina_id = _a_entero_o_none(maquina_id)
+
+    empresa_efectiva = resolver_empresa(sesion, empresa_id)
+    await _validar_filtros_topologia(
+        empresa_efectiva, planta_id, disciplina_id, maquina_id
+    )
+    ot_scope, scope_params = _get_ot_scope_params(
+        empresa_efectiva, planta_id, disciplina_id, maquina_id
+    )
+    params.update(scope_params)
 
     sla_target = settings.sla_target_minutes
     en_sla = (
@@ -351,6 +524,9 @@ def _sin_kpis_financieros(respuesta: dict) -> dict:
 async def get_financial_impact(
     days: int | None = Query(default=None, ge=1),
     empresa_id: int | None = Query(default=None),
+    planta_id: int | None = Query(default=None, ge=1),
+    disciplina_id: int | None = Query(default=None, ge=1),
+    maquina_id: int | None = Query(default=None, ge=1),
     sesion: dict = Depends(get_sesion_actual),
 ):
     date_filter = "AND ot.fecha_creacion >= NOW() - (%(days)s || ' days')::interval" if days else ""
@@ -358,10 +534,18 @@ async def get_financial_impact(
 
     # Multi-empresa: las métricas solo consideran OTs/máquinas de la empresa del usuario
     # (OT -> maquina -> planta -> empresa). NULL = todas (solo super_usuario).
-    params["empresa_id"] = resolver_empresa(sesion, empresa_id)
-    ot_scope = """AND ot.maquina_id IN (
-        SELECT m2.maquina_id FROM maquina m2 JOIN planta p2 ON p2.planta_id = m2.planta_id
-        WHERE (%(empresa_id)s::int IS NULL OR p2.empresa_id = %(empresa_id)s))"""
+    planta_id = _a_entero_o_none(planta_id)
+    disciplina_id = _a_entero_o_none(disciplina_id)
+    maquina_id = _a_entero_o_none(maquina_id)
+
+    empresa_efectiva = resolver_empresa(sesion, empresa_id)
+    await _validar_filtros_topologia(
+        empresa_efectiva, planta_id, disciplina_id, maquina_id
+    )
+    ot_scope, scope_params = _get_ot_scope_params(
+        empresa_efectiva, planta_id, disciplina_id, maquina_id
+    )
+    params.update(scope_params)
 
     sla_target = settings.sla_target_minutes
     downtime_cost = settings.downtime_cost_per_minute
@@ -409,6 +593,11 @@ async def get_financial_impact(
             COUNT(*) AS total_ots,
             -- Para el semáforo de salud (CGBIDA-438): backlog vivo del período.
             COUNT(*) FILTER (WHERE ot.estado NOT IN ('completed', 'cancelled')) AS abiertas,
+            -- Desglose del backlog para la tarjeta de Salud (CGBIDA-550). biertas es la
+            -- suma de estos dos; se separan porque son cosas distintas: lo que ya tiene a
+            -- alguien trabajando y lo que todavia espera a que alguien lo tome.
+            COUNT(*) FILTER (WHERE ot.estado = 'in_progress') AS en_curso,
+            COUNT(*) FILTER (WHERE ot.estado IN ('pending', 'assigned', 'overdue')) AS pendientes,
             -- Inactividad de las OT no canceladas: denominador de Disponibilidad (CGBIDA-519).
             COALESCE(SUM(ot.downtime_minutes) FILTER (WHERE ot.estado != 'cancelled'), 0) AS downtime_total_min
         FROM orden_trabajo ot
@@ -462,6 +651,9 @@ async def get_financial_impact(
         JOIN planta pl ON pl.planta_id = m.planta_id
         LEFT JOIN orden_trabajo ot ON ot.maquina_id = m.maquina_id {date_filter}
         WHERE (%(empresa_id)s::int IS NULL OR pl.empresa_id = %(empresa_id)s)
+        AND (%(planta_id)s::int IS NULL OR m.planta_id = %(planta_id)s)
+        AND (%(disciplina_id)s::int IS NULL OR m.disciplina_id = %(disciplina_id)s)
+        AND (%(maquina_id)s::int IS NULL OR m.maquina_id = %(maquina_id)s)
         GROUP BY m.maquina_id, m.nombre
         ORDER BY {orden}
         LIMIT 5
@@ -577,6 +769,9 @@ async def get_financial_impact(
          WHERE ot.estado = 'completed' AND ot.tiempo_reparacion_min IS NOT NULL
            {date_filter}
            AND (%(empresa_id)s::int IS NULL OR p.empresa_id = %(empresa_id)s)
+           AND (%(planta_id)s::int IS NULL OR m.planta_id = %(planta_id)s)
+           AND (%(disciplina_id)s::int IS NULL OR m.disciplina_id = %(disciplina_id)s)
+           AND (%(maquina_id)s::int IS NULL OR m.maquina_id = %(maquina_id)s)
          GROUP BY m.maquina_id, m.nombre
          ORDER BY mttr DESC, completadas DESC
          LIMIT 5
@@ -595,6 +790,9 @@ async def get_financial_impact(
            AND ot.estado != 'cancelled'
            AND ot.fecha_creacion >= NOW() - INTERVAL '{MTBF_VENTANA_DIAS} days'
            AND (%(empresa_id)s::int IS NULL OR p.empresa_id = %(empresa_id)s)
+           AND (%(planta_id)s::int IS NULL OR m.planta_id = %(planta_id)s)
+           AND (%(disciplina_id)s::int IS NULL OR m.disciplina_id = %(disciplina_id)s)
+           AND (%(maquina_id)s::int IS NULL OR m.maquina_id = %(maquina_id)s)
          GROUP BY m.maquina_id, m.nombre
         HAVING COUNT(*) >= {MTBF_FALLAS_MINIMAS}
          ORDER BY ({MTBF_VENTANA_HORAS} - COALESCE(SUM(ot.downtime_minutes), 0) / 60.0) / COUNT(*) ASC
@@ -609,7 +807,7 @@ async def get_financial_impact(
                 await cur.execute(financials_query, params)
                 f = await cur.fetchone()
 
-                await cur.execute(trend_query, {"empresa_id": params["empresa_id"]})
+                await cur.execute(trend_query, params)
                 trend_rows = await cur.fetchall()
 
                 await cur.execute(machines_query, params)
@@ -623,7 +821,7 @@ async def get_financial_impact(
                 tipo_rows = await cur.fetchall()
 
                 # Las estancadas no leen el rango: solo el filtro por empresa.
-                await cur.execute(estancadas_query, {"empresa_id": params["empresa_id"]})
+                await cur.execute(estancadas_query, params)
                 estancadas_row = await cur.fetchone()
 
                 # Si el rango no justifica un MTBF anual, ni se consulta.
@@ -645,7 +843,7 @@ async def get_financial_impact(
                 # el promedio no es significativo, asi que ni se consulta.
                 peor_mtbf_rows = []
                 if visible:
-                    await cur.execute(peor_mtbf_query, {"empresa_id": params["empresa_id"]})
+                    await cur.execute(peor_mtbf_query, params)
                     peor_mtbf_rows = await cur.fetchall()
 
         mttr = float(f["mttr"])
@@ -729,6 +927,9 @@ async def get_financial_impact(
             sla=efficiency,
             estancadas=int(estancadas_row["total"]),
             vencidas=int(estancadas_row["vencidas"]),
+            completadas=int(f["total_completadas"]),
+            en_curso=int(f["en_curso"]),
+            pendientes=int(f["pendientes"]),
         )
 
         respuesta = {
