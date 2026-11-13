@@ -170,23 +170,40 @@ describe('FiltrosDashboardComponent', () => {
   // Rango temporal y moneda: los otros dos controles globales (CGBIDA-550)
   // ---------------------------------------------------------------------------
 
-  it('ofrece las cuatro ventanas de tiempo', () => {
+  it('ofrece las seis opciones de periodo, en orden', () => {
     const { el } = setup();
     expect(opciones(el, 'filtro-rango')).toEqual([
       'Últimos 7 días',
-      'Últimos 30 días',
-      'Últimos 90 días',
+      'Por Mes',
+      'Por Semestre',
+      'Por Año',
+      'Por 5 Años',
       'Histórico',
     ]);
+  });
+
+  it('arranca en Histórico, que es el default general', () => {
+    const { el } = setup();
+    expect(select(el, 'filtro-rango').value).toBe('all');
+  });
+
+  it('cada agrupación emite su clave', () => {
+    const { fixture, el, emitidos } = setup();
+
+    for (const clave of ['mes', 'semestre', 'anio', 'cinco'] as const) {
+      elegir(el, 'filtro-rango', clave);
+      fixture.detectChanges();
+      expect(emitidos.at(-1)?.rango).toBe(clave);
+    }
   });
 
   it('emite el rango elegido junto con el resto de los filtros', () => {
     const { fixture, el, emitidos } = setup();
 
-    elegir(el, 'filtro-rango', '30');
+    elegir(el, 'filtro-rango', 'mes');
     fixture.detectChanges();
 
-    expect(emitidos.at(-1)).toEqual(esperado({ rango: 30 }));
+    expect(emitidos.at(-1)).toEqual(esperado({ rango: 'mes' }));
   });
 
   it('no vuelve a emitir si se elige el rango que ya está activo', () => {

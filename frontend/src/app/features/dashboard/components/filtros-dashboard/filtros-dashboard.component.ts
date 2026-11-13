@@ -207,7 +207,14 @@ export class FiltrosDashboardComponent implements OnInit {
   protected readonly maquinaId = signal<number | null>(null);
   protected readonly rango = signal<RangoTemporal>(SIN_FILTROS.rango);
 
-  protected readonly rangos: readonly RangoTemporal[] = [7, 30, 90, 'all'];
+  /**
+   * Opciones del selector de período, en orden.
+   *
+   * `7` es una ventana (últimos 7 días, día a día). Las demás son agrupaciones: muestran
+   * todo el histórico en baldes de mes, semestre, año o bloques de 5 años. `'all'` es el
+   * default y agrupa por mes.
+   */
+  protected readonly rangos: readonly RangoTemporal[] = [7, 'mes', 'semestre', 'anio', 'cinco', 'all'];
   protected readonly monedas: readonly Moneda[] = ['CLP', 'USD'];
 
   /** Clases completas para que Tailwind no las elimine por no verlas en el HTML. */
@@ -269,10 +276,14 @@ export class FiltrosDashboardComponent implements OnInit {
     switch (r) {
       case 7:
         return tr.last7Days;
-      case 30:
-        return tr.last30Days;
-      case 90:
-        return tr.last90Days;
+      case 'mes':
+        return tr.groupByMonth;
+      case 'semestre':
+        return tr.groupBySemester;
+      case 'anio':
+        return tr.groupByYear;
+      case 'cinco':
+        return tr.groupBy5Years;
       default:
         return tr.allTime;
     }
@@ -302,8 +313,10 @@ export class FiltrosDashboardComponent implements OnInit {
   }
 
   protected cambiarRango(valor: string): void {
-    const rango: RangoTemporal = valor === 'all' ? 'all' : (Number(valor) as 7 | 30 | 90);
-    if (rango === this.rango()) return;
+    // El value del <select> llega como texto: "7" es una ventana y el resto son claves de
+    // agrupación. Se valida contra la lista para no aceptar cualquier cadena.
+    const rango: RangoTemporal | null = this.rangos.find((r) => String(r) === valor) ?? null;
+    if (rango === null || rango === this.rango()) return;
     this.rango.set(rango);
     this.emitir();
   }

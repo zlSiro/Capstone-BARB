@@ -271,18 +271,22 @@ export class DashboardComponent implements OnInit {
   protected readonly tr = computed(() => this.i18n.tree().dashboard);
 
   /**
-   * Etiqueta legible de cada rango. Las claves ya existían en i18n porque el legacy
-   * también las tenía (`last7Days`, `last30Days`, `last90Days`, `allTime`).
+   * Etiqueta legible de cada período. La usan el botón «Explícame» y el gráfico histórico,
+   * así que tiene que decir lo mismo que el selector del panel de filtros.
    */
   protected etiquetaRango(r: RangoTemporal): string {
     const t = this.tr();
     switch (r) {
       case 7:
         return t.last7Days;
-      case 30:
-        return t.last30Days;
-      case 90:
-        return t.last90Days;
+      case 'mes':
+        return t.groupByMonth;
+      case 'semestre':
+        return t.groupBySemester;
+      case 'anio':
+        return t.groupByYear;
+      case 'cinco':
+        return t.groupBy5Years;
       default:
         return t.allTime;
     }

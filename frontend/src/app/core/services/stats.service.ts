@@ -31,13 +31,14 @@ export class StatsService {
   /**
    * KPIs del Dashboard.
    *
-   * `filtros.rango` acota la ventana temporal (`'all'` = histórico completo) y los tres
-   * IDs acotan la topología. Todo sale del mismo objeto del panel de control, así que es
-   * imposible pedir los KPIs de una planta con el rango de otra selección.
+   * `filtros.rango` acota la ventana temporal solo cuando es una ventana, o sea un número
+   * de días. Las agrupaciones (`'mes'`, `'semestre'`, `'anio'`, `'cinco'`) y `'all'` no
+   * acotan nada: agrupar es cosa del gráfico histórico, así que los KPIs muestran todo el
+   * alcance. Los tres IDs acotan la topología.
    */
   getFinancialImpact(filtros: FiltrosDashboard) {
     let params = new HttpParams();
-    if (filtros.rango !== 'all') params = params.set('days', filtros.rango);
+    if (typeof filtros.rango === 'number') params = params.set('days', filtros.rango);
     params = conFiltrosTopologia(params, filtros);
     const query = params.toString() ? `?${params.toString()}` : '';
     return this.http.get<FinancialStats>(`${this.apiUrl}/stats/financial-impact${query}`);

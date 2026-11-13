@@ -1,7 +1,35 @@
-import { EstadoSalud, FinancialStats, SaludOperacionalData } from '../../../core/models';
+import {
+  EstadoSalud,
+  FinancialStats,
+  RangoTemporal,
+  SaludOperacionalData,
+} from '../../../core/models';
 
-/** Rango de tiempo elegido en el dashboard (días, o `all` = histórico). */
-export type RangoResumen = 7 | 30 | 90 | 'all';
+/**
+ * Rango de tiempo con el que se armó el resumen.
+ *
+ * Es `RangoTemporal` (lo que ofrece el panel de filtros) más `30` y `90`, que el resumen
+ * todavía sabe interpretar porque son las ventanas que ofrecía el dashboard anterior
+ * (CGBIDA-397). La UI nueva ya no los manda, pero no hay razón para romper el cálculo de
+ * horas para quien los pase.
+ */
+export type RangoResumen = RangoTemporal | 30 | 90;
+
+/**
+ * Días equivalentes de cada rango, para el texto de disponibilidad («X h de Y h»).
+ *
+ * Las agrupaciones no son ventanas, pero para la frase se usa el largo típico del balde:
+ * un mes ≈ 30 días, un semestre ≈ 182, un año = 365 y un bloque de 5 años = 1825.
+ */
+const DIAS_EQUIVALENTES: Record<Exclude<RangoResumen, 'all'>, number> = {
+  7: 7,
+  30: 30,
+  90: 90,
+  mes: 30,
+  semestre: 182,
+  anio: 365,
+  cinco: 1825,
+};
 
 export interface ResumenEntrada {
   /** La respuesta que el dashboard ya tiene (la misma que alimenta las tarjetas). */
@@ -126,7 +154,7 @@ function fraseDisponibilidad(e: ResumenEntrada): FraseResumen | null {
   const detenido = Math.round((100 - d) * 10) / 10;
   const titulo = e.t('ayuda.exp_t_disponibilidad', { v0: e.numero(d, 1) });
   if (e.rango === 'all') return { id: 'disponibilidad', titulo, texto: e.t('ayuda.exp_disp_sin_horas', { v0: e.numero(detenido, 1) }) };
-  const total = e.rango * 24;
+  const total = DIAS_EQUIVALENTES[e.rango] * 24;
   const horas = (detenido / 100) * total;
   return { id: 'disponibilidad', titulo, texto: e.t('ayuda.exp_disp_horas', { v0: e.numero(detenido, 1), v1: e.numero(horas, 1), v2: e.numero(total, 0) }) };
 }

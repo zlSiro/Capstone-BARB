@@ -132,7 +132,7 @@ def _disponibilidad(horas_totales: float, downtime_min: float) -> float:
 # `day` y `week` existen para que el filtro global de rango del Dashboard pueda mostrar
 # los ultimos 7 o 30 dias con resolucion util (CGBIDA-550). Antes solo habia mes o mas,
 # y un rango de 30 dias caia entero en un unico punto del grafico.
-GRANULARIDADES = ("day", "week", "month", "semester", "year")
+GRANULARIDADES = ("day", "week", "month", "semester", "year", "5year")
 
 
 
@@ -154,6 +154,14 @@ def _periodo_sql(granularity: str) -> str:
             "date_trunc('year', ot.fecha_creacion) + make_interval(months => "
             "((EXTRACT(MONTH FROM ot.fecha_creacion)::int - 1) / 6) * 6)"
         )
+    if granularity == "5year":
+        # Bloque de 5 años alineado a los múltiplos de 5: 2020-2024, 2025-2029, ...
+        # Se usa mod() y no el operador `%` porque en el SQL de psycopg el signo de
+        # porcentaje es el marcador de parámetros: un `%` suelto rompe la consulta.
+        return (
+            "date_trunc('year', ot.fecha_creacion) - make_interval(years => "
+            "mod(EXTRACT(YEAR FROM ot.fecha_creacion)::int, 5))"
+        )
     return "date_trunc('year', ot.fecha_creacion)"
 
 
@@ -170,6 +178,11 @@ def _horas_del_periodo(inicio: datetime, granularity: str) -> float:
             calendar.monthrange(inicio.year, ((inicio.month - 1 + i) % 12) + 1)[1]
             for i in range(6)
         )
+    elif granularity == "5year":
+        dias = sum(
+            366 if calendar.isleap(anio) else 365
+            for anio in range(inicio.year, inicio.year + 5)
+        )
     else:
         dias = 366 if calendar.isleap(inicio.year) else 365
     return float(dias * 24)
@@ -183,6 +196,9 @@ def _etiqueta_periodo(inicio: datetime, granularity: str) -> str:
         return inicio.strftime("%Y-%m")
     if granularity == "semester":
         return inicio.strftime("%Y") + ("-S1" if inicio.month <= 6 else "-S2")
+    if granularity == "5year":
+        # Rango cerrado y legible: 2020-2024, no 2020.
+        return f"{inicio.year}-{inicio.year + 4}"
     return inicio.strftime("%Y")
 
 
@@ -317,7 +333,7 @@ async def get_historical(
     No toca el esquema: agrupa `orden_trabajo` por `DATE_TRUNC` y calcula por período
     SLA (%), MTTR (min), MTBF (h), disponibilidad (%) y volumen de OTs.
 
-    `granularity`: `day` | `week` | `month` | `semester` | `year`. Con `days` se acota la ventana; sin
+    `granularity`: `day` | `week` | `month` | `semester` | `year` | `5year`. Con `days` se acota la ventana; sin
     `days` se devuelve todo el histórico disponible.
     """
     if granularity not in GRANULARIDADES:

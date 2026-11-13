@@ -281,6 +281,11 @@ const base = {
       topAssetsTitle: 'Top 5 Activos Críticos',
       topAssetsSubtitle: 'Máquinas con mayor volumen de OTs',
       last7Days: 'Últimos 7 días', last30Days: 'Últimos 30 días',
+      // Agrupaciones del selector de periodo (CGBIDA-550): no acotan ventana.
+      groupByMonth: 'Por Mes',
+      groupBySemester: 'Por Semestre',
+      groupByYear: 'Por Año',
+      groupBy5Years: 'Por 5 Años',
       last90Days: 'Últimos 90 días', allTime: 'Histórico',
       rangeLabel: 'Período'
     },
@@ -593,6 +598,11 @@ const base = {
       topAssetsTitle: 'Top 5 Critical Assets',
       topAssetsSubtitle: 'Machines with highest WO volume',
       last7Days: 'Last 7 days', last30Days: 'Last 30 days',
+      // Period selector groupings (CGBIDA-550): they do not bound the window.
+      groupByMonth: 'By Month',
+      groupBySemester: 'By Semester',
+      groupByYear: 'By Year',
+      groupBy5Years: 'By 5 Years',
       last90Days: 'Last 90 days', allTime: 'All Time',
       rangeLabel: 'Period'
     },

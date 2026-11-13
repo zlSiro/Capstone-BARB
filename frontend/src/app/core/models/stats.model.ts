@@ -243,11 +243,13 @@ export interface FinancialStats {
 // =============================================================================
 
 /**
- * Ventana temporal del Dashboard.
+ * Ventana temporal o agrupación del Dashboard.
  *
- * `'all'` = histórico completo. Los números son días.
+ * `7` es una ventana (últimos 7 días). Las cadenas son agrupaciones: no acotan la ventana
+ * —viajan con `days = null`— y solo cambian el tamaño del balde del gráfico histórico.
+ * `'all'` es el default: histórico completo agrupado por mes.
  */
-export type RangoTemporal = 7 | 30 | 90 | 'all';
+export type RangoTemporal = 7 | 'mes' | 'semestre' | 'anio' | 'cinco' | 'all';
 
 /**
  * Filtros globales: todo lo que el panel de control manda junto.
@@ -281,16 +283,18 @@ export function hayFiltrosTopologia(f: FiltrosDashboard): boolean {
 /**
  * Cómo se pide el histórico para cada rango.
  *
- * Ojo con la granularidad: la serie se dibuja con un punto por período, así que un rango
- * de 30 días con granularidad mensual caería en un solo punto. Por eso 7 y 30 días van
- * día a día, 90 días por semana y el histórico completo por mes.
+ * Ojo con la granularidad: la serie se dibuja con un punto por período. Una ventana corta
+ * con granularidad mensual caería en un solo punto (por eso 7 días va día a día), y las
+ * agrupaciones no llevan `days` porque muestran todo el histórico en baldes más grandes.
  */
 export const GRANULARIDAD_POR_RANGO: Record<
   RangoTemporal,
-  { granularity: 'day' | 'week' | 'month'; days?: number }
+  { granularity: 'day' | 'month' | 'semester' | 'year' | '5year'; days?: number }
 > = {
   7: { granularity: 'day', days: 7 },
-  30: { granularity: 'day', days: 30 },
-  90: { granularity: 'week', days: 90 },
+  mes: { granularity: 'month' },
+  semestre: { granularity: 'semester' },
+  anio: { granularity: 'year' },
+  cinco: { granularity: '5year' },
   all: { granularity: 'month' },
 };

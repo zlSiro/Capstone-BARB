@@ -81,3 +81,63 @@ async def test_granularidad_invalida_sigue_dando_422(client, db_pool):
     h = await _login(client, GERENTE_E2)
     r = await client.get("/api/stats/historical?granularity=decada", headers=h)
     assert r.status_code == 422, r.text
+
+
+# =============================================================================
+# Bloques de 5 años (CGBIDA-550)
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_granularidad_5year_agrupa_en_bloques_de_cinco(client, db_pool):
+    """Cada período abarca 5 años y la etiqueta es el rango cerrado."""
+    h = await _login(client, GERENTE_E2)
+
+    periodos = await _periodos(client, h, granularity="5year")
+
+    assert periodos, "el seed tiene OTs"
+    for p in periodos:
+        anio_inicio, anio_fin = p["etiqueta"].split("-")
+        assert int(anio_fin) - int(anio_inicio) == 4, p["etiqueta"]
+        # Bloques alineados a múltiplos de 5: 2020-2024, 2025-2029, ...
+        assert int(anio_inicio) % 5 == 0, p["etiqueta"]
+        # El período son 5 años calendario (con bisiestos incluidos).
+        assert p["horas_periodo"] in (
+            pytest.approx((365 * 5 + 1) * 24),
+            pytest.approx((365 * 5 + 2) * 24),
+        ), p["horas_periodo"]
+
+
+@pytest.mark.asyncio
+async def test_los_bloques_5year_cubren_todas_las_ots(client, db_pool):
+    """Sin ventana, la suma de los bloques es el total de OTs del alcance."""
+    h = await _login(client, GERENTE_E2)
+
+    periodos = await _periodos(client, h, granularity="5year")
+    total = sum(int(p["total_ots"]) for p in periodos)
+
+    esperado = await fetch_one(
+        """
+        SELECT COUNT(*) AS n FROM orden_trabajo ot
+          JOIN maquina m ON m.maquina_id = ot.maquina_id
+          JOIN planta p ON p.planta_id = m.planta_id
+         WHERE p.empresa_id = %(e)s
+        """,
+        {"e": 2},
+    )
+    assert total == int(esperado["n"])
+
+
+@pytest.mark.asyncio
+async def test_5year_no_repite_un_anio_en_dos_bloques(client, db_pool):
+    """Cada OT cae en un solo bloque: no puede haber años solapados."""
+    h = await _login(client, GERENTE_E2)
+
+    periodos = await _periodos(client, h, granularity="5year")
+    rangos = []
+    for p in periodos:
+        ini, fin = (int(x) for x in p["etiqueta"].split("-"))
+        rangos.append((ini, fin))
+
+    for (ini_a, fin_a), (ini_b, _) in zip(rangos, rangos[1:]):
+        assert ini_b > fin_a, f"los bloques {ini_a}-{fin_a} y {ini_b} se solapan"
