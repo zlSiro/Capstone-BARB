@@ -263,3 +263,72 @@ async def test_los_tres_filtros_juntos(client, db_pool):
     ).json()
     esperado = await _ots("m.maquina_id = %(m)s", {"m": int(fila["m"])})
     assert _suma_por_tipo(datos) == esperado
+
+
+# =============================================================================
+# Desglose de OTs para la tarjeta de Salud Operacional (CGBIDA-550)
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_el_semaforo_trae_el_desglose_de_ots(client, db_pool):
+    """Completadas + en curso + pendientes + canceladas = total del alcance."""
+    h = await _login(client, GERENTE_E2)
+
+    datos = (await client.get("/api/stats/financial-impact", headers=h)).json()
+    desglose = datos["salud_operacional"]["desglose"]
+
+    assert set(desglose) == {"completadas", "en_curso", "pendientes"}
+    for clave, valor in desglose.items():
+        assert isinstance(valor, int) and valor >= 0, (clave, valor)
+
+    esperado = await fetch_one(
+        """
+        SELECT
+          COUNT(*) FILTER (WHERE ot.estado = 'completed') AS completadas,
+          COUNT(*) FILTER (WHERE ot.estado = 'in_progress') AS en_curso,
+          COUNT(*) FILTER (WHERE ot.estado IN ('pending', 'assigned', 'overdue')) AS pendientes,
+          COUNT(*) FILTER (WHERE ot.estado = 'cancelled') AS canceladas,
+          COUNT(*) AS total
+          FROM orden_trabajo ot
+          JOIN maquina m ON m.maquina_id = ot.maquina_id
+          JOIN planta p ON p.planta_id = m.planta_id
+         WHERE p.empresa_id = %(e)s
+        """,
+        {"e": EMPRESA_E2},
+    )
+
+    assert desglose["completadas"] == int(esperado["completadas"])
+    assert desglose["en_curso"] == int(esperado["en_curso"])
+    assert desglose["pendientes"] == int(esperado["pendientes"])
+    # Los cuatro estados del semáforo cubren todas las OTs del alcance.
+    suma = (
+        desglose["completadas"]
+        + desglose["en_curso"]
+        + desglose["pendientes"]
+        + int(esperado["canceladas"])
+    )
+    assert suma == int(esperado["total"])
+
+
+@pytest.mark.asyncio
+async def test_el_desglose_respeta_los_filtros(client, db_pool):
+    """Los contadores tienen que hablar del mismo universo que los KPIs."""
+    h = await _login(client, GERENTE_E2)
+    planta = 4
+
+    datos = (await client.get(f"/api/stats/financial-impact?planta_id={planta}", headers=h)).json()
+    desglose = datos["salud_operacional"]["desglose"]
+
+    esperado = await fetch_one(
+        """
+        SELECT COUNT(*) FILTER (WHERE ot.estado = 'completed') AS completadas
+          FROM orden_trabajo ot
+          JOIN maquina m ON m.maquina_id = ot.maquina_id
+         WHERE m.planta_id = %(p)s
+        """,
+        {"p": planta},
+    )
+    assert desglose["completadas"] == int(esperado["completadas"])
+    # La planta 4 es un subconjunto: no puede tener mas completadas que la empresa.
+    assert desglose["completadas"] < _suma_por_tipo(datos) + 1

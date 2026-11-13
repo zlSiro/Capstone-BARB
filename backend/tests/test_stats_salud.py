@@ -85,7 +85,7 @@ async def _stats(client, qs: str = "") -> dict:
 
 async def test_el_endpoint_devuelve_el_semaforo_simple(client):
     s = (await _stats(client))["salud_operacional"]
-    assert set(s) == {"estado", "motivo", "sla", "estancadas", "vencidas"}, sorted(s)
+    assert set(s) == {"estado", "motivo", "sla", "estancadas", "vencidas", "desglose"}, sorted(s)
     assert s["estado"] in {VERDE, AMARILLO, ROJO}
 
 

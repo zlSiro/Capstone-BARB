@@ -1,4 +1,16 @@
-import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
+import {
+  Component,
+  DestroyRef,
+  ElementRef,
+  afterNextRender,
+  computed,
+  effect,
+  inject,
+  input,
+  signal,
+  untracked,
+  viewChild,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { StatsService } from '../../../../core/services/stats.service';
 import { I18nService } from '../../../../core/i18n/i18n.service';
@@ -31,6 +43,7 @@ interface Punto {
   imports: [CommonModule],
   template: `
     <figure
+      #lienzo
       class="flex h-full flex-col rounded-control border border-borde bg-superficie p-5 "
       data-testid="sla-historico"
     >
@@ -39,16 +52,6 @@ interface Punto {
           <h2 class="text-sm font-extrabold text-tinta ">{{ t().historyTitle }}</h2>
           <p class="text-sm text-tinta-suave ">{{ t().historySub }}</p>
         </div>
-
-        <!-- La ventana la decide el panel global: aca solo se muestra cuál está activa. -->
-        @if (etiquetaRango()) {
-          <span
-            class="rounded-full bg-superficie-alt px-2 py-0.5 text-xs font-medium text-tinta-suave"
-            data-testid="hist-rango-activo"
-          >
-            {{ etiquetaRango() }}
-          </span>
-        }
       </figcaption>
 
       @if (cargando()) {
@@ -65,8 +68,9 @@ interface Punto {
         </p>
       } @else {
         <svg
-          [attr.viewBox]="'0 0 ' + ANCHO + ' ' + ALTO"
-          class="h-[240px] w-full"
+          [attr.viewBox]="'0 0 ' + ANCHO() + ' ' + ALTO"
+          [attr.height]="ALTO"
+          class="w-full"
           role="img"
           [attr.aria-label]="t().historySvgLabel"
           data-testid="hist-svg"
@@ -75,7 +79,7 @@ interface Punto {
           @for (g of guias(); track g.valor) {
             <line
               [attr.x1]="PAD_IZQ"
-              [attr.x2]="ANCHO - PAD_DER"
+              [attr.x2]="ANCHO() - PAD_DER"
               [attr.y1]="g.y"
               [attr.y2]="g.y"
               class="stroke-borde "
@@ -129,13 +133,24 @@ interface Punto {
 export class SlaHistoricoComponent {
   private stats = inject(StatsService);
   private i18n = inject(I18nService);
+  private destroyRef = inject(DestroyRef);
+
 
   protected readonly t = computed(() => this.i18n.tree().financial);
 
-  // Lienzo del SVG. El viewBox es fijo y el SVG escala con `w-full`: así el trazo no
-  // engorda en pantallas grandes.
-  protected readonly ANCHO = 720;
-  protected readonly ALTO = 240;
+  // Lienzo del SVG.
+  //
+  // El ancho NO es una constante: se mide el contenedor con un ResizeObserver y el
+  // viewBox usa ese ancho. Con un viewBox fijo de 720 y `w-full` el dibujo quedaba
+  // centrado y sobraban cientos de px en blanco a los lados, que es justo lo que se
+  // veia en la tarjeta ancha (CGBIDA-550). Como el viewBox y el ancho del elemento
+  // coinciden, la escala es 1:1 y el trazo tampoco engorda.
+  private readonly anchoMedido = signal(720);
+  protected readonly ANCHO = computed(() => Math.max(320, Math.round(this.anchoMedido())));
+  protected readonly ALTO = 220;
+
+  /** Contenedor del SVG, para medirlo. */
+  private readonly lienzo = viewChild<ElementRef<HTMLElement>>('lienzo');
   protected readonly PAD_IZQ = 34;
   protected readonly PAD_DER = 12;
   protected readonly PAD_SUP = 12;
@@ -150,9 +165,6 @@ export class SlaHistoricoComponent {
    * Incluye el rango temporal: el grafico ya no tiene selector propio (CGBIDA-550).
    */
   readonly filtros = input<FiltrosDashboard>(SIN_FILTROS);
-
-  /** Etiqueta de la ventana activa, para mostrarla en la cabecera del grafico. */
-  readonly etiquetaRango = input<string>('');
   protected readonly periodos = signal<PeriodoHistorico[]>([]);
   protected readonly cargando = signal(true);
   protected readonly error = signal(false);
@@ -168,6 +180,17 @@ export class SlaHistoricoComponent {
     effect(() => {
       const filtros = this.filtros();
       untracked(() => this.cargar(filtros));
+    });
+
+    afterNextRender(() => {
+      const nodo = this.lienzo()?.nativeElement;
+      // En jsdom (tests) no hay ResizeObserver: se queda con el ancho por defecto.
+      if (!nodo || typeof ResizeObserver === 'undefined') return;
+      const observador = new ResizeObserver(([entrada]) => {
+        this.anchoMedido.set(entrada.contentRect.width);
+      });
+      observador.observe(nodo);
+      this.destroyRef.onDestroy(() => observador.disconnect());
     });
   }
 
@@ -205,7 +228,7 @@ export class SlaHistoricoComponent {
     const ps = this.periodos();
     const n = ps.length;
     if (n === 0) return [];
-    const anchoUtil = this.ANCHO - this.PAD_IZQ - this.PAD_DER;
+    const anchoUtil = this.ANCHO() - this.PAD_IZQ - this.PAD_DER;
     return ps.map((p, i) => ({
       x: this.PAD_IZQ + (n === 1 ? anchoUtil / 2 : (i / (n - 1)) * anchoUtil),
       y: this.yDe(p.sla),

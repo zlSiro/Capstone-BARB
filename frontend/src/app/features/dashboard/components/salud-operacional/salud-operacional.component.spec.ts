@@ -125,3 +125,35 @@ describe('salud-operacional: ya no tiene las sub-tarjetas viejas', () => {
     expect(el.querySelector('[data-testid="indice-salud"]')).toBeNull();
   });
 });
+
+
+describe('salud-operacional: desglose de OTs (CGBIDA-550)', () => {
+  it('muestra los tres contadores con los valores del backend', () => {
+    const { el } = setup({
+      ...datos(),
+      desglose: { completadas: 42, en_curso: 7, pendientes: 13 },
+    });
+
+    expect(texto(el, "desglose-completadas")).toContain("42");
+    expect(texto(el, "desglose-en-curso")).toContain("7");
+    expect(texto(el, "desglose-pendientes")).toContain("13");
+  });
+
+  it('los rotula en el idioma activo', () => {
+    const { el } = setup({
+      ...datos(),
+      desglose: { completadas: 1, en_curso: 2, pendientes: 3 },
+    });
+
+    expect(texto(el, "desglose-completadas")).toContain("Completadas");
+    expect(texto(el, "desglose-en-curso")).toContain("En curso");
+    expect(texto(el, "desglose-pendientes")).toContain("Pendientes");
+  });
+
+  it('sin desglose muestra 0 y no rompe', () => {
+    const { el } = setup(datos());
+
+    expect(texto(el, "desglose-completadas")).toContain("0");
+    expect(el.querySelector('[data-testid="desglose-salud"]')).not.toBeNull();
+  });
+});

@@ -105,15 +105,22 @@ describe('sla-historico: ventana global (CGBIDA-550)', () => {
     expect(getHistorical).toHaveBeenLastCalledWith({ ...SIN_FILTROS, planta_id: 4 });
   });
 
-  it('muestra la etiqueta de la ventana activa', () => {
-    const { fixture, el } = setup();
+  it('no muestra el rótulo de la ventana: ya lo dice el filtro global', () => {
+    const { el } = setup();
+    expect(el.querySelector('[data-testid="hist-rango-activo"]')).toBeNull();
+  });
 
-    fixture.componentRef.setInput('etiquetaRango', 'Últimos 30 días');
-    fixture.detectChanges();
+  it('el SVG ocupa el ancho del contenedor y no lleva alto fijo', () => {
+    const { el } = setup();
+    const svg = el.querySelector('[data-testid="hist-svg"]') as SVGElement;
 
-    const chip = el.querySelector('[data-testid="hist-rango-activo"]');
-    expect(chip).not.toBeNull();
-    expect(chip!.textContent).toContain('Últimos 30 días');
+    // `w-full` + viewBox del ancho medido: sin esto el dibujo quedaba centrado con
+    // cientos de px en blanco a los lados (CGBIDA-550).
+    expect(svg.getAttribute("class")).toContain("w-full");
+    expect(svg.getAttribute("class")).not.toContain("h-[240px]");
+    expect(svg.getAttribute("height")).toBe("220");
+    // En jsdom no hay ResizeObserver: el ancho por defecto es 720.
+    expect(svg.getAttribute("viewBox")).toBe("0 0 720 220");
   });
 });
 

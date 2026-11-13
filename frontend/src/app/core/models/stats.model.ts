@@ -147,6 +147,18 @@ export interface SaludOperacionalData {
   estancadas: number;
   /** Subconjunto vencido: vencimiento pasado y estado no final. */
   vencidas: number;
+  /**
+   * Desglose de las OTs del período por estado (CGBIDA-550).
+   *
+   * Opcional: si el backend no lo manda (versión anterior), la tarjeta muestra los
+   * contadores en 0 en vez de romperse. `pendientes` agrupa lo que todavía no tiene a
+   * nadie trabajando (pending, assigned, overdue) y `en_curso` lo que sí.
+   */
+  desglose?: {
+    completadas: number;
+    en_curso: number;
+    pendientes: number;
+  };
 }
 
 /** Una fila del Top 5 con peor MTTR (CGBIDA-516). */

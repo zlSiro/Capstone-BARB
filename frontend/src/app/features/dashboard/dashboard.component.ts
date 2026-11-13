@@ -199,11 +199,7 @@ import { FiltrosDashboardComponent } from './components/filtros-dashboard/filtro
         <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <!-- Evolucion del SLA (CGBIDA-515). Ocupa las dos columnas: el eje X necesita
                ancho para las etiquetas de periodo y la linea se lee mejor. -->
-          <app-sla-historico
-        class="min-w-0 lg:col-span-2"
-        [filtros]="filtros()"
-        [etiquetaRango]="etiquetaRango(rango())"
-      />
+          <app-sla-historico class="min-w-0 lg:col-span-2" [filtros]="filtros()" />
 
           <!-- Salud Operacional (CGBIDA-520): semaforo simplificado con el motivo. -->
           <app-salud-operacional class="min-w-0" data-tour="dash-salud" [salud]="salud()" />

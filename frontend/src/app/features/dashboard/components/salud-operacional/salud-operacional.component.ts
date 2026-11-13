@@ -36,29 +36,30 @@ import { I18nService } from '../../../../core/i18n/i18n.service';
         <p class="text-sm text-tinta-suave ">{{ t().healthCardSub }}</p>
       </figcaption>
 
-      <div class="flex flex-1 flex-col items-center justify-center gap-4 py-4">
-        <!-- Semaforo grande: el estado se lee sin interpretar nada. -->
-        <div class="flex items-center gap-5">
+      <div class="flex flex-1 flex-col justify-center gap-3 py-2">
+        <!-- Semaforo y estado en una sola fila: antes el circulo de 96px empujaba todo
+             hacia abajo y dejaba medio tarjeta vacia (CGBIDA-550). -->
+        <div class="flex items-center gap-4">
           <span
-            class="flex h-24 w-24 shrink-0 items-center justify-center rounded-full
-                   text-4xl font-extrabold text-white shadow-lg"
+            class="flex h-16 w-16 shrink-0 items-center justify-center rounded-full
+                   text-2xl font-extrabold text-white shadow-lg"
             [style.background]="color()"
             role="img"
             [attr.aria-label]="t().healthCardTitle + ': ' + etiquetaEstado()"
             data-testid="luz-salud"
           >{{ icono() }}</span>
-          <p
-            class="text-3xl font-extrabold leading-tight"
-            [style.color]="color()"
-            data-testid="estado-salud"
-          >{{ etiquetaEstado() }}</p>
+          <div class="min-w-0">
+            <p
+              class="text-2xl font-extrabold leading-tight"
+              [style.color]="color()"
+              data-testid="estado-salud"
+            >{{ etiquetaEstado() }}</p>
+            <!-- Motivo: lo redacta el backend, no se arma en el frontend. -->
+            <p class="text-sm font-medium text-tinta " data-testid="motivo-salud">
+              {{ motivo() }}
+            </p>
+          </div>
         </div>
-
-        <!-- Motivo: lo redacta el backend, no se arma en el frontend. -->
-        <p
-          class="max-w-md text-center text-sm font-medium text-tinta "
-          data-testid="motivo-salud"
-        >{{ motivo() }}</p>
 
         <!-- Linea simple con las dos cifras que sostienen el color. -->
         <p class="text-sm text-tinta-suave " data-testid="resumen-salud">
@@ -68,6 +69,20 @@ import { I18nService } from '../../../../core/i18n/i18n.service';
             {{ vencidas() }} {{ t().healthOtsVencidas }}
           </span>
         </p>
+
+        <!-- Desglose de OTs del período (CGBIDA-550): el espacio que antes quedaba vacio
+             ahora dice como se reparte el trabajo. -->
+        <div class="grid grid-cols-3 gap-2" data-testid="desglose-salud">
+          @for (c of contadores(); track c.clave) {
+            <div
+              class="rounded-control border border-borde bg-superficie-alt px-2 py-1.5 text-center"
+              [attr.data-testid]="'desglose-' + c.clave"
+            >
+              <p class="text-lg font-extrabold leading-none text-tinta">{{ c.valor }}</p>
+              <p class="mt-0.5 text-xs text-tinta-suave ">{{ c.etiqueta }}</p>
+            </div>
+          }
+        </div>
       </div>
     </figure>
   `
@@ -114,6 +129,26 @@ export class SaludOperacionalComponent {
   });
 
   protected readonly vencidas = computed(() => this.salud()?.vencidas ?? 0);
+
+  /**
+   * Los tres contadores del desglose (CGBIDA-550).
+   *
+   * `pendientes` no es "todo lo abierto": es lo que todavía no tiene a nadie trabajando.
+   * La distinción importa para el supervisor, que acciona distinto sobre una OT en curso
+   * que sobre una sin asignar.
+   *
+   * Si el backend no manda `desglose` (versión anterior) los contadores muestran 0: es
+   * preferible a inventar los números.
+   */
+  protected readonly contadores = computed(() => {
+    const t = this.t();
+    const d = this.salud()?.desglose;
+    return [
+      { clave: 'completadas', valor: d?.completadas ?? 0, etiqueta: t.healthDesgloseCompletadas },
+      { clave: 'en-curso', valor: d?.en_curso ?? 0, etiqueta: t.healthDesgloseEnCurso },
+      { clave: 'pendientes', valor: d?.pendientes ?? 0, etiqueta: t.healthDesglosePendientes },
+    ];
+  });
 }
 
 const COLOR_POR_ESTADO: Record<EstadoSalud, string> = {

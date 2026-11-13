@@ -53,7 +53,15 @@ SALUD_SLA_ROJO = 85.0      # % de cumplimiento piso
 VERDE, AMARILLO, ROJO = "verde", "amarillo", "rojo"
 
 
-def _semaforo_operacional(*, sla: float, estancadas: int, vencidas: int) -> dict:
+def _semaforo_operacional(
+    *,
+    sla: float,
+    estancadas: int,
+    vencidas: int,
+    completadas: int = 0,
+    en_curso: int = 0,
+    pendientes: int = 0,
+) -> dict:
     """Semáforo de dos señales. `estancadas` incluye a las `vencidas`.
 
     Reglas, de peor a mejor:
@@ -62,11 +70,21 @@ def _semaforo_operacional(*, sla: float, estancadas: int, vencidas: int) -> dict
       verde    -> ninguna de las dos cosas.
 
     El motivo va en texto porque un color sin explicación no es accionable.
+    Además devuelve el `desglose` de OTs del período (completadas / en curso /
+    pendientes), que la tarjeta pinta como contadores (CGBIDA-550).
+
     """
     base = {
         "sla": round(sla, 1),
         "estancadas": int(estancadas),
         "vencidas": int(vencidas),
+        # Desglose del período para la tarjeta (CGBIDA-550). Va dentro del semáforo
+        # porque es el mismo universo: las OTs del alcance consultado.
+        "desglose": {
+            "completadas": int(completadas),
+            "en_curso": int(en_curso),
+            "pendientes": int(pendientes),
+        },
     }
     if vencidas >= 1:
         return {**base, "estado": ROJO, "motivo": f"{int(vencidas)} OT(s) vencida(s) sin cerrar."}
@@ -559,6 +577,11 @@ async def get_financial_impact(
             COUNT(*) AS total_ots,
             -- Para el semáforo de salud (CGBIDA-438): backlog vivo del período.
             COUNT(*) FILTER (WHERE ot.estado NOT IN ('completed', 'cancelled')) AS abiertas,
+            -- Desglose del backlog para la tarjeta de Salud (CGBIDA-550). biertas es la
+            -- suma de estos dos; se separan porque son cosas distintas: lo que ya tiene a
+            -- alguien trabajando y lo que todavia espera a que alguien lo tome.
+            COUNT(*) FILTER (WHERE ot.estado = 'in_progress') AS en_curso,
+            COUNT(*) FILTER (WHERE ot.estado IN ('pending', 'assigned', 'overdue')) AS pendientes,
             -- Inactividad de las OT no canceladas: denominador de Disponibilidad (CGBIDA-519).
             COALESCE(SUM(ot.downtime_minutes) FILTER (WHERE ot.estado != 'cancelled'), 0) AS downtime_total_min
         FROM orden_trabajo ot
@@ -888,6 +911,9 @@ async def get_financial_impact(
             sla=efficiency,
             estancadas=int(estancadas_row["total"]),
             vencidas=int(estancadas_row["vencidas"]),
+            completadas=int(f["total_completadas"]),
+            en_curso=int(f["en_curso"]),
+            pendientes=int(f["pendientes"]),
         )
 
         respuesta = {
