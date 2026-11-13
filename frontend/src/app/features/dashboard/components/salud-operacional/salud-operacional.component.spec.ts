@@ -92,9 +92,13 @@ describe('salud-operacional: linea simple', () => {
     expect(texto(el, 'sla-salud')).toContain('91.3%');
   });
 
-  it('muestra la cantidad de OTs vencidas', () => {
-    const { el } = setup(datos({ vencidas: 7 }));
-    expect(texto(el, 'vencidas-salud')).toContain('7');
+  it('las OTs vencidas se dicen una sola vez, en el motivo del backend', () => {
+    // CGBIDA-550: la linea de abajo repetia el conteo que ya explica el motivo.
+    const { el } = setup(datos({ vencidas: 7, motivo: '7 OT(s) vencida(s) sin cerrar.' }));
+
+    expect(el.querySelector('[data-testid="vencidas-salud"]')).toBeNull();
+    const apariciones = (el.textContent ?? '').match(/7 OT\(s\) vencida/g) ?? [];
+    expect(apariciones).toHaveLength(1);
   });
 });
 

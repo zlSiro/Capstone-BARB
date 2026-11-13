@@ -40,20 +40,25 @@ import {
       data-testid="filtros-dashboard"
       [attr.aria-label]="t().filtersTitle"
     >
-      <div class="flex flex-wrap items-end gap-3">
-        <div class="mr-auto flex items-center gap-2">
-          <span class="text-xs font-semibold uppercase tracking-wide text-tinta-suave">
-            {{ t().filtersTitle }}
+      <!--
+        Titulo arriba y selectores abajo, alineados a la izquierda (CGBIDA-550): antes el
+        titulo competia por el espacio con los selectores y quedaban repartidos.
+      -->
+      <div class="mb-2 flex items-center gap-2">
+        <h2 class="text-xs font-semibold uppercase tracking-wide text-tinta-suave">
+          {{ t().filtersTitle }}
+        </h2>
+        @if (hayTopologia()) {
+          <span
+            class="rounded-full bg-accion-suave px-2 py-0.5 text-xs font-medium text-accion"
+            data-testid="filtros-activos"
+          >
+            {{ t().filterActive }}
           </span>
-          @if (hayTopologia()) {
-            <span
-              class="rounded-full bg-accion-suave px-2 py-0.5 text-xs font-medium text-accion"
-              data-testid="filtros-activos"
-            >
-              {{ t().filterActive }}
-            </span>
-          }
-        </div>
+        }
+      </div>
+
+      <div class="flex flex-wrap items-end gap-3">
 
         <!-- Planta: la única que arranca habilitada. -->
         <div>

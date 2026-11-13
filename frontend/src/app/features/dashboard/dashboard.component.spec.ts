@@ -163,11 +163,14 @@ describe('dashboard: semaforo simplificado (CGBIDA-520)', () => {
     );
   });
 
-  it('muestra el SLA y las OTs vencidas en la linea simple', () => {
+  it('destaca el SLA sin repetir las OTs vencidas (CGBIDA-550)', () => {
     const { el } = setup();
     const resumen = el.querySelector('[data-testid="resumen-salud"]')!.textContent ?? '';
+
     expect(resumen).toContain('97.7%');
-    expect(resumen).toContain('13');
+    // Las vencidas ya las dice el motivo del backend: no se repiten aca.
+    expect(resumen).not.toContain('13');
+    expect(el.querySelector('[data-testid="vencidas-salud"]')).toBeNull();
   });
 });
 
