@@ -5,7 +5,11 @@
 --
 -- QUÉ HACE
 --   Carga el catálogo completo de las 3 empresas del informe de datos reales:
---     3 empresas · 18 usuarios · 11 disciplinas · 6 plantas · 11 máquinas · 28 sensores
+--     3 empresas · 21 usuarios · 11 disciplinas · 6 plantas · 11 máquinas · 28 sensores
+--
+--   Usuarios por empresa (7): 1 admin, 2 gerentes, 3 técnicos y 1 **supervisor**.
+--   El supervisor es el rol que opera las OT en la matriz vigente (crea, asigna,
+--   valida y cierra), así que las OTs de 03_operativos.sql lo usan como creador.
 --
 --   Empresa                    RUT             Industria    Dominio
 --   Minera del Norte           77.111.111-1    Minería      mineradelnorte.cl
@@ -28,10 +32,13 @@
 --
 -- CREDENCIALES DE DEMO (bcrypt ya calculado; solo desarrollo/demo)
 --   Minera del Norte       admin@mineradelnorte.cl    / mineria123
+--                          supervisor@mineradelnorte.cl / mineria123
 --                          gerente@mineradelnorte.cl  / mineria123
 --   Planta de Alimentos    admin@alimentos.cl         / alimentos123
+--                          supervisor@alimentos.cl    / alimentos123
 --                          gerente@alimentos.cl       / alimentos123
 --   Manufactura Automotriz admin@automotriz.cl        / automotriz123
+--                          supervisor@automotriz.cl   / automotriz123
 --                          gerente@automotriz.cl      / automotriz123
 --   (los técnicos usan la misma contraseña de su empresa)
 --
@@ -128,7 +135,10 @@ CROSS JOIN (VALUES
     ('Paula Riquelme', 'tecnico2@mineradelnorte.cl',
      '$2b$12$TJrykEFiGHr649wpNCuhruIXyqI6nxUU7QaWwfJUxQX8tvWxUdemK', 'tecnico'),
     ('Sebastián Araya', 'tecnico3@mineradelnorte.cl',
-     '$2b$12$TJrykEFiGHr649wpNCuhruIXyqI6nxUU7QaWwfJUxQX8tvWxUdemK', 'tecnico')
+     '$2b$12$TJrykEFiGHr649wpNCuhruIXyqI6nxUU7QaWwfJUxQX8tvWxUdemK', 'tecnico'),
+    -- supervisor: es el rol que opera las OT (crea, asigna, valida y cierra)
+    ('Javiera Soto', 'supervisor@mineradelnorte.cl',
+     '$2b$12$TJrykEFiGHr649wpNCuhruIXyqI6nxUU7QaWwfJUxQX8tvWxUdemK', 'supervisor')
 ) AS v(nombre, email, password_hash, rol)
 WHERE e.rut = '77.111.111-1'
   AND NOT EXISTS (SELECT 1 FROM usuario u WHERE u.email = v.email);
@@ -150,7 +160,10 @@ CROSS JOIN (VALUES
     ('Jorge Salinas', 'tecnico2@alimentos.cl',
      '$2b$12$b6zQavSoWrduNh3z6UKnJePAExmSsbo3Jt7MNoF8v2uxffKiAqbSG', 'tecnico'),
     ('Daniela Vera', 'tecnico3@alimentos.cl',
-     '$2b$12$b6zQavSoWrduNh3z6UKnJePAExmSsbo3Jt7MNoF8v2uxffKiAqbSG', 'tecnico')
+     '$2b$12$b6zQavSoWrduNh3z6UKnJePAExmSsbo3Jt7MNoF8v2uxffKiAqbSG', 'tecnico'),
+    -- supervisor: es el rol que opera las OT (crea, asigna, valida y cierra)
+    ('Manuel Ortiz', 'supervisor@alimentos.cl',
+     '$2b$12$b6zQavSoWrduNh3z6UKnJePAExmSsbo3Jt7MNoF8v2uxffKiAqbSG', 'supervisor')
 ) AS v(nombre, email, password_hash, rol)
 WHERE e.rut = '77.222.222-2'
   AND NOT EXISTS (SELECT 1 FROM usuario u WHERE u.email = v.email);
@@ -172,7 +185,10 @@ CROSS JOIN (VALUES
     ('Antonia Reyes', 'tecnico2@automotriz.cl',
      '$2b$12$Qj2ynleWgWiKueQMpnTK4OlEoKmBsHadePh9fWXkWwUkK//URI1MK', 'tecnico'),
     ('Marcelo Díaz', 'tecnico3@automotriz.cl',
-     '$2b$12$Qj2ynleWgWiKueQMpnTK4OlEoKmBsHadePh9fWXkWwUkK//URI1MK', 'tecnico')
+     '$2b$12$Qj2ynleWgWiKueQMpnTK4OlEoKmBsHadePh9fWXkWwUkK//URI1MK', 'tecnico'),
+    -- supervisor: es el rol que opera las OT (crea, asigna, valida y cierra)
+    ('Constanza Lagos', 'supervisor@automotriz.cl',
+     '$2b$12$Qj2ynleWgWiKueQMpnTK4OlEoKmBsHadePh9fWXkWwUkK//URI1MK', 'supervisor')
 ) AS v(nombre, email, password_hash, rol)
 WHERE e.rut = '77.333.333-3'
   AND NOT EXISTS (SELECT 1 FROM usuario u WHERE u.email = v.email);
@@ -382,7 +398,7 @@ COMMIT;
 
 -- -----------------------------------------------------------------------------
 -- Verificación (solo lectura): catálogo completo por empresa.
--- Esperado: 18 usuarios · 11 disciplinas · 6 plantas · 11 máquinas · 28 sensores.
+-- Esperado: 21 usuarios · 11 disciplinas · 6 plantas · 11 máquinas · 28 sensores.
 -- -----------------------------------------------------------------------------
 SELECT e.nombre,
        e.industria,

@@ -4,13 +4,16 @@
 -- Proyecto: BARB (Capstone DUOC UC) · Rama: feat/seed-realista
 --
 -- QUÉ HACE (sobre las 3 empresas del informe)
---   1. 528 órdenes de trabajo repartidas en 24 meses (48 por máquina), con
---      fechas relativas a CURRENT_DATE para que el dashboard nunca envejezca.
+--   1. 528 órdenes de trabajo en EXACTAMENTE 24 meses calendario (48 por máquina),
+--      con fechas relativas a date_trunc('month', CURRENT_DATE) para que el
+--      dashboard nunca envejezca. El creador de cada OT es el SUPERVISOR de la
+--      empresa (rol que opera las OT en la matriz vigente); el técnico asignado
+--      rota entre los tres técnicos de esa empresa.
 --   2. 12 repuestos (4 por empresa) con stock, costo y proveedor.
 --   3. 11 programas de mantenimiento preventivo (uno por máquina).
 --   4. 8 manuales reales en `documento` (Sandvik, Siemens, Parker, amoníaco,
---      KUKA, Larzep, KSB, Grundfos) + 24 fragmentos en `documento_chunk` con
---      texto indexado (tsv) para que el RAG tenga de dónde recuperar.
+--      KUKA, Larzep, KSB, Grundfos) + 24 fragmentos en `documento_chunk`, con la
+--      URL de origen de cada manual (los links del informe) en `notes`.
 --
 -- TRIGGERS
 --   Los seeds insertan cientos de filas de golpe: si los triggers de auditoría y
@@ -79,21 +82,35 @@ gen AS (
            g.mes,
            h.k,
            (m.maquina_id * 13 + g.mes * 7 + h.k * 3) % 100 AS dado,
-           (CURRENT_DATE
-              - (((g.mes * 30) + (h.k * 13) + (m.maquina_id % 7))) * INTERVAL '1 day')
-              + INTERVAL '8 hours' AS creacion,
+           -- Exactamente 24 meses: se trunca al mes y se retrocede `mes` meses desde
+           -- el 1° del mes actual. Con generate_series(0, 23) caen en 24 meses
+           -- distintos (el actual incluido), sin el corrimiento de 30 días que
+           -- generaba un mes de más.
+           date_trunc('month', CURRENT_DATE)
+             - ((g.mes || ' months')::interval)
+             -- En el mes en curso el desplazamiento se acota al día de hoy: si no,
+             -- algunas OTs quedarían "creadas" en el futuro.
+             + ((CASE
+                     WHEN g.mes = 0
+                     THEN LEAST(h.k * 10 + (m.maquina_id % 7),
+                                GREATEST(EXTRACT(day FROM CURRENT_DATE)::int - 1, 0))
+                     ELSE h.k * 10 + (m.maquina_id % 7)
+                 END) * INTERVAL '1 day')
+             + INTERVAL '8 hours' AS creacion,
            (m.sla_horas * 60)::int AS sla_min
     FROM maquinas m
-    CROSS JOIN generate_series(1, 24) AS g(mes)
+    CROSS JOIN generate_series(0, 23) AS g(mes)
     CROSS JOIN generate_series(1, 2)  AS h(k)
 ),
 clasificadas AS (
     SELECT gen.*,
+           -- El mes en curso queda 100% abierto (pending / in_progress): así no hay
+           -- OTs "cerradas" con fecha de cierre futura. Los dos meses anteriores
+           -- suman por_validar, y del resto la mayoría son completed.
            CASE
-               WHEN mes <= 2 AND dado < 30 THEN 'pending'
-               WHEN mes <= 2 AND dado < 55 THEN 'in_progress'
-               WHEN mes <= 2 AND dado < 65 THEN 'por_validar'
-               WHEN dado >= 96            THEN 'cancelled'
+               WHEN mes = 0                THEN (CASE WHEN dado % 2 = 0 THEN 'pending' ELSE 'in_progress' END)
+               WHEN mes <= 2 AND dado < 40 THEN 'por_validar'
+               WHEN dado >= 96             THEN 'cancelled'
                ELSE 'completed'
            END AS estado_final
     FROM gen
@@ -124,10 +141,17 @@ SELECT
     (SELECT array_agg(u.usuario_id ORDER BY u.usuario_id)
        FROM usuario u
       WHERE u.empresa_id = c.empresa_id AND u.rol = 'tecnico')[(c.maquina_id + c.mes + c.k) % 3 + 1],
-    -- creador: el admin de la empresa (las empresas del seed no tienen supervisor)
-    (SELECT min(u.usuario_id)
-       FROM usuario u
-      WHERE u.empresa_id = c.empresa_id AND u.rol = 'admin'),
+    -- creador: el SUPERVISOR de la empresa, que es el rol que opera las OT en la
+    -- matriz vigente (crea, asigna, valida y cierra). Si no hubiera supervisor, cae
+    -- al admin para no romper la FK.
+    COALESCE(
+        (SELECT min(u.usuario_id)
+           FROM usuario u
+          WHERE u.empresa_id = c.empresa_id AND u.rol = 'supervisor'),
+        (SELECT min(u.usuario_id)
+           FROM usuario u
+          WHERE u.empresa_id = c.empresa_id AND u.rol = 'admin')
+    ),
     c.tipo_final::tipo_mantenimiento,
     -- descripción coherente con el tipo de intervención
     CASE c.tipo_final
@@ -358,6 +382,33 @@ JOIN planta p ON p.empresa_id = e.empresa_id
 JOIN maquina m ON m.planta_id = p.planta_id AND m.codigo = v.codigo
 WHERE NOT EXISTS (SELECT 1 FROM documento d WHERE d.file_id = v.file_id);
 
+-- Fuente real de cada manual, tomada de los links del informe
+-- (PROPUESTA_DATOS_REALES.html). Va en un UPDATE y no en el INSERT para tener una
+-- sola fuente de verdad: aplica tanto a las filas nuevas como a las que ya existían
+-- sin la URL. Idempotente: solo escribe cuando el texto cambia.
+UPDATE documento d
+SET notes = v.notas
+FROM (VALUES
+    ('seed-realista-sandvik-h8800',
+     'Seed realista · Fuente: http://opac.pucv.cl/pucv_txt/txt-5500/UCD5754_01.pdf (tesis PUCV, chancador Sandvik H8800)'),
+    ('seed-realista-siemens-1le1',
+     'Seed realista · Fuente: https://cache.industry.siemens.com/dl/files/362/32182362/att_1163332/v1/BG_1LE1_1FP1_1FP3_1PC1_1PC3_op_Instr_1123.pdf (instrucciones de operación 1LE1/1FP1/1PC1)'),
+    ('seed-realista-parker-wh395l',
+     'Seed realista · Fuente: https://parkerboiler.com/download/low-nox-395000-btu-boiler-drawing-model-wh395l-multiple-views/ (plano WH395L) y https://www.getmaintainx.com/assets/parker-hannifin-boiler-wh395l-a4f84411-c0ee-44c1-8ec5-dc3d22ae4ec0 (manual y partes)'),
+    ('seed-realista-amonaco-frio',
+     'Seed realista · Fuente: https://dspace.ups.edu.ec/bitstream/123456789/16151/1/UPS-ST003802.pdf (tesis UPS, refrigeración por amoníaco-agua)'),
+    ('seed-realista-kuka-kr50',
+     'Seed realista · Fuente: https://repositorio.usm.cl/bitstreams/a7b61037-ab38-460a-a9f3-808fc573c92d/download (tesis UTFSM, manual y plan de mantención KUKA KR 50 R2100)'),
+    ('seed-realista-larzep-prensa',
+     'Seed realista · Fuente: http://www.larzep.com/descargas/es/_ECZ02013-ESP.pdf (manual de prensa) y http://www.larzep.com/descargas/es/_ECM01113-ESP.pdf (prensa 10 t)'),
+    ('seed-realista-ksb-eta',
+     'Seed realista · Fuente: http://delta-ca.com/anexos/prod1191_59806347bddd6.pdf (manual de servicio KSB ETA, ES)'),
+    ('seed-realista-grundfos-cm',
+     'Seed realista · Fuente: https://api.grundfos.com/literature/Grundfosliterature-2186526.pdf (instrucciones de mantenimiento Grundfos CM/CME, ES)')
+) AS v(file_id, notas)
+WHERE d.file_id = v.file_id
+  AND d.notes IS DISTINCT FROM v.notas;
+
 -- -----------------------------------------------------------------------------
 -- 6. Fragmentos de documento (3 por manual)
 -- -----------------------------------------------------------------------------
@@ -451,7 +502,7 @@ WHERE ot.numero_ot LIKE 'REAL-%'
 GROUP BY e.nombre
 ORDER BY e.nombre;
 
--- Cobertura mensual: 24 filas por empresa si el histórico quedó completo.
+-- Cobertura mensual: exactamente 24 meses por empresa si el histórico quedó completo.
 SELECT e.nombre AS empresa,
        count(DISTINCT date_trunc('month', ot.fecha_creacion)) AS meses_con_ots,
        min(ot.fecha_creacion)::date AS desde,
