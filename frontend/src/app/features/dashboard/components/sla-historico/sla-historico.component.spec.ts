@@ -177,3 +177,54 @@ describe('sla-historico: escala dinamica del eje Y (UX)', () => {
     expect(eje).toContain('15');
   });
 });
+
+describe('sla-historico: tooltip del punto (CGBIDA-550)', () => {
+  /** Dispara un evento de mouse sobre el i-esimo punto. */
+  function sobrePunto(el: HTMLElement, indice: number, tipo: 'mouseenter' | 'mouseleave' = 'mouseenter'): void {
+    const punto = el.querySelectorAll('[data-testid="hist-punto"]')[indice] as SVGElement;
+    punto.dispatchEvent(new MouseEvent(tipo, { bubbles: true, clientX: 40, clientY: 40 }));
+  }
+
+  it('no usa el tooltip nativo del navegador', () => {
+    // El elemento title del SVG es el que dibuja el cuadro blanco.
+    const { el } = setup();
+    expect(el.querySelector('title')).toBeNull();
+  });
+
+  it('al pasar el cursor muestra el tooltip con el periodo y el SLA', () => {
+    const { fixture, el } = setup();
+
+    sobrePunto(el, 0);
+    fixture.detectChanges();
+
+    const tip = el.querySelector('[data-testid="hist-tooltip"]');
+    expect(tip).not.toBeNull();
+    expect(tip!.textContent).toContain('2026-01');
+    expect(tip!.textContent).toContain('SLA');
+    expect(tip!.textContent).toContain('90%');
+  });
+
+  it('el tooltip usa los tokens del tema, no colores fijos', () => {
+    const { fixture, el } = setup();
+
+    sobrePunto(el, 0);
+    fixture.detectChanges();
+
+    const clases = el.querySelector('[data-testid="hist-tooltip"]')!.getAttribute('class') ?? '';
+    expect(clases).toContain('bg-superficie');
+    expect(clases).toContain('rounded-control');
+    expect(clases).toContain('shadow-lg');
+  });
+
+  it('al salir del punto el tooltip se oculta', () => {
+    const { fixture, el } = setup();
+
+    sobrePunto(el, 0);
+    fixture.detectChanges();
+    expect(el.querySelector('[data-testid="hist-tooltip"]')).not.toBeNull();
+
+    sobrePunto(el, 0, 'mouseleave');
+    fixture.detectChanges();
+    expect(el.querySelector('[data-testid="hist-tooltip"]')).toBeNull();
+  });
+});

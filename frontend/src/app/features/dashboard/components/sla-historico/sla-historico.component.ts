@@ -44,7 +44,7 @@ interface Punto {
   template: `
     <figure
       #lienzo
-      class="flex h-full flex-col rounded-control border border-borde bg-superficie p-5 "
+      class="relative flex h-full flex-col rounded-control border border-borde bg-superficie p-5 "
       data-testid="sla-historico"
     >
       <figcaption class="mb-3 flex flex-wrap items-start justify-between gap-3">
@@ -106,15 +106,18 @@ interface Punto {
           />
 
           @for (p of puntos(); track p.etiqueta) {
+            <!-- Sin el elemento title del SVG: el tooltip nativo del navegador es un cuadro
+                 blanco que rompe el tema oscuro. El de abajo usa los tokens del tema. -->
             <circle
               [attr.cx]="p.x"
               [attr.cy]="p.y"
-              r="3.5"
-              class="fill-accion "
+              [attr.r]="indiceActivo() === $index ? 5 : 3.5"
+              class="fill-accion cursor-pointer "
               data-testid="hist-punto"
-            >
-              <title>{{ p.etiqueta }}: {{ p.valor }}%</title>
-            </circle>
+              (mouseenter)="entrar($index, $event)"
+              (mousemove)="mover($event)"
+              (mouseleave)="salir()"
+            />
             @if (mostrarEtiqueta($index)) {
               <text
                 [attr.x]="p.x"
@@ -127,6 +130,34 @@ interface Punto {
           }
         </svg>
       }
+
+      <!--
+        Tooltip del punto. Mismo patrón que el de la dona (CGBIDA-550): posicionado de forma
+        absoluta dentro de la tarjeta, con los tokens del tema (bg-superficie, text-tinta)
+        para que respete el modo oscuro. Se invierte el desplazamiento en la mitad derecha
+        o inferior para que no se corte contra el borde.
+      -->
+      @if (puntoActivo(); as p) {
+        @if (puntero(); as pos) {
+          <div
+            class="pointer-events-none absolute z-50 rounded-control border border-borde bg-superficie
+                   px-3 py-2 text-sm shadow-lg "
+            [style.left.px]="pos.x + (pos.derecha ? -14 : 14)"
+            [style.top.px]="pos.y + (pos.abajo ? -14 : 14)"
+            [class.-translate-x-full]="pos.derecha"
+            [class.-translate-y-full]="pos.abajo"
+            data-testid="hist-tooltip"
+          >
+            <p class="flex items-center gap-2 font-semibold text-tinta ">
+              <span class="inline-block h-2 w-2 rounded-full bg-accion"></span>
+              {{ p.etiqueta }}
+            </p>
+            <p class="text-tinta-suave ">
+              {{ t().healthComponentSla }}: <strong class="text-tinta ">{{ p.valor }}%</strong>
+            </p>
+          </div>
+        }
+      }
     </figure>
   `,
 })
@@ -135,8 +166,29 @@ export class SlaHistoricoComponent {
   private i18n = inject(I18nService);
   private destroyRef = inject(DestroyRef);
 
+  /** El host, para posicionar el tooltip relativo a la tarjeta (igual que la dona). */
+  private host = inject(ElementRef<HTMLElement>);
 
   protected readonly t = computed(() => this.i18n.tree().financial);
+
+  /** Índice del punto bajo el cursor, o `null`. */
+  protected readonly indiceActivo = signal<number | null>(null);
+
+  /**
+   * Posición del cursor relativa a la tarjeta, más en qué cuadrante está.
+   *
+   * `derecha` y `abajo` deciden si el tooltip se dibuja a la derecha/abajo del cursor o al
+   * revés, para que no se corte contra el borde de la tarjeta.
+   */
+  protected readonly puntero = signal<
+    { x: number; y: number; derecha: boolean; abajo: boolean } | null
+  >(null);
+
+  /** Punto activo, para el tooltip. */
+  protected readonly puntoActivo = computed(() => {
+    const i = this.indiceActivo();
+    return i === null ? null : (this.puntos()[i] ?? null);
+  });
 
   // Lienzo del SVG.
   //
@@ -168,6 +220,26 @@ export class SlaHistoricoComponent {
   protected readonly periodos = signal<PeriodoHistorico[]>([]);
   protected readonly cargando = signal(true);
   protected readonly error = signal(false);
+
+  /** Entra en un punto: lo marca y arranca a seguir el cursor. */
+  protected entrar(indice: number, evento: MouseEvent): void {
+    this.indiceActivo.set(indice);
+    this.mover(evento);
+  }
+
+  /** Sigue el cursor dentro de la tarjeta. */
+  protected mover(evento: MouseEvent): void {
+    const r = this.host.nativeElement.getBoundingClientRect();
+    const x = evento.clientX - r.left;
+    const y = evento.clientY - r.top;
+    this.puntero.set({ x, y, derecha: x > r.width / 2, abajo: y > r.height / 2 });
+  }
+
+  /** Sale del punto: se oculta el tooltip. */
+  protected salir(): void {
+    this.indiceActivo.set(null);
+    this.puntero.set(null);
+  }
 
   /**
    * Pide la serie al construirse y cada vez que cambian los filtros.
