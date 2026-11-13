@@ -4,26 +4,6 @@ import { StatsService } from '../../../../core/services/stats.service';
 import { I18nService } from '../../../../core/i18n/i18n.service';
 import { FiltrosDashboard, PeriodoHistorico, SIN_FILTROS } from '../../../../core/models';
 
-/** Opciones del selector de ventana histórica (CGBIDA-515). */
-export type RangoHistorico = 'semestre' | 'anio' | 'tres' | 'cinco';
-
-/** Granularidad y ventana que pide cada opción. */
-interface ConfigRango {
-  granularity: 'month' | 'semester' | 'year';
-  days: number;
-}
-
-/**
- * Mapa opción -> (granularidad, días). El backend no tiene una unidad "semestre":
- * para el último año se piden semestres (2 puntos) y para 3/5 años, años.
- */
-const CONFIG: Record<RangoHistorico, ConfigRango> = {
-  semestre: { granularity: 'month', days: 180 },
-  anio: { granularity: 'semester', days: 365 },
-  tres: { granularity: 'year', days: 1095 },
-  cinco: { granularity: 'year', days: 1825 },
-};
-
 /** Un punto ya proyectado a coordenadas SVG. */
 interface Punto {
   x: number;
@@ -38,9 +18,10 @@ interface Punto {
  * SVG dibujado a mano, sin librerías: el proyecto ya resolvió así el backlog y la dona,
  * y sumar una dependencia de charts por una línea de 24 puntos no se justifica.
  *
- * - El componente **pide sus propios datos** con `granularity` + `days`, así que no
- *   depende de la respuesta de `financial-impact` ni de cuándo se cargó el dashboard.
- * - El selector cambia la ventana y vuelve a pedir: 6 meses, 1 año, 3 años o 5 años.
+ * - El componente **pide sus propios datos**, así que no depende de la respuesta de
+ *   `financial-impact` ni de cuándo se cargó el dashboard.
+ * - La ventana ya no se elige acá: la manda el panel de filtros global (CGBIDA-550) y
+ *   el gráfico solo reacciona. Así el gráfico y los KPIs muestran el mismo período.
  * - Los colores salen de tokens (`stroke-accion`, `fill-tinta-suave`), por lo que el
  *   modo oscuro funciona sin código extra.
  */
@@ -59,23 +40,15 @@ interface Punto {
           <p class="text-sm text-tinta-suave ">{{ t().historySub }}</p>
         </div>
 
-        <!-- Selector de ventana: botones y no un select, son cuatro opciones fijas. -->
-        <div
-          class="flex flex-wrap items-center gap-1 rounded-control border border-borde-control p-0.5"
-          role="group"
-          [attr.aria-label]="t().historyTitle"
-          data-testid="selector-historico"
-        >
-          @for (r of rangos; track r) {
-            <button
-              type="button"
-              [attr.aria-pressed]="rango() === r"
-              [attr.data-testid]="'rango-hist-' + r"
-              (click)="cambiarRango(r)"
-              [class]="rango() === r ? claseActiva : claseInactiva"
-            >{{ etiquetaRango(r) }}</button>
-          }
-        </div>
+        <!-- La ventana la decide el panel global: aca solo se muestra cuál está activa. -->
+        @if (etiquetaRango()) {
+          <span
+            class="rounded-full bg-superficie-alt px-2 py-0.5 text-xs font-medium text-tinta-suave"
+            data-testid="hist-rango-activo"
+          >
+            {{ etiquetaRango() }}
+          </span>
+        }
       </figcaption>
 
       @if (cargando()) {
@@ -168,26 +141,21 @@ export class SlaHistoricoComponent {
   protected readonly PAD_SUP = 12;
   protected readonly PAD_INF = 26;
 
-  protected readonly rangos: readonly RangoHistorico[] = ['semestre', 'anio', 'tres', 'cinco'];
-
-  protected readonly rango = signal<RangoHistorico>('semestre');
-
   /**
    * Filtros de topologia que manda el Dashboard (CGBIDA-550).
    *
    * El componente pide sus propios datos, asi que sin esto el grafico mostraria toda la
    * empresa mientras los KPIs de arriba estan filtrados por planta.
+   *
+   * Incluye el rango temporal: el grafico ya no tiene selector propio (CGBIDA-550).
    */
   readonly filtros = input<FiltrosDashboard>(SIN_FILTROS);
+
+  /** Etiqueta de la ventana activa, para mostrarla en la cabecera del grafico. */
+  readonly etiquetaRango = input<string>('');
   protected readonly periodos = signal<PeriodoHistorico[]>([]);
   protected readonly cargando = signal(true);
   protected readonly error = signal(false);
-
-  /** Clases del botón activo/inactivo (se guardan completas para Tailwind). */
-  protected readonly claseActiva =
-    'rounded-control px-2 py-1 text-sm font-semibold bg-accion text-sobre-accion';
-  protected readonly claseInactiva =
-    'rounded-control px-2 py-1 text-sm font-medium text-tinta-suave ';
 
   /**
    * Pide la serie al construirse y cada vez que cambian los filtros.
@@ -201,28 +169,6 @@ export class SlaHistoricoComponent {
       const filtros = this.filtros();
       untracked(() => this.cargar(filtros));
     });
-  }
-
-  /** Etiqueta del botón según el idioma activo. */
-  protected etiquetaRango(r: RangoHistorico): string {
-    const t = this.t();
-    switch (r) {
-      case 'anio':
-        return t.historyYear;
-      case 'tres':
-        return t.historyThree;
-      case 'cinco':
-        return t.historyFive;
-      default:
-        return t.historySemester;
-    }
-  }
-
-  /** Cambia la ventana y vuelve a pedir la serie. */
-  protected cambiarRango(r: RangoHistorico): void {
-    if (r === this.rango()) return;
-    this.rango.set(r);
-    this.cargar(this.filtros());
   }
 
   /**
@@ -294,10 +240,9 @@ export class SlaHistoricoComponent {
   }
 
   private cargar(filtros: FiltrosDashboard): void {
-    const { granularity, days } = CONFIG[this.rango()];
     this.cargando.set(true);
     this.error.set(false);
-    this.stats.getHistorical(granularity, days, filtros).subscribe({
+    this.stats.getHistorical(filtros).subscribe({
       next: (r) => {
         this.periodos.set(r.periods ?? []);
         this.cargando.set(false);

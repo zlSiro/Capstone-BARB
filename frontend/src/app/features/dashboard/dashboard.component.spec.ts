@@ -137,9 +137,9 @@ describe('dashboard: KPIs', () => {
     expect(el.querySelector('[data-testid="impacto-escenarios"]')).toBeNull();
   });
 
-  it('pide los datos con el rango elegido', () => {
+  it('pide los datos con los filtros por defecto (toda la empresa, histórico)', () => {
     const { getFinancialImpact } = setup();
-    expect(getFinancialImpact).toHaveBeenCalledWith('all', SIN_FILTROS);
+    expect(getFinancialImpact).toHaveBeenCalledWith(SIN_FILTROS);
   });
 
   it('en ingles cambia la etiqueta de la tarjeta de disponibilidad', () => {
@@ -311,14 +311,20 @@ describe('dashboard: sin acceso a los KPIs financieros (supervisor, ingeniero)',
 describe('dashboard: botón «Explícame»', () => {
   const boton = (el: HTMLElement) => el.querySelector<HTMLElement>('[data-testid="btn-explicame"]');
 
-  it('está en la cabecera, junto a la moneda y el período', () => {
+  it('está en la cabecera, sin controles sueltos (viven en el panel)', () => {
     const { el } = setup();
     const b = boton(el)!;
     expect(b).not.toBeNull();
     expect(b.textContent).toContain('Explícame');
+
+    // CGBIDA-550: la moneda y el rango se movieron al panel de filtros.
     const grupo = b.closest('app-explicame')!.parentElement!;
-    expect(grupo.querySelector('[data-testid="selector-moneda"]')).not.toBeNull();
-    expect(grupo.querySelector('[data-testid="selector-rango"]')).not.toBeNull();
+    expect(grupo.querySelector('[data-testid="selector-moneda"]')).toBeNull();
+    expect(grupo.querySelector('[data-testid="selector-rango"]')).toBeNull();
+    // ...y el panel los tiene.
+    const panel = el.querySelector('[data-testid="filtros-dashboard"]')!;
+    expect(panel.querySelector('[data-testid="selector-moneda"]')).not.toBeNull();
+    expect(panel.querySelector('[data-testid="filtro-rango"]')).not.toBeNull();
   });
 
   it('abre el panel con el resumen del rango elegido', () => {
@@ -355,7 +361,7 @@ describe('dashboard: botón «Explícame»', () => {
 describe('dashboard: filtros (CGBIDA-550)', () => {
   it('el panel arranca en toda la empresa', () => {
     const { getFinancialImpact } = setup();
-    expect(getFinancialImpact).toHaveBeenLastCalledWith('all', SIN_FILTROS);
+    expect(getFinancialImpact).toHaveBeenLastCalledWith(SIN_FILTROS);
   });
 
   it('elegir una planta en el panel vuelve a pedir los KPIs con ese filtro', () => {
@@ -367,10 +373,9 @@ describe('dashboard: filtros (CGBIDA-550)', () => {
     selector.dispatchEvent(new Event('change', { bubbles: true }));
     fixture.detectChanges();
 
-    expect(getFinancialImpact).toHaveBeenLastCalledWith('all', {
+    expect(getFinancialImpact).toHaveBeenLastCalledWith({
+      ...SIN_FILTROS,
       planta_id: 7,
-      disciplina_id: null,
-      maquina_id: null,
     });
   });
 
@@ -386,6 +391,6 @@ describe('dashboard: filtros (CGBIDA-550)', () => {
     limpiar.click();
     fixture.detectChanges();
 
-    expect(getFinancialImpact).toHaveBeenLastCalledWith('all', SIN_FILTROS);
+    expect(getFinancialImpact).toHaveBeenLastCalledWith(SIN_FILTROS);
   });
 });

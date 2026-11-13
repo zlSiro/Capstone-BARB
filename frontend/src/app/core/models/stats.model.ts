@@ -227,29 +227,58 @@ export interface FinancialStats {
 }
 
 // =============================================================================
-// Filtros de topología del Dashboard (CGBIDA-550)
+// Filtros globales del Dashboard (CGBIDA-550)
 // =============================================================================
 
 /**
- * Filtros que acotan los KPIs del Dashboard a una planta, disciplina o máquina.
+ * Ventana temporal del Dashboard.
  *
- * `null` en cualquiera de los tres = esa dimensión no acota nada. Los tres en `null`
- * es el caso por defecto: toda la empresa.
+ * `'all'` = histórico completo. Los números son días.
+ */
+export type RangoTemporal = 7 | 30 | 90 | 'all';
+
+/**
+ * Filtros globales: todo lo que el panel de control manda junto.
+ *
+ * Los tres de topología son `null` cuando no acotan nada. `rango` y `moneda` no acotan
+ * datos — son presentación — pero viajan en el mismo objeto porque salen de la misma barra
+ * de mandos y se emiten de una sola vez (CGBIDA-550).
  */
 export interface FiltrosDashboard {
   planta_id: number | null;
   disciplina_id: number | null;
   maquina_id: number | null;
+  rango: RangoTemporal;
+  moneda: 'CLP' | 'USD';
 }
 
-/** Valor inicial y de "Limpiar filtros": el Dashboard muestra toda la empresa. */
+/** Estado inicial y al limpiar: toda la empresa, histórico completo, en pesos. */
 export const SIN_FILTROS: FiltrosDashboard = {
   planta_id: null,
   disciplina_id: null,
   maquina_id: null,
+  rango: 'all',
+  moneda: 'CLP',
 };
 
-/** `true` si al menos un filtro está activo. */
-export function hayFiltros(f: FiltrosDashboard): boolean {
+/** `true` si al menos un filtro de topología está activo. */
+export function hayFiltrosTopologia(f: FiltrosDashboard): boolean {
   return f.planta_id !== null || f.disciplina_id !== null || f.maquina_id !== null;
 }
+
+/**
+ * Cómo se pide el histórico para cada rango.
+ *
+ * Ojo con la granularidad: la serie se dibuja con un punto por período, así que un rango
+ * de 30 días con granularidad mensual caería en un solo punto. Por eso 7 y 30 días van
+ * día a día, 90 días por semana y el histórico completo por mes.
+ */
+export const GRANULARIDAD_POR_RANGO: Record<
+  RangoTemporal,
+  { granularity: 'day' | 'week' | 'month'; days?: number }
+> = {
+  7: { granularity: 'day', days: 7 },
+  30: { granularity: 'day', days: 30 },
+  90: { granularity: 'week', days: 90 },
+  all: { granularity: 'month' },
+};

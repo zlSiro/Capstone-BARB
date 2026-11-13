@@ -1,9 +1,14 @@
 import { Component, computed, inject, signal, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { StatsService } from '../../core/services/stats.service';
-import { CurrencyService, Moneda } from '../../core/services/currency.service';
+import { CurrencyService } from '../../core/services/currency.service';
 import { MtbfUnitService, UnidadMtbf } from '../../core/services/mtbf-unit.service';
-import { FinancialStats, FiltrosDashboard, SIN_FILTROS } from '../../core/models';
+import {
+  FinancialStats,
+  FiltrosDashboard,
+  RangoTemporal,
+  SIN_FILTROS,
+} from '../../core/models';
 import { I18nService } from '../../core/i18n/i18n.service';
 import { SaludOperacionalComponent } from './components/salud-operacional/salud-operacional.component';
 import { MachineRankingComponent } from './components/machine-ranking/machine-ranking.component';
@@ -14,9 +19,6 @@ import { SlaHistoricoComponent } from './components/sla-historico/sla-historico.
 import { TopMaquinasComponent } from './components/top-maquinas/top-maquinas.component';
 import { ExplicameComponent } from './explicame/explicame.component';
 import { FiltrosDashboardComponent } from './components/filtros-dashboard/filtros-dashboard.component';
-
-/** Rangos del selector temporal (CGBIDA-397). `'all'` = histórico completo. */
-export type RangoTemporal = 7 | 30 | 90 | 'all';
 
 /**
  * Dashboard de KPIs (HU-08 + HU-16 / CGBIDA-392 y 393).
@@ -49,17 +51,15 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
           <p class="text-sm text-tinta-suave ">{{ t().dashboardSubtitle }}</p>
         </div>
 
-        <!-- Moneda y rango temporal, juntos a la derecha de la cabecera. -->
+        <!--
+          Los controles (moneda y rango) viven en el panel de filtros (CGBIDA-550). Aca
+          queda solo la tasa aplicada, que es un dato de lectura: sin esto el usuario no
+          sabe a que tipo de cambio se convirtieron las cifras.
+        -->
         <div class="flex flex-wrap items-center justify-end gap-2">
           @if (stats(); as s) {
             <app-explicame [stats]="s" [rango]="rango()" [etiquetaRango]="etiquetaRango(rango())" (verCostos)="abrirCostos()" />
           }
-          <!--
-            Tasa aplicada y su fecha, ANTES del toggle (pedido de Rene): se lee
-            [tipo de cambio] [CLP|USD], o sea primero el dato y despues el control que lo
-            usa. Es lo que hace auditable la conversion: sin esto el usuario no sabe a que
-            tipo de cambio se convirtieron las cifras.
-          -->
           @if (currency.sinTasa()) {
             <p class="text-sm text-media " data-testid="moneda-sin-tasa">
               {{ t().currencyNoRate }}
@@ -69,49 +69,6 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
               {{ t().currencyRate }} {{ tasaTexto() }} CLP/USD
             </p>
           }
-
-          <!--
-            Toggle de moneda (CGBIDA-432). Los datos base estan en CLP; USD solo cambia
-            la presentacion. Se usa aria-pressed y no un select porque son dos estados.
-          -->
-          <div
-            class="flex items-center gap-1 rounded-control border border-borde-control p-0.5
-                   "
-            role="group"
-            [attr.aria-label]="t().currencyLabel"
-            data-testid="selector-moneda"
-          >
-            @for (m of monedas; track m) {
-              <button
-                type="button"
-                [attr.aria-pressed]="currency.moneda() === m"
-                [attr.data-testid]="'moneda-' + m"
-                (click)="cambiarMoneda(m)"
-                [class]="currency.moneda() === m ? claseMonedaActiva : claseMonedaInactiva"
-              >
-                {{ m }}
-              </button>
-            }
-          </div>
-
-          <!-- Selector de rango temporal (CGBIDA-397). Replica el select del legacy. -->
-          <div>
-            <label for="rango-temporal" class="sr-only">{{ tr().rangeLabel }}</label>
-            <select
-              id="rango-temporal"
-              data-testid="selector-rango"
-              (change)="cambiarRango($any($event.target).value)"
-              class="cursor-pointer rounded-control border border-borde-control bg-superficie px-3 py-2 text-sm
-                     text-tinta outline-none transition-colors focus:border-accion
-                       "
-            >
-              @for (r of rangos; track r) {
-                <option [value]="r" [selected]="r === rango()" [attr.data-testid]="'rango-' + r">
-                  {{ etiquetaRango(r) }}
-                </option>
-              }
-            </select>
-          </div>
         </div>
       </div>
 
@@ -242,7 +199,11 @@ export type RangoTemporal = 7 | 30 | 90 | 'all';
         <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <!-- Evolucion del SLA (CGBIDA-515). Ocupa las dos columnas: el eje X necesita
                ancho para las etiquetas de periodo y la linea se lee mejor. -->
-          <app-sla-historico class="min-w-0 lg:col-span-2" [filtros]="filtros()" />
+          <app-sla-historico
+        class="min-w-0 lg:col-span-2"
+        [filtros]="filtros()"
+        [etiquetaRango]="etiquetaRango(rango())"
+      />
 
           <!-- Salud Operacional (CGBIDA-520): semaforo simplificado con el motivo. -->
           <app-salud-operacional class="min-w-0" data-tour="dash-salud" [salud]="salud()" />
@@ -289,20 +250,17 @@ export class DashboardComponent implements OnInit {
   /** Opciones del selector de unidad, en orden. */
   protected readonly unidadesMtbf: readonly UnidadMtbf[] = ['horas', 'dias', 'meses'];
 
-  /** Opciones del toggle de moneda, en orden. */
-  protected readonly monedas: readonly Moneda[] = ['CLP', 'USD'];
-
   stats = signal<FinancialStats | null>(null);
   loading = signal(true);
   error = signal(false);
 
   /**
-   * Rango temporal elegido (CGBIDA-397).
+   * Rango temporal activo (CGBIDA-550).
    *
-   * Arranca en histórico completo, igual que el legacy (`Dashboard.tsx:123`). El valor
-   * viaja al endpoint como `days`; `'all'` no manda el parámetro.
+   * Ya no es un signal propio: lo elige el panel de filtros y viaja dentro de
+   * `FiltrosDashboard`. Se deriva para no tener dos fuentes de verdad del mismo valor.
    */
-  protected readonly rango = signal<RangoTemporal>('all');
+  protected readonly rango = computed<RangoTemporal>(() => this.filtros().rango);
 
   /**
    * Filtros de topologia activos (CGBIDA-550).
@@ -312,9 +270,6 @@ export class DashboardComponent implements OnInit {
    * pasa al grafico historico por input.
    */
   protected readonly filtros = signal<FiltrosDashboard>(SIN_FILTROS);
-
-  /** Opciones del selector, en el orden del legacy. */
-  protected readonly rangos: readonly RangoTemporal[] = [7, 30, 90, 'all'];
 
   /** Textos del bloque `dashboard` (títulos, avisos y etiquetas del selector). */
   protected readonly tr = computed(() => this.i18n.tree().dashboard);
@@ -461,11 +416,6 @@ export class DashboardComponent implements OnInit {
     this.cargar();
   }
 
-  /** Cambia la moneda de presentación (CGBIDA-432). */
-  protected cambiarMoneda(moneda: Moneda): void {
-    this.currency.setMoneda(moneda);
-  }
-
   /** Abre el modal de costos desglosados (CGBIDA-518). */
   protected abrirCostos(): void {
     this.modalCostos.set(true);
@@ -519,34 +469,10 @@ export class DashboardComponent implements OnInit {
     }).format(t);
   });
 
-  /**
-   * Cambia el rango temporal y vuelve a pedir las metricas (CGBIDA-397).
-   *
-   * El endpoint ya aceptaba `days`; aca solo se conecta. `'all'` viaja como histórico
-   * completo, igual que en el legacy (`Dashboard.tsx:123`).
-   */
-  protected cambiarRango(valor: string): void {
-    const nuevo: RangoTemporal = valor === 'all' ? 'all' : (Number(valor) as 7 | 30 | 90);
-    if (nuevo === this.rango()) return;
-    this.rango.set(nuevo);
-    this.cargar();
-  }
-
-  /**
-   * Clases del boton de moneda.
-   *
-   * Se guardan como cadenas completas y se enlazan con [class] para que el estado activo
-   * no dependa de que Tailwind genere variantes condicionales.
-   */
-  protected readonly claseMonedaActiva =
-    'rounded-control px-2 py-1 text-sm font-semibold bg-accion text-sobre-accion';
-  protected readonly claseMonedaInactiva =
-    'rounded-control px-2 py-1 text-sm font-medium text-tinta-suave ';
-
   private cargar(): void {
     this.loading.set(true);
     this.error.set(false);
-    this.statsService.getFinancialImpact(this.rango(), this.filtros()).subscribe({
+    this.statsService.getFinancialImpact(this.filtros()).subscribe({
       next: (data) => {
         this.stats.set(data);
         this.loading.set(false);

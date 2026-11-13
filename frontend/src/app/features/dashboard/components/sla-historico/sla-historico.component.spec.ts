@@ -52,14 +52,10 @@ function setup(res: HistoricoRespuesta | Error = respuesta()) {
   return { fixture, el: fixture.nativeElement as HTMLElement, getHistorical };
 }
 
-function clic(el: HTMLElement, testid: string): void {
-  (el.querySelector(`[data-testid="${testid}"]`) as HTMLElement).click();
-}
-
 describe('sla-historico: carga inicial', () => {
-  it('pide el último semestre al arrancar', () => {
+  it('pide la ventana del panel al arrancar (por defecto, histórico)', () => {
     const { getHistorical } = setup();
-    expect(getHistorical).toHaveBeenCalledWith('month', 180, SIN_FILTROS);
+    expect(getHistorical).toHaveBeenCalledWith(SIN_FILTROS);
   });
 
   it('dibuja el SVG con un punto por período', () => {
@@ -83,44 +79,41 @@ describe('sla-historico: carga inicial', () => {
   });
 });
 
-describe('sla-historico: selector de ventana', () => {
-  it('ofrece las cuatro opciones', () => {
+describe('sla-historico: ventana global (CGBIDA-550)', () => {
+  it('ya no tiene selector propio de ventana', () => {
     const { el } = setup();
-    expect(el.querySelectorAll('[data-testid^="rango-hist-"]')).toHaveLength(4);
+    expect(el.querySelector('[data-testid="selector-historico"]')).toBeNull();
+    expect(el.querySelectorAll('[data-testid^="rango-hist-"]')).toHaveLength(0);
   });
 
-  it('arranca con la opción del semestre activa', () => {
-    const { el } = setup();
-    const activo = el.querySelector('[data-testid="rango-hist-semestre"]') as HTMLElement;
-    expect(activo.getAttribute('aria-pressed')).toBe('true');
-  });
+  it('vuelve a pedir cuando el panel cambia el rango', () => {
+    const { fixture, getHistorical } = setup();
 
-  it('un año pide semestres de 365 días', () => {
-    const { fixture, el, getHistorical } = setup();
-    clic(el, 'rango-hist-anio');
+    fixture.componentRef.setInput('filtros', { ...SIN_FILTROS, rango: 30 });
     fixture.detectChanges();
-    expect(getHistorical).toHaveBeenCalledWith('semester', 365, SIN_FILTROS);
+
+    expect(getHistorical).toHaveBeenCalledTimes(2);
+    expect(getHistorical).toHaveBeenLastCalledWith({ ...SIN_FILTROS, rango: 30 });
   });
 
-  it('3 años pide años de 1095 días', () => {
-    const { fixture, el, getHistorical } = setup();
-    clic(el, 'rango-hist-tres');
+  it('vuelve a pedir cuando cambia la planta', () => {
+    const { fixture, getHistorical } = setup();
+
+    fixture.componentRef.setInput('filtros', { ...SIN_FILTROS, planta_id: 4 });
     fixture.detectChanges();
-    expect(getHistorical).toHaveBeenCalledWith('year', 1095, SIN_FILTROS);
+
+    expect(getHistorical).toHaveBeenLastCalledWith({ ...SIN_FILTROS, planta_id: 4 });
   });
 
-  it('5 años pide años de 1825 días', () => {
-    const { fixture, el, getHistorical } = setup();
-    clic(el, 'rango-hist-cinco');
-    fixture.detectChanges();
-    expect(getHistorical).toHaveBeenCalledWith('year', 1825, SIN_FILTROS);
-  });
+  it('muestra la etiqueta de la ventana activa', () => {
+    const { fixture, el } = setup();
 
-  it('no vuelve a pedir si se elige la ventana activa', () => {
-    const { fixture, el, getHistorical } = setup();
-    clic(el, 'rango-hist-semestre');
+    fixture.componentRef.setInput('etiquetaRango', 'Últimos 30 días');
     fixture.detectChanges();
-    expect(getHistorical).toHaveBeenCalledTimes(1);
+
+    const chip = el.querySelector('[data-testid="hist-rango-activo"]');
+    expect(chip).not.toBeNull();
+    expect(chip!.textContent).toContain('Últimos 30 días');
   });
 });
 

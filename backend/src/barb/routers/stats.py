@@ -111,7 +111,11 @@ def _disponibilidad(horas_totales: float, downtime_min: float) -> float:
 
 
 # --- Series históricas (CGBIDA-515, 516, 517) --------------------------------
-GRANULARIDADES = ("month", "semester", "year")
+# `day` y `week` existen para que el filtro global de rango del Dashboard pueda mostrar
+# los ultimos 7 o 30 dias con resolucion util (CGBIDA-550). Antes solo habia mes o mas,
+# y un rango de 30 dias caia entero en un unico punto del grafico.
+GRANULARIDADES = ("day", "week", "month", "semester", "year")
+
 
 
 def _periodo_sql(granularity: str) -> str:
@@ -120,6 +124,11 @@ def _periodo_sql(granularity: str) -> str:
     Postgres no tiene `semester`: se trunca al año y se le suman 0 o 6 meses según si
     el mes cae en el primer o el segundo semestre.
     """
+    if granularity == "day":
+        return "date_trunc('day', ot.fecha_creacion)"
+    if granularity == "week":
+        # date_trunc('week') arranca en lunes (ISO).
+        return "date_trunc('week', ot.fecha_creacion)"
     if granularity == "month":
         return "date_trunc('month', ot.fecha_creacion)"
     if granularity == "semester":
@@ -132,7 +141,11 @@ def _periodo_sql(granularity: str) -> str:
 
 def _horas_del_periodo(inicio: datetime, granularity: str) -> float:
     """Horas calendario del período que empieza en `inicio` (denominador del MTBF)."""
-    if granularity == "month":
+    if granularity == "day":
+        dias = 1
+    elif granularity == "week":
+        dias = 7
+    elif granularity == "month":
         dias = calendar.monthrange(inicio.year, inicio.month)[1]
     elif granularity == "semester":
         dias = sum(
@@ -146,6 +159,8 @@ def _horas_del_periodo(inicio: datetime, granularity: str) -> float:
 
 def _etiqueta_periodo(inicio: datetime, granularity: str) -> str:
     """Etiqueta corta para el eje X del gráfico: 2026-03, 2026-S1 o 2026."""
+    if granularity in ("day", "week"):
+        return inicio.strftime("%Y-%m-%d")
     if granularity == "month":
         return inicio.strftime("%Y-%m")
     if granularity == "semester":
@@ -284,7 +299,7 @@ async def get_historical(
     No toca el esquema: agrupa `orden_trabajo` por `DATE_TRUNC` y calcula por período
     SLA (%), MTTR (min), MTBF (h), disponibilidad (%) y volumen de OTs.
 
-    `granularity`: `month` | `semester` | `year`. Con `days` se acota la ventana; sin
+    `granularity`: `day` | `week` | `month` | `semester` | `year`. Con `days` se acota la ventana; sin
     `days` se devuelve todo el histórico disponible.
     """
     if granularity not in GRANULARIDADES:
