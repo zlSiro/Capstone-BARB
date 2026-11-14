@@ -359,6 +359,49 @@ async def test_el_matcher_no_inventa_coincidencias(db_pool):
 
 
 @pytest.mark.asyncio
+async def test_el_matcher_no_confunde_un_distintivo_inventado(db_pool):
+    """Regresión del QA conversacional: «compresor XYZ-99» NO es el «Compressor A1».
+
+    Difflib puntuaba 0.69 por el prefijo compartido («compresor» vs «compressor») y la
+    falla terminaba registrada en el equipo equivocado. El distintivo manda: si la
+    consulta trae un código que no existe, se pregunta en vez de adivinar.
+    """
+    from barb.core.db import fetch_all
+
+    filas = await fetch_all(
+        """
+        SELECT m.nombre, m.codigo
+          FROM maquina m JOIN planta p ON p.planta_id = m.planta_id
+        """
+    )
+    for inventado in ("compresor XYZ-99", "compresor zzz", "compresor A9", "bomba B7"):
+        for fila in filas:
+            assert _puntaje(inventado, fila["nombre"], fila["codigo"]) < _UMBRAL_PARECIDO, (
+                f"«{inventado}» se pareció demasiado a {fila['nombre']} ({fila['codigo']})"
+            )
+
+
+@pytest.mark.asyncio
+async def test_el_matcher_usa_el_distintivo_para_elegir(db_pool):
+    """«prensa b3» es la Prensa Hidráulica B3, no la máquina llamada «Prensa»."""
+    from barb.core.db import fetch_all
+
+    filas = {f["codigo"]: f for f in await fetch_all(
+        """
+        SELECT m.nombre, m.codigo
+          FROM maquina m JOIN planta p ON p.planta_id = m.planta_id
+        """
+    )}
+    if "PRESS-B3" not in filas or "PRE-01" not in filas:
+        pytest.skip("el seed no trae las dos prensas")
+
+    b3 = filas["PRESS-B3"]
+    otra = filas["PRE-01"]
+    assert _puntaje("prensa b3", b3["nombre"], b3["codigo"]) >= _UMBRAL_PARECIDO
+    assert _puntaje("prensa b3", otra["nombre"], otra["codigo"]) < _UMBRAL_PARECIDO
+
+
+@pytest.mark.asyncio
 async def test_la_tool_resuelve_cualquier_maquina_de_la_empresa(db_pool):
     """De punta a punta: el nombre exacto de cada equipo devuelve sus OTs, no otra máquina."""
     from barb.core.db import fetch_all

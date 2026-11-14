@@ -24,6 +24,7 @@ from __future__ import annotations
 import difflib
 import logging
 import re
+import string
 import unicodedata
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -93,6 +94,35 @@ def _cobertura(consulta: list[str], tokens: list[str]) -> float:
     return hallados / len(utiles)
 
 
+def _nucleo(token: str) -> str:
+    """Token sin signos en los extremos: «d1!!!» → «d1», «(comp-a1)» → «comp-a1»."""
+    return token.strip(string.punctuation)
+
+
+def _es_identificador(token: str) -> bool:
+    """Token que mezcla letras y dígitos («a1», «b3», «xyz-99»): el distintivo del equipo.
+
+    Los números sueltos («sector 2») no cuentan: son ruido de la frase, no un código.
+    """
+    return any(ch.isalpha() for ch in token) and any(ch.isdigit() for ch in token)
+
+
+def _coincide_identificador(ident: str, parte: str) -> bool:
+    """True si el distintivo de la consulta aparece en el nombre/código de la máquina.
+
+    Admite que vaya pegado al nombre («compressora1» vs «a1») y tolera erratas
+    («compresr a1» → el distintivo «a1» coincide exacto).
+    """
+    if len(parte) < 2:
+        return False
+    if ident == parte or parte.endswith(ident) or ident.endswith(parte):
+        return True
+    # Letras/dígitos intercambiados («7S» por «S7»): el error de tipeo más común.
+    if _es_identificador(parte) and sorted(ident) == sorted(parte):
+        return True
+    return _parecido(ident, parte) >= _UMBRAL_PALABRA
+
+
 def _puntaje(consulta: str, nombre: str, codigo: str) -> float:
     """
     Cuán probable es que `consulta` se refiera a esta máquina. No conoce ningún equipo: se
@@ -108,6 +138,12 @@ def _puntaje(consulta: str, nombre: str, codigo: str) -> float:
     Ninguno de los dos gana solo: difflib elegía «Compresor Neumático N2» para la frase
     larga, y la cobertura no encontraba «el motor». Tomar el máximo de ambos acertó los 17
     casos del banco.
+
+    El distintivo manda: si la consulta trae un token con letras y dígitos («XYZ-99») que
+    no aparece en el nombre ni en el código, es OTRA máquina aunque comparta la palabra
+    genérica. Sin este corte, difflib puntuaba 0.69 a «compresor XYZ-99» contra
+    «Compressor A1» por el prefijo compartido y la falla se registraba en el equipo
+    equivocado (QA conversacional).
     """
     q = _normalizar(consulta)
     n = _normalizar(nombre)
@@ -116,9 +152,33 @@ def _puntaje(consulta: str, nombre: str, codigo: str) -> float:
     if q in (n, c):
         return 1.0
 
-    completo = max(_parecido(q, n), _parecido(q, c))
+    # Nombre escrito sin espacios («BrazoRobóticoKUKA1»): es la misma cadena, no una
+    # consulta distinta. Se compara el esqueleto para no castigar el distintivo pegado.
+    if q and q.replace(" ", "") in (n.replace(" ", ""), c.replace(" ", "")):
+        return 1.0
 
+    identificadores = [t for t in (_nucleo(x) for x in q.split()) if _es_identificador(t)]
+    partes = [p for p in (_nucleo(x) for x in n.split()) if len(p) >= 2]
+    if c:
+        partes.append(_nucleo(c))
+    if identificadores and not all(
+        any(_coincide_identificador(i, p) for p in partes) for i in identificadores
+    ):
+        return 0.0
+
+    # Sin distintivo, la última palabra tampoco puede ser inventada: «compresor zzz» no
+    # es el «Compressor A1». Si la consulta sí trae distintivo («compresor A1 de la
+    # planta»), esta regla no aplica: el equipo ya está identificado.
     palabras = [p for p in q.split() if len(p) >= 2]
+    crudas = q.split()
+    if not identificadores and len(crudas) >= 2:
+        ultima = _nucleo(crudas[-1])
+        if ultima.isalpha() and len(ultima) >= 3 and not any(
+            _parecido(ultima, p) >= _UMBRAL_PALABRA for p in partes
+        ):
+            return 0.0
+
+    completo = max(_parecido(q, n), _parecido(q, c))
     por_palabra = max(_cobertura(palabras, n.split()), _cobertura(palabras, c.split()))
 
     return max(completo, por_palabra)
@@ -822,19 +882,23 @@ def _texto_propuesta_planta(nombre: str, ubicacion: str | None, maquinas: list[d
         # QA del 05-11: se puede crear una planta vacía (el service lo permite), pero el
         # usuario debe verlo explicíto antes de confirmar, no descubrirlo después.
         lineas += [
-            "⚠️ La propuesta va SIN MÁQUINAS: la planta quedará vacía y podrás "
+            "⚠️ **La propuesta va SIN MÁQUINAS:** la planta quedará vacía y podrás "
             "agregarle equipos después desde el mantenedor o pidiéndomelo.",
             "",
         ]
-    for m in maquinas:
-        lineas.append(
-            f"- MAQ codigo={_sin_separadores(m.get('codigo', ''))} "
-            f"| nombre={_sin_separadores(m.get('nombre', ''))} "
-            f"| disciplina={_sin_separadores(m.get('disciplina') or '')} "
-            f"| sla={m.get('sla_horas') if m.get('sla_horas') is not None else ''} "
-            f"| costo={m.get('costo_inactividad_minuto') if m.get('costo_inactividad_minuto') is not None else ''}"
-        )
-    lineas += ["", "¿Confirmas la creación? (responde sí o no)"]
+    else:
+        # Bloque de código: conserva la indentación y el formato que parsea el gate.
+        lineas.append("```")
+        for m in maquinas:
+            lineas.append(
+                f"- MAQ codigo={_sin_separadores(m.get('codigo', ''))} "
+                f"| nombre={_sin_separadores(m.get('nombre', ''))} "
+                f"| disciplina={_sin_separadores(m.get('disciplina') or '')} "
+                f"| sla={m.get('sla_horas') if m.get('sla_horas') is not None else ''} "
+                f"| costo={m.get('costo_inactividad_minuto') if m.get('costo_inactividad_minuto') is not None else ''}"
+            )
+        lineas += ["```", ""]
+    lineas += ["**¿Confirmas la creación?** Responde **sí** o **no**."]
     return "\n".join(lineas)
 
 
@@ -985,16 +1049,20 @@ def _texto_propuesta_parametros(maquina: dict, antes: dict, cambios: dict) -> st
     ]
     sla_nuevo = f"{cambios['sla_horas']:g}" if "sla_horas" in cambios else ""
     costo_nuevo = f"{cambios['costo_inactividad_minuto']:g}" if "costo_inactividad_minuto" in cambios else ""
-    lineas.append(
+    # Bloque de código: conserva la indentación y el formato que parsea el gate.
+    lineas += [
+        "```",
         f"- MAQ codigo={_sin_separadores(maquina['codigo'])} "
         f"| nombre={_sin_separadores(maquina['nombre'])} "
         f"| planta={_sin_separadores(maquina.get('planta') or '')} "
-        f"| sla={sla_nuevo} | costo={costo_nuevo}"
-    )
+        f"| sla={sla_nuevo} | costo={costo_nuevo}",
+        "```",
+        "",
+    ]
     detalles = []
     if "sla_horas" in cambios:
         antes_sla = "sin definir (usa el general)" if antes["sla_horas"] is None else f"{float(antes['sla_horas']):g} h"
-        detalles.append(f"- SLA: {antes_sla} → {float(cambios['sla_horas']):g} h")
+        detalles.append(f"- **SLA:** {antes_sla} → {float(cambios['sla_horas']):g} h")
     if "costo_inactividad_minuto" in cambios:
         antes_costo = (
             "sin definir (usa el general)"
@@ -1002,9 +1070,9 @@ def _texto_propuesta_parametros(maquina: dict, antes: dict, cambios: dict) -> st
             else f"{float(antes['costo_inactividad_minuto']):,.0f}/min".replace(",", ".")
         )
         detalles.append(
-            f"- Costo por minuto: {antes_costo} → {float(cambios['costo_inactividad_minuto']):,.0f}/min".replace(",", ".")
+            f"- **Costo por minuto:** {antes_costo} → {float(cambios['costo_inactividad_minuto']):,.0f}/min".replace(",", ".")
         )
-    lineas += [*detalles, "", "¿Confirmas el cambio? (responde sí o no)"]
+    lineas += [*detalles, "", "**¿Confirmas el cambio?** Responde **sí** o **no**."]
     return "\n".join(lineas)
 
 
@@ -1182,18 +1250,24 @@ def _normalizar_severidad(valor: str | None) -> tuple[str, bool]:
 
 
 def _texto_propuesta_aviso(maquina: dict, descripcion: str, severidad: str) -> str:
-    """Texto exacto que el asistente muestra (y persiste) al proponer registrar una falla."""
+    """Texto exacto que el asistente muestra (y persiste) al proponer registrar una falla.
+
+    La línea `- AVISO codigo=...` va dentro de un bloque de código: conserva los espacios
+    y el formato que el gate parsea, y se lee como una ficha en vez de una línea suelta.
+    """
     return (
         f"{_PREFIJO_PROPUESTA_AVISO}\n\n"
         f"Voy a registrar un aviso de falla de «{_sin_separadores(maquina['nombre'])}» "
         f"[{_sin_separadores(maquina['codigo'])}]"
         + (f" en {_sin_separadores(maquina['planta'])}" if maquina.get("planta") else "")
         + ":\n\n"
+        "```\n"
         f"- AVISO codigo={_sin_separadores(maquina['codigo'])} "
         f"| severidad={_ETIQUETA_SEVERIDAD[severidad]} "
-        f"| descripcion={_sin_separadores(descripcion)}\n\n"
-        "La falla queda pendiente para el supervisor (no se crea una OT al instante).\n"
-        "¿Confirmas el registro? (responde sí o no)"
+        f"| descripcion={_sin_separadores(descripcion)}\n"
+        "```\n\n"
+        "La falla queda **pendiente** para el supervisor: no se crea una OT al instante.\n\n"
+        "**¿Confirmas el registro?** Responde **sí** o **no**."
     )
 
 

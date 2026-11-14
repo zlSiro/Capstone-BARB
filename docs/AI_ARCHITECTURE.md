@@ -537,7 +537,18 @@ quién pedirle, y el endurecimiento de la Skill de plantas tras el QA del 05-11 
 `consultar_ots_maquina` y `listar_maquinas_planta` son de solo lectura y no exigen
 permiso; el aislamiento por empresa va cerrado en la clausura de la tool.
 
-### 2.12.5 Deudas registradas
+### 2.12.5 Resolución de máquinas y formato de las propuestas
+
+- El matcher exige que el **distintivo** de la consulta (token con letras y dígitos,
+  «A1», «XYZ-99») exista en el nombre o en el código. Sin esto, `difflib` puntuaba 0.69
+  a «compresor XYZ-99» contra «Compressor A1» por el prefijo compartido y el aviso se
+  registraba en el equipo equivocado. Ante la duda, la tool responde «no encontré» con
+  el listado: el error barato es preguntar, no escribir en el activo incorrecto.
+- Las propuestas (`aviso`, `planta`, `parámetros`) muestran la línea parseable dentro de
+  un bloque de código, con negritas en los rótulos y en la confirmación. El gate sigue
+  parseando el mismo formato: el bloque conserva los espacios y no cambia el contrato.
+
+### 2.12.6 Deudas registradas
 
 - El INSERT de `registrar_aviso_aprobada` replica el de `routers/avisos.py`. Extraer un
   `avisos_service.crear_aviso()` compartido queda para un issue de refactor.
