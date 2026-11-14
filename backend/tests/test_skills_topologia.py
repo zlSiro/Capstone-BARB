@@ -572,6 +572,52 @@ async def test_el_grafo_crea_planta_con_confirmacion(db_pool, monkeypatch):
         await execute("DELETE FROM planta WHERE nombre = 'Planta Candado'")
 
 
+@pytest.mark.asyncio
+async def test_el_grafo_no_reintenta_tras_fallo_de_creacion(db_pool, monkeypatch):
+    """CGBIDA-514.5: si la creación falla (planta ya existente), el gate informa el error
+    y NO deja la propuesta pendiente. Un segundo «sí» no reintenta el write ni duplica."""
+    marca = uuid.uuid4().hex[:8]
+    nombre = f"Planta Repetida {marca}"
+    codigo = f"TUR-{marca[:6]}"
+    await execute(
+        "INSERT INTO planta (empresa_id, nombre, ubicacion) VALUES (1, %(n)s, %(u)s)",
+        {"n": nombre, "u": "Rancagua"},
+    )
+    try:
+        propuesta = _texto_propuesta_planta(
+            nombre,
+            "Rancagua",
+            [{"nombre": "Turbina 9", "codigo": codigo, "disciplina": "Mecánica"}],
+        )
+        modelo = _LLMFalso()
+        grafo = crear_grafo(empresa_id=1, llm=modelo, usuario_id=ADMIN_ID, rol="admin")
+
+        estado = await grafo.ainvoke(
+            _entrada([AIMessage(content=propuesta), HumanMessage(content="sí, confirmo")])
+        )
+
+        final = estado["messages"][-1]
+        assert "Ya existe una planta llamada" in final.content
+        assert final.content != propuesta, "el error reemplaza a la propuesta: no queda pendiente"
+        assert not modelo.llamadas, "el gate resuelve el «sí» sin pasar por el modelo"
+
+        # Segundo «sí»: sin propuesta pendiente, el gate no vuelve a escribir.
+        estado2 = await grafo.ainvoke(
+            {**estado, "messages": [*estado["messages"], HumanMessage(content="sí, confirmo")]}
+        )
+        assert "creada con" not in estado2["messages"][-1].content
+        assert len(modelo.llamadas) == 1, "el turno sigue normal; no se re-ejecuta el gate"
+
+        plantas = await fetch_one("SELECT COUNT(*) AS n FROM planta WHERE nombre = %(n)s", {"n": nombre})
+        assert plantas["n"] == 1, "no se duplica la planta ni se reintenta el write"
+    finally:
+        await execute(
+            "DELETE FROM maquina WHERE planta_id IN (SELECT planta_id FROM planta WHERE nombre = %(n)s)",
+            {"n": nombre},
+        )
+        await execute("DELETE FROM planta WHERE nombre = %(n)s", {"n": nombre})
+
+
 # =============================================================================
 # El candado de los parámetros en el grafo (REGLA 10 ya no depende del modelo)
 # =============================================================================

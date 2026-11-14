@@ -361,6 +361,9 @@ _PRIORIDADES = {
 # las tools no pasan por las dependencias de FastAPI: sin este chequeo, un técnico creaba
 # por el chat OTs que el endpoint le rechaza con 403.
 # Texto fijado por el negocio: se muestra tal cual (la propuesta termina el turno con el texto EXACTO de la tool).
+# Excepción deliberada a `_mensaje_sin_permiso` (HU-20 / CGBIDA-513): este texto lo fijó
+# negocio y lo protege `test_permisos_tools.py`. No nombra al rol responsable a propósito;
+# si negocio lo aprueba, se reemplaza por `_mensaje_sin_permiso("crear_ot")`.
 SIN_PERMISO_OT = "No tiene privilegios para generar OT sin un aviso de falla. Por favor generar conforme al flujo"
 
 
@@ -1271,6 +1274,9 @@ async def registrar_aviso_aprobada(
             "(¿se borró o cambió de planta desde la propuesta?). No registré nada."
         )
 
+    # Deuda (HU-20 / CGBIDA-511): este INSERT replica el de `routers/avisos.py` porque el
+    # gate no puede pasar por el router. Extraer un `avisos_service.crear_aviso()` compartido
+    # quedó diferido a un issue aparte para no tocar el endpoint de avisos en el cierre.
     try:
         async with transaction() as cur:
             await cur.execute(

@@ -495,3 +495,51 @@ LLM_FALLBACK_MODEL=              # vacío = default del proveedor de respaldo
 LLM_TEMPERATURE=0.1
 CHAT_MEMORY_WINDOW=10            # ahora sí se aplica
 ```
+
+## 2.12 Avisos de falla, permisos y topología endurecida (HU-20 / CGBIDA-511)
+
+Cierre de HU-20. Tres cambios en el motor conversacional: una Skill de escritura nueva
+(aviso de falla) con el mismo candado de las OTs, un mensaje de permisos único que dice a
+quién pedirle, y el endurecimiento de la Skill de plantas tras el QA del 05-11 en prod.
+
+### 2.12.1 Skill `proponer_aviso_falla` + el candado
+
+- `proponer_aviso_falla` **solo redacta** la propuesta parseable
+  `PROPUESTA DE AVISO DE FALLA` (máquina, descripción literal, severidad); no escribe.
+- El write vive en `registrar_aviso_aprobada`, invisible al modelo: lo ejecuta `gate_ot`
+  tras un «sí» inequívoco. Revalida permiso `reportar_falla`, severidad y la máquina por
+  **código exacto**; el INSERT es la misma lógica del endpoint (`AV-año-id`, una
+  transacción).
+- Un aviso **no es una OT**: queda `pendiente` en la bandeja del supervisor.
+
+### 2.12.2 Mensaje de permisos unificado
+
+- `_mensaje_sin_permiso(accion)` + `_responsables_de(accion)` derivan los roles de la
+  matriz de `permissions.py`: si el negocio cambia la matriz, el mensaje cambia con ella.
+- Regla 14 del prompt: mostrarlo tal cual y no insistir ni buscar rodeos.
+- **Excepción:** `SIN_PERMISO_OT` conserva el texto fijado por negocio (no nombra rol).
+  Está documentado en `ai_tools.py`; si negocio lo aprueba, se alinea con
+  `_mensaje_sin_permiso("crear_ot")`.
+
+### 2.12.3 Endurecimiento de la Skill de plantas
+
+| Regla | Dónde |
+|---|---|
+| Máximo 15 máquinas por alta (antes 8) | `_MAX_MAQUINAS_ALTA` |
+| Ubicación obligatoria y no inventada | `proponer_planta_completa` |
+| Dos plantas pueden compartir ubicación si el nombre difiere | `proponer_planta_completa` |
+| Código de máquina **literal** (sin inventar ni normalizar) | Regla 11 + validación de códigos |
+| Disciplina **una sola** (sin «Neumática / Mecánica») | `proponer_planta_completa` |
+| Tras un fallo de creación no se re-propone lo mismo | Regla 11 + test del gate |
+
+### 2.12.4 Tools de lectura sin permiso
+
+`consultar_ots_maquina` y `listar_maquinas_planta` son de solo lectura y no exigen
+permiso; el aislamiento por empresa va cerrado en la clausura de la tool.
+
+### 2.12.5 Deudas registradas
+
+- El INSERT de `registrar_aviso_aprobada` replica el de `routers/avisos.py`. Extraer un
+  `avisos_service.crear_aviso()` compartido queda para un issue de refactor.
+- La regla autoritativa de ubicación/duplicados en service/BD no existe: requiere
+  migración, así que queda como propuesta a JP/Samuel. El chat la aplica igual.
