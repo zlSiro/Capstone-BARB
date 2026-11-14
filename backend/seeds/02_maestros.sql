@@ -6,6 +6,7 @@
 -- QUÉ HACE
 --   Carga el catálogo completo de las 3 empresas del informe de datos reales:
 --     3 empresas · 21 usuarios · 11 disciplinas · 6 plantas · 11 máquinas · 28 sensores
+--     12 zonas, 23 nodos y 17 conexiones de topología (rescatado del seed viejo)
 --
 --   Usuarios por empresa (7): 1 admin, 2 gerentes, 3 técnicos y 1 **supervisor**.
 --   El supervisor es el rol que opera las OT en la matriz vigente (crea, asigna,
@@ -76,6 +77,11 @@
 -- =============================================================================
 
 BEGIN;
+
+-- Los triggers de auditoría (empresa, usuario) y de transacciones no aportan nada en una
+-- carga inicial: se apagan mientras dura este archivo y se reactivan antes del COMMIT.
+ALTER TABLE empresa  DISABLE TRIGGER USER;
+ALTER TABLE usuario  DISABLE TRIGGER USER;
 
 -- -----------------------------------------------------------------------------
 -- 1. Empresas
@@ -393,6 +399,82 @@ JOIN planta p ON p.empresa_id = e.empresa_id
 JOIN maquina m ON m.planta_id = p.planta_id AND m.codigo = v.maquina_codigo
 WHERE e.rut = '77.333.333-3'
   AND NOT EXISTS (SELECT 1 FROM sensor s WHERE s.codigo = v.codigo);
+
+-- -----------------------------------------------------------------------------
+-- 8. Topología: zonas, nodos y conexiones por planta
+-- -----------------------------------------------------------------------------
+-- RESCATADO de seed_data.sql (seed viejo). Sin esto la vista de topología (HU-07)
+-- quedaba vacía aunque las 11 máquinas existieran: el árbol planta → nodo →
+-- conexión no tenía nada que dibujar.
+
+INSERT INTO topologia_zona (planta_id, nombre, color, descripcion)
+SELECT p.planta_id, v.zona, v.color, v.descripcion
+FROM planta p
+JOIN (VALUES
+    ('Chancado Primario',  'Zona de Chancado',      '#f59e0b', 'Chancador de cono y correa de transporte'),
+    ('Chancado Primario',  'Zona de Control',       '#3b82f6', 'Gabinete eléctrico y PLC de chancado'),
+    ('Molienda SAG',       'Zona de Molienda',      '#f59e0b', 'Molino SAG, chumaceras y accionamiento'),
+    ('Molienda SAG',       'Zona de Fluidos',       '#06b6d4', 'Bomba de pulpa y circuitos de agua'),
+    ('Planta de Vapor',    'Zona de Generación',    '#ef4444', 'Caldera, quemador y chimenea'),
+    ('Planta de Vapor',    'Zona de Alimentación',  '#06b6d4', 'Bomba de alimentación y estanque'),
+    ('Túnel de Frío',      'Zona de Refrigeración', '#3b82f6', 'Compresor de amoníaco y evaporadores'),
+    ('Túnel de Frío',      'Zona de Seguridad',     '#ef4444', 'Detección de amoníaco y ventilación'),
+    ('Línea de Paletizado','Zona de Robótica',      '#8b5cf6', 'Brazo KUKA y PLC de línea'),
+    ('Línea de Paletizado','Zona de Control',       '#3b82f6', 'Tablero y variadores de frecuencia'),
+    ('Línea de Estampado', 'Zona de Prensado',      '#f59e0b', 'Prensa hidráulica Larzep'),
+    ('Línea de Estampado', 'Zona Eléctrica',        '#ef4444', 'Generador de respaldo y tablero')
+) AS v(planta, zona, color, descripcion)
+  ON v.planta = p.nombre
+WHERE NOT EXISTS (
+    SELECT 1 FROM topologia_zona z
+     WHERE z.planta_id = p.planta_id AND z.nombre = v.zona
+);
+
+-- Un nodo hub (HMI) y un controller (PLC) por planta.
+INSERT INTO topologia_nodo (planta_id, tipo, nombre, categoria, position_x, position_y, estado)
+SELECT p.planta_id, v.tipo::tipo_nodo, v.prefijo || ' · ' || p.nombre, 'Control', v.x, 200, 'operational'::estado_nodo
+FROM planta p
+CROSS JOIN (VALUES ('hub', 'HMI', 80), ('controller', 'PLC', 200)) AS v(tipo, prefijo, x)
+WHERE NOT EXISTS (
+    SELECT 1 FROM topologia_nodo n
+     WHERE n.planta_id = p.planta_id AND n.nombre = v.prefijo || ' · ' || p.nombre
+);
+
+-- Un nodo por máquina, en fila y ordenado por código.
+INSERT INTO topologia_nodo (planta_id, maquina_id, tipo, nombre, categoria, position_x, position_y, estado)
+SELECT p.planta_id, m.maquina_id, 'machine'::tipo_nodo, m.nombre, coalesce(d.nombre, 'Equipo'),
+       320 + (row_number() OVER (PARTITION BY p.planta_id ORDER BY m.codigo) - 1) * 150, 200,
+       'operational'::estado_nodo
+FROM maquina m
+JOIN planta p ON p.planta_id = m.planta_id
+LEFT JOIN disciplina d ON d.disciplina_id = m.disciplina_id
+JOIN empresa e ON e.empresa_id = p.empresa_id
+WHERE e.rut IN ('77.111.111-1', '77.222.222-2', '77.333.333-3')
+  AND NOT EXISTS (SELECT 1 FROM topologia_nodo n WHERE n.maquina_id = m.maquina_id);
+
+-- HMI → PLC (datos) y PLC → máquina (alimentación y señal).
+INSERT INTO topologia_conexion (nodo_origen_id, nodo_destino_id, tipo, label, bidirectional, estado)
+SELECT hub.nodo_id, plc.nodo_id, 'data'::tipo_conexion, 'Control Ethernet', true, 'active'::estado_conexion
+FROM topologia_nodo hub
+JOIN topologia_nodo plc ON plc.planta_id = hub.planta_id AND plc.tipo = 'controller'
+WHERE hub.tipo = 'hub'
+  AND NOT EXISTS (
+    SELECT 1 FROM topologia_conexion c
+     WHERE c.nodo_origen_id = hub.nodo_id AND c.nodo_destino_id = plc.nodo_id
+);
+
+INSERT INTO topologia_conexion (nodo_origen_id, nodo_destino_id, tipo, label, bidirectional, estado)
+SELECT plc.nodo_id, equipo.nodo_id, 'electrical'::tipo_conexion, 'Alimentación y señal', false, 'active'::estado_conexion
+FROM topologia_nodo equipo
+JOIN topologia_nodo plc ON plc.planta_id = equipo.planta_id AND plc.tipo = 'controller'
+WHERE equipo.tipo = 'machine'
+  AND NOT EXISTS (
+    SELECT 1 FROM topologia_conexion c
+     WHERE c.nodo_origen_id = plc.nodo_id AND c.nodo_destino_id = equipo.nodo_id
+);
+
+ALTER TABLE empresa  ENABLE TRIGGER USER;
+ALTER TABLE usuario  ENABLE TRIGGER USER;
 
 COMMIT;
 

@@ -11,6 +11,11 @@
 --      rota entre los tres técnicos de esa empresa.
 --   2. 12 repuestos (4 por empresa) con stock, costo y proveedor.
 --   3. 11 programas de mantenimiento preventivo (uno por máquina).
+--   5. Lecturas de sensores (168), repuestos usados en OTs (109), bitácora de OTs
+--      (996), 6 sesiones de diagnóstico con sus diagnósticos y reportes, y 9
+--      conversaciones de chat. Estas cinco capas se RESCATARON de seed_data.sql
+--      al consolidar los seeds (la vista de topología, el historial de la OT y el
+--      historial del chat arrancaban vacíos sin ellas).
 --   4. 8 manuales reales en `documento` (Sandvik, Siemens, Parker, amoníaco,
 --      KUKA, Larzep, KSB, Grundfos) + 24 fragmentos en `documento_chunk`, con la
 --      URL de origen de cada manual (los links del informe) en `notes`.
@@ -56,6 +61,9 @@ ALTER TABLE documento             DISABLE TRIGGER USER;
 ALTER TABLE documento_chunk       DISABLE TRIGGER USER;
 ALTER TABLE repuesto              DISABLE TRIGGER USER;
 ALTER TABLE programa_mantenimiento DISABLE TRIGGER USER;
+ALTER TABLE ot_repuesto            DISABLE TRIGGER USER;
+ALTER TABLE diagnostico            DISABLE TRIGGER USER;
+ALTER TABLE reporte                DISABLE TRIGGER USER;
 
 -- -----------------------------------------------------------------------------
 -- 2. Órdenes de trabajo — 24 meses, 2 por máquina por mes
@@ -473,6 +481,227 @@ WHERE NOT EXISTS (
 );
 
 -- -----------------------------------------------------------------------------
+-- 7. Lecturas de sensores — 6 por sensor, en los últimos 6 meses
+-- -----------------------------------------------------------------------------
+-- RESCATADO de seed_data.sql: los 28 sensores de 02_maestros.sql no tenían ninguna
+-- lectura, así que la serie temporal del detalle de máquina salía vacía. El valor
+-- es determinista (base por sensor × factor del mes) para que dos corridas den lo
+-- mismo, y la última lectura de cada sensor queda en `critical` para que el
+-- semáforo tenga algo que mostrar.
+
+INSERT INTO lectura_sensor (sensor_id, valor, "timestamp", estado)
+SELECT s.sensor_id,
+       round((50 + (s.sensor_id % 30)) * v.factor, 2),
+       date_trunc('month', CURRENT_DATE) - make_interval(months => v.meses_atras) + interval '12 days',
+       v.estado::estado_lectura
+FROM sensor s
+JOIN maquina m ON m.maquina_id = s.maquina_id
+JOIN planta p ON p.planta_id = m.planta_id
+JOIN empresa e ON e.empresa_id = p.empresa_id
+CROSS JOIN (VALUES
+    (0, 1.00, 'normal'), (1, 1.03, 'normal'), (2, 1.08, 'warning'),
+    (3, 1.02, 'normal'), (4, 1.01, 'normal'), (5, 1.15, 'critical')
+) AS v(meses_atras, factor, estado)
+WHERE e.rut IN ('77.111.111-1', '77.222.222-2', '77.333.333-3')
+  AND NOT EXISTS (
+    SELECT 1 FROM lectura_sensor l
+     WHERE l.sensor_id = s.sensor_id
+       AND l."timestamp" = date_trunc('month', CURRENT_DATE)
+                           - make_interval(months => v.meses_atras) + interval '12 days'
+  );
+
+-- -----------------------------------------------------------------------------
+-- 8. Repuestos consumidos en las OTs correctivas
+-- -----------------------------------------------------------------------------
+-- RESCATADO de seed_data.sql: relaciona la bodega (repuesto) con el trabajo real.
+
+INSERT INTO ot_repuesto (ot_id, repuesto_id, cantidad, costo_unitario)
+SELECT ot.ot_id, r.repuesto_id, 1 + (ot.ot_id % 2), r.costo_unitario
+FROM orden_trabajo ot
+JOIN maquina m ON m.maquina_id = ot.maquina_id
+JOIN planta p ON p.planta_id = m.planta_id
+JOIN empresa e ON e.empresa_id = p.empresa_id
+JOIN repuesto r ON r.empresa_id = e.empresa_id
+WHERE ot.numero_ot LIKE 'REAL-%'
+  AND ot.tipo = 'corrective'
+  AND (ot.ot_id + r.repuesto_id) % 5 = 0
+  AND NOT EXISTS (
+    SELECT 1 FROM ot_repuesto x
+     WHERE x.ot_id = ot.ot_id AND x.repuesto_id = r.repuesto_id
+  );
+
+-- -----------------------------------------------------------------------------
+-- 9. Histórico de cambios de las OTs (bitácora de la OT)
+-- -----------------------------------------------------------------------------
+-- RESCATADO de seed_data.sql: alimenta la línea de tiempo del detalle de la OT.
+-- Dos hitos por OT: la creación (por el supervisor) y, si está cerrada, el cierre.
+
+INSERT INTO ot_audit_log (ot_id, usuario_id, estado_anterior, estado_nuevo, comentario, "timestamp")
+SELECT ot.ot_id, sup.usuario_id, NULL, 'pending', 'OT creada por el supervisor de turno',
+       coalesce(ot.fecha_creacion, now())
+FROM orden_trabajo ot
+JOIN maquina m ON m.maquina_id = ot.maquina_id
+JOIN planta p ON p.planta_id = m.planta_id
+JOIN empresa e ON e.empresa_id = p.empresa_id
+JOIN (SELECT empresa_id, min(usuario_id) AS usuario_id
+        FROM usuario WHERE rol = 'supervisor' GROUP BY empresa_id) sup
+  ON sup.empresa_id = e.empresa_id
+WHERE ot.numero_ot LIKE 'REAL-%'
+  AND NOT EXISTS (
+    SELECT 1 FROM ot_audit_log a WHERE a.ot_id = ot.ot_id AND a.estado_nuevo = 'pending'
+  );
+
+INSERT INTO ot_audit_log (ot_id, usuario_id, estado_anterior, estado_nuevo, comentario, "timestamp")
+SELECT ot.ot_id, sup.usuario_id, ot.estado, 'completed', 'Cierre validado por el supervisor',
+       coalesce(ot.fecha_cierre, ot.fecha_creacion)
+FROM orden_trabajo ot
+JOIN maquina m ON m.maquina_id = ot.maquina_id
+JOIN planta p ON p.planta_id = m.planta_id
+JOIN empresa e ON e.empresa_id = p.empresa_id
+JOIN (SELECT empresa_id, min(usuario_id) AS usuario_id
+        FROM usuario WHERE rol = 'supervisor' GROUP BY empresa_id) sup
+  ON sup.empresa_id = e.empresa_id
+WHERE ot.numero_ot LIKE 'REAL-%'
+  AND ot.estado = 'completed'
+  AND NOT EXISTS (
+    SELECT 1 FROM ot_audit_log a WHERE a.ot_id = ot.ot_id AND a.estado_nuevo = 'completed'
+  );
+
+-- -----------------------------------------------------------------------------
+-- 10. Sesiones de diagnóstico, diagnósticos y reportes
+-- -----------------------------------------------------------------------------
+-- RESCATADO de seed_data.sql: es la cadena que alimenta el asistente (diagnóstico
+-- por sesión) y el reporte que se genera a partir de ella.
+
+INSERT INTO sesion_debug (empresa_id, maquina_id, tecnico_id, titulo, observaciones, created_at)
+SELECT sel.empresa_id, sel.maquina_id, tec.usuario_id,
+       'Diagnóstico ' || sel.codigo || ' · ' || sel.orden,
+       'Sesión de análisis asistido sobre la máquina ' || sel.codigo || '.',
+       now() - make_interval(days => ((10 - sel.orden) * 9)::int)
+FROM (
+    SELECT e.empresa_id, m.maquina_id, m.codigo,
+           row_number() OVER (PARTITION BY e.empresa_id ORDER BY m.codigo) AS orden
+      FROM maquina m
+      JOIN planta p ON p.planta_id = m.planta_id
+      JOIN empresa e ON e.empresa_id = p.empresa_id
+     WHERE e.rut IN ('77.111.111-1', '77.222.222-2', '77.333.333-3')
+) sel
+JOIN (SELECT empresa_id, min(usuario_id) AS usuario_id
+        FROM usuario WHERE rol = 'tecnico' GROUP BY empresa_id) tec
+  ON tec.empresa_id = sel.empresa_id
+WHERE sel.orden <= 2
+  AND NOT EXISTS (
+    SELECT 1 FROM sesion_debug s
+     WHERE s.maquina_id = sel.maquina_id
+       AND s.titulo = 'Diagnóstico ' || sel.codigo || ' · ' || sel.orden
+  );
+
+INSERT INTO diagnostico (sesion_id, descripcion, severidad)
+SELECT s.sesion_id,
+       CASE WHEN s.titulo LIKE '%· 1' THEN
+            'Vibración fuera de rango en el eje de accionamiento: revisar alineación y rodamientos.'
+       ELSE
+            'Temperatura de operación por sobre el punto de consigna: verificar lubricación y ventilación.'
+       END,
+       CASE WHEN s.titulo LIKE '%· 1' THEN 'high'::nivel_severidad
+            ELSE 'medium'::nivel_severidad END
+FROM sesion_debug s
+WHERE s.titulo LIKE 'Diagnóstico %· %'
+  AND NOT EXISTS (
+    SELECT 1 FROM diagnostico d WHERE d.sesion_id = s.sesion_id
+  );
+
+INSERT INTO reporte (report_number, sesion_id, diagnostico_id, maquina_id, tecnico_id,
+                     summary, issue_description, resolution, severity, downtime_minutes,
+                     estado, created_at)
+SELECT 'RPT-REAL-' || lpad(sel.n::text, 3, '0'), s.sesion_id, d.diagnostico_id, s.maquina_id,
+       s.tecnico_id,
+       'Intervención sobre ' || m.codigo,
+       CASE WHEN d.severidad = 'high' THEN 'Vibración y ruido en el accionamiento'
+            ELSE 'Temperatura sobre el punto de consigna' END,
+       'Se ajustó alineación, se reemplazó rodamiento y se verificó la temperatura en marcha.',
+       d.severidad,
+       90 + sel.n * 15,
+       'approved'::estado_reporte,
+       s.created_at
+FROM (
+    SELECT s2.sesion_id, s2.maquina_id, s2.tecnico_id, s2.created_at,
+           row_number() OVER (ORDER BY s2.sesion_id) AS n
+      FROM sesion_debug s2
+     WHERE s2.titulo LIKE 'Diagnóstico %· %'
+) sel
+JOIN sesion_debug s ON s.sesion_id = sel.sesion_id
+JOIN maquina m ON m.maquina_id = s.maquina_id
+JOIN diagnostico d ON d.sesion_id = s.sesion_id
+WHERE NOT EXISTS (
+    SELECT 1 FROM reporte r WHERE r.report_number = 'RPT-REAL-' || lpad(sel.n::text, 3, '0')
+);
+
+-- -----------------------------------------------------------------------------
+-- 11. Historial de conversaciones del chat (3 por empresa)
+-- -----------------------------------------------------------------------------
+-- RESCATADO de seed_data.sql: la pantalla de historial del chat arrancaba vacía.
+
+INSERT INTO chat_session (empresa_id, titulo, saved_by, usuario_id, discipline,
+                          plant_id, plant_name, machine_id, machine_name,
+                          active_manual, messages, metadata, saved_at)
+SELECT e.empresa_id, v.titulo, tec.nombre, tec.usuario_id, v.disciplina,
+       p.planta_id::text, p.nombre, m.maquina_id::text, m.nombre,
+       v.manual,
+       jsonb_build_array(
+           jsonb_build_object('role', 'user', 'content', v.pregunta, 'timestamp', 1760000000000),
+           jsonb_build_object('role', 'assistant', 'content', v.respuesta, 'timestamp', 1760000010000)
+       ),
+       jsonb_build_object('modelo', 'demo', 'fuente', 'seed-realista'),
+       now() - make_interval(days => v.dias_atras)
+FROM (
+    VALUES
+      ('77.111.111-1', 'CHA-001', 'Mecánica',
+       'Falla recurrente en el chancador de cono: ¿qué reviso antes de desmontar?',
+       'Revisar el setting y el desgaste del manto. Si el consumo de potencia sube con el mismo setting, el manto está al límite. Ver el manual Sandvik del chancador antes de intervenir.',
+       'Manual Chancador Sandvik H8800', 4, 'Diagnóstico chancador CHA-001'),
+      ('77.111.111-1', 'MOL-001', 'Eléctrica',
+       'El molino SAG dispara la protección térmica del motor.',
+       'Verificar la ventilación del motor Siemens y la carga del molino. Una protección térmica recurrente sugiere sobrecarga o falla de refrigeración.',
+       'Instrucciones Siemens 1LE1', 9, 'Protección térmica molino SAG'),
+      ('77.111.111-1', 'BOM-001', 'Mecánica',
+       'La bomba de pulpa pierde presión de descarga.',
+       'Posibles causas: desgaste del impulsor, sello mecánico dañado o cavitación. Revisar la curva de la bomba KSB y el nivel del estanque.',
+       'Manual KSB ETA', 14, 'Pérdida de presión bomba de pulpa'),
+      ('77.222.222-2', 'CAL-001', 'Mecánica',
+       'La caldera no alcanza la presión de trabajo a la hora de arranque.',
+       'Revisar el tiempo de purga y el estado del quemador. Una caldera Parker WH395L que no llega a presión suele tener exceso de purga o boquilla sucia.',
+       'Ficha Parker WH395L', 3, 'Caldera sin presión en arranque'),
+      ('77.222.222-2', 'COM-001', 'Refrigeración',
+       'Salta la alarma de amoníaco en el túnel de frío. ¿Cuál es el protocolo?',
+       'Evacuar la zona, activar la ventilación forzada y verificar la detección con el equipo de protección. No ingresar sin autorización del supervisor.',
+       'Protocolo de amoníaco', 7, 'Alarma de amoníaco en túnel de frío'),
+      ('77.222.222-2', 'BOM-002', 'Mecánica',
+       'La bomba de alimentación de caldera hace ruido y vibra.',
+       'Revisar alineación, cavitación y estado de los rodamientos. En bombas Grundfos CM/CME el ruido suele venir de succión obstruida.',
+       'Instrucciones Grundfos CM/CME', 18, 'Ruido en bomba de alimentación'),
+      ('77.333.333-3', 'ROB-001', 'Automatización',
+       'El brazo KUKA hace un movimiento brusco al paletizar.',
+       'Revisar la calibración y el estado de los frenos de los ejes. Un movimiento brusco puede ser pérdida de referencia de encoder.',
+       'Tesis UTFSM KUKA KR 50 R2100', 5, 'Movimiento brusco brazo KUKA'),
+      ('77.333.333-3', 'PRE-001', 'Mecánica',
+       'La prensa hidráulica no mantiene la presión en el punto muerto.',
+       'Revisar la válvula de retención y la purga del circuito. Fuga interna del cilindro es la causa más común de caída de presión.',
+       'Manual Larzep', 11, 'Prensa sin retención de presión'),
+      ('77.333.333-3', 'PLC-001', 'Automatización',
+       'El PLC pierde comunicación con el variador de la línea.',
+       'Verificar el cableado del bus y la terminación. Revisar también el diagnóstico del puerto en el PLC Siemens.',
+       'Manual PLC Siemens', 21, 'Pérdida de comunicación PLC-variador')
+) AS v(rut, codigo, disciplina, pregunta, respuesta, manual, dias_atras, titulo)
+JOIN empresa e ON e.rut = v.rut
+JOIN maquina m ON m.codigo = v.codigo
+JOIN planta p ON p.planta_id = m.planta_id
+JOIN (SELECT empresa_id, min(usuario_id) AS usuario_id, min(nombre) AS nombre
+        FROM usuario WHERE rol = 'tecnico' GROUP BY empresa_id) tec
+  ON tec.empresa_id = e.empresa_id
+WHERE NOT EXISTS (SELECT 1 FROM chat_session c WHERE c.titulo = v.titulo);
+
+-- -----------------------------------------------------------------------------
 -- 7. Triggers: ON de nuevo (si algo falla antes, el ROLLBACK los deja como estaban)
 -- -----------------------------------------------------------------------------
 ALTER TABLE orden_trabajo         ENABLE TRIGGER USER;
@@ -480,6 +709,9 @@ ALTER TABLE documento             ENABLE TRIGGER USER;
 ALTER TABLE documento_chunk       ENABLE TRIGGER USER;
 ALTER TABLE repuesto              ENABLE TRIGGER USER;
 ALTER TABLE programa_mantenimiento ENABLE TRIGGER USER;
+ALTER TABLE ot_repuesto            ENABLE TRIGGER USER;
+ALTER TABLE diagnostico            ENABLE TRIGGER USER;
+ALTER TABLE reporte                ENABLE TRIGGER USER;
 
 COMMIT;
 
