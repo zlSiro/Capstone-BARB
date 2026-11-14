@@ -339,7 +339,15 @@ const base = {
       errImageTooLarge: 'La imagen es demasiado grande (máx. 5 MB).',
       errImageInvalidFormat: 'El formato de la imagen no está permitido (solo JPEG, PNG o WebP).',
       errRateLimit: 'Demasiadas peticiones o límite diario alcanzado. Espera un momento.',
-      errMultimodalUnavailable: 'El análisis de imágenes no está disponible por ahora.'
+      errMultimodalUnavailable: 'El análisis de imágenes no está disponible por ahora.',
+      // --- Equipo de la conversación (HU-23) ---
+      maquinaLabel: 'Equipo (opcional)',
+      maquinaPlaceholder: 'Buscar por nombre o código…',
+      maquinaNinguna: 'Sin máquina',
+      maquinaQuitar: 'Quitar el equipo seleccionado',
+      maquinaSinResultados: 'Ningún equipo coincide.',
+      maquinaAyuda: 'Si eliges un equipo, la IA prioriza sus documentos y lo recuerda durante toda la conversación.',
+      imagenEnviada: 'Imagen enviada (no se guarda)'
     }
   },
 
@@ -656,7 +664,15 @@ const base = {
       errImageTooLarge: 'The image is too large (max 5 MB).',
       errImageInvalidFormat: 'The image format is not allowed (JPEG, PNG or WebP only).',
       errRateLimit: 'Too many requests or daily limit reached. Please wait a moment.',
-      errMultimodalUnavailable: 'Image analysis is currently unavailable.'
+      errMultimodalUnavailable: 'Image analysis is currently unavailable.',
+      // --- Conversation machine (HU-23) ---
+      maquinaLabel: 'Machine (optional)',
+      maquinaPlaceholder: 'Search by name or code…',
+      maquinaNinguna: 'No machine',
+      maquinaQuitar: 'Clear the selected machine',
+      maquinaSinResultados: 'No machine matches.',
+      maquinaAyuda: 'If you pick a machine, the AI prioritizes its documents and remembers it throughout the conversation.',
+      imagenEnviada: 'Image sent (not stored)'
     }
   }
 };
