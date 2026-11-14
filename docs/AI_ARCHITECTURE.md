@@ -544,9 +544,10 @@ permiso; el aislamiento por empresa va cerrado en la clausura de la tool.
   a «compresor XYZ-99» contra «Compressor A1» por el prefijo compartido y el aviso se
   registraba en el equipo equivocado. Ante la duda, la tool responde «no encontré» con
   el listado: el error barato es preguntar, no escribir en el activo incorrecto.
-- Las propuestas (`aviso`, `planta`, `parámetros`) muestran la línea parseable dentro de
-  un bloque de código, con negritas en los rótulos y en la confirmación. El gate sigue
-  parseando el mismo formato: el bloque conserva los espacios y no cambia el contrato.
+- Las propuestas (`aviso`, `planta`, `parámetros`) se muestran como ficha en viñetas:
+  título en negrita, subtítulo y rótulos de campo en negrita, valor literal. El gate
+  parsea esas viñetas y mantiene compatibilidad con el formato anterior de una línea
+  con pipes, para las propuestas ya persistidas en conversaciones abiertas.
 
 ### 2.12.6 Deudas registradas
 

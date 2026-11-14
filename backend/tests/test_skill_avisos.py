@@ -83,7 +83,7 @@ async def test_la_tool_propone_sin_registrar(db_pool):
     )
 
     assert salida.startswith(_PREFIJO_PROPUESTA_AVISO), "la propuesta termina el turno con el texto EXACTO"
-    assert "codigo=PUMP-E4" in salida
+    assert "- **codigo:** PUMP-E4" in salida
     fila = await fetch_one(
         "SELECT aviso_falla_id FROM aviso_falla WHERE descripcion = %(d)s",
         {"d": descripcion},
@@ -147,8 +147,24 @@ def test_parsear_propuesta_aviso_cierra_redonda():
 
 
 def test_parsear_propuesta_aviso_rechaza_severidad_que_no_cierra():
-    texto = _texto_aviso_para_pump("El motor se recalienta con carga plena").replace("severidad=media", "severidad=tormenta")
+    texto = _texto_aviso_para_pump("El motor se recalienta con carga plena").replace(
+        "**severidad:** media", "**severidad:** tormenta"
+    )
     assert _parsear_propuesta_aviso(texto) is None
+
+
+def test_parsear_propuesta_aviso_sigue_aceptando_el_formato_anterior():
+    """Las propuestas ya persistidas usan la línea con pipes: el gate debe seguir leyéndolas."""
+    anterior = (
+        "PROPUESTA DE AVISO DE FALLA\n\n"
+        "Voy a registrar un aviso de falla de «Pump E4» [PUMP-E4]:\n\n"
+        "- AVISO codigo=PUMP-E4 | severidad=alta | descripcion=El motor se recalienta con carga plena\n"
+    )
+    datos = _parsear_propuesta_aviso(anterior)
+    assert datos is not None
+    assert datos["codigo"] == "PUMP-E4"
+    assert datos["severidad"] == "high"
+    assert datos["descripcion"] == "El motor se recalienta con carga plena"
 
 
 def test_parsear_propuesta_aviso_rechaza_descripcion_corta():

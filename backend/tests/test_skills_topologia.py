@@ -268,7 +268,7 @@ def test_la_propuesta_de_parametros_parsea_redonda():
 
     # Formato roto (parseo que no cierra) se descarta: nunca se interpreta el
     # basura como aprobación.
-    corrompido = texto.replace("| sla=8", "| sla=carne")
+    corrompido = texto.replace("| **sla:** 8", "| **sla:** carne")
     assert _parsear_propuesta_parametros(corrompido) is None
 
     # Y una propuesta sin la línea de la máquina (incompleta): no es interpretable.

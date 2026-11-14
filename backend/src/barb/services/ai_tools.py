@@ -868,13 +868,42 @@ def _sin_separadores(texto: str) -> str:
     return " ".join(str(texto).replace("|", "/").split())
 
 
+# Viñetas del formato legible: «- **codigo:** COMP-A1». El rótulo va en negrita y el
+# valor queda literal; el parser acepta con o sin los dos puntos dentro de la negrita.
+_RE_CAMPO_VINETA = re.compile(
+    r"^\s*\*\*(?P<clave>[a-zA-Z]+):?\*\*:?\s*(?P<valor>.*)$"
+)
+
+
+def _pares_de_linea(linea: str) -> dict[str, str]:
+    """Campos «**clave:** valor» de una línea, separados por «|».
+
+    Tolera el formato anterior (sin negritas) devolviendo un dict vacío: cada parser
+    mantiene su regex de respaldo para las propuestas ya persistidas.
+    """
+    pares: dict[str, str] = {}
+    for segmento in linea.lstrip("- ").split("|"):
+        m = _RE_CAMPO_VINETA.match(segmento)
+        if m:
+            pares[m.group("clave").lower()] = m.group("valor").strip()
+    return pares
+
+
+def _campos_vineta(texto: str) -> dict[str, str]:
+    """Todos los campos «**clave:** valor» del texto, sin importar en qué línea estén."""
+    campos: dict[str, str] = {}
+    for linea in texto.splitlines():
+        campos.update(_pares_de_linea(linea))
+    return campos
+
+
 def _texto_propuesta_planta(nombre: str, ubicacion: str | None, maquinas: list[dict]) -> str:
     """Texto exacto que el asistente muestra (y persiste) al proponer una planta."""
     lineas = [
         _PREFIJO_PROPUESTA_PLANTA,
         "",
-        f"Voy a crear la planta «{_sin_separadores(nombre)}»"
-        + (f" en {_sin_separadores(ubicacion)}" if ubicacion else "")
+        f"Voy a crear la planta **«{_sin_separadores(nombre)}»**"
+        + (f" en **{_sin_separadores(ubicacion)}**" if ubicacion else "")
         + " con estas máquinas:",
         "",
     ]
@@ -887,17 +916,16 @@ def _texto_propuesta_planta(nombre: str, ubicacion: str | None, maquinas: list[d
             "",
         ]
     else:
-        # Bloque de código: conserva la indentación y el formato que parsea el gate.
-        lineas.append("```")
+        lineas += [f"**MÁQUINAS ({len(maquinas)})**"]
         for m in maquinas:
             lineas.append(
-                f"- MAQ codigo={_sin_separadores(m.get('codigo', ''))} "
-                f"| nombre={_sin_separadores(m.get('nombre', ''))} "
-                f"| disciplina={_sin_separadores(m.get('disciplina') or '')} "
-                f"| sla={m.get('sla_horas') if m.get('sla_horas') is not None else ''} "
-                f"| costo={m.get('costo_inactividad_minuto') if m.get('costo_inactividad_minuto') is not None else ''}"
+                f"- **codigo:** {_sin_separadores(m.get('codigo', ''))} "
+                f"| **nombre:** {_sin_separadores(m.get('nombre', ''))} "
+                f"| **disciplina:** {_sin_separadores(m.get('disciplina') or '')} "
+                f"| **sla:** {m.get('sla_horas') if m.get('sla_horas') is not None else ''} "
+                f"| **costo:** {m.get('costo_inactividad_minuto') if m.get('costo_inactividad_minuto') is not None else ''}"
             )
-        lineas += ["```", ""]
+        lineas.append("")
     lineas += ["**¿Confirmas la creación?** Responde **sí** o **no**."]
     return "\n".join(lineas)
 
@@ -911,8 +939,10 @@ def _parsear_propuesta_planta(texto: str) -> dict | None:
     # (parceo estricto: ejecutar un parseo que no cierre = no creó nada). La ubicación es
     # codiciosa y limitada a una línea: hasta la refactorización, `[^»]+?` (+ un grupo
     # opcional a su derecha) capturaba solo la primera letra («Q» en vez de «Quilicura»).
+    # `\*{0,2}` tolera el título en negrita del formato legible y el anterior sin negritas.
     cabecera = re.search(
-        r"Voy a crear la planta «(?P<nombre>[^»]+)»(?: en (?P<ubicacion>[^\n»]+))?"
+        r"Voy a crear la planta \*{0,2}«(?P<nombre>[^»]+)»\*{0,2}"
+        r"(?: en \*{0,2}(?P<ubicacion>[^\n»*]+)\*{0,2})?"
         r" con estas máquinas:",
         texto,
     )
@@ -922,18 +952,37 @@ def _parsear_propuesta_planta(texto: str) -> dict | None:
     maquinas = []
     for linea in texto.splitlines():
         m = _RE_MAQUINA_PLANTA.match(linea.strip())
-        if not m:
+        if m:
+            try:
+                sla = float(m.group("sla")) if m.group("sla").strip() else None
+                costo = float(m.group("costo")) if m.group("costo").strip() else None
+            except ValueError:
+                return None  # propuesta corrupta: se descarta, no se adivina
+            maquinas.append(
+                {
+                    "nombre": m.group("nombre").strip(),
+                    "codigo": m.group("codigo").strip(),
+                    "disciplina": m.group("disciplina").strip() or None,
+                    "sla_horas": sla,
+                    "costo_inactividad_minuto": costo,
+                }
+            )
+            continue
+
+        # Formato legible: «- **codigo:** TOR-01 | **nombre:** Torno 1 | …».
+        pares = _pares_de_linea(linea)
+        if "codigo" not in pares or "nombre" not in pares:
             continue
         try:
-            sla = float(m.group("sla")) if m.group("sla").strip() else None
-            costo = float(m.group("costo")) if m.group("costo").strip() else None
+            sla = float(pares["sla"]) if pares.get("sla") else None
+            costo = float(pares["costo"]) if pares.get("costo") else None
         except ValueError:
-            return None  # propuesta corrupta: se descarta, no se adivina
+            return None
         maquinas.append(
             {
-                "nombre": m.group("nombre").strip(),
-                "codigo": m.group("codigo").strip(),
-                "disciplina": m.group("disciplina").strip() or None,
+                "nombre": pares["nombre"],
+                "codigo": pares["codigo"],
+                "disciplina": pares.get("disciplina") or None,
                 "sla_horas": sla,
                 "costo_inactividad_minuto": costo,
             }
@@ -1041,22 +1090,20 @@ def _texto_propuesta_parametros(maquina: dict, antes: dict, cambios: dict) -> st
     lineas = [
         _PREFIJO_PROPUESTA_PARAMETROS,
         "",
-        f"Voy a actualizar «{_sin_separadores(maquina['nombre'])}» "
-        f"[{_sin_separadores(maquina['codigo'])}]"
-        + (f" en {_sin_separadores(maquina.get('planta') or '')}" if maquina.get("planta") else "")
+        f"Voy a actualizar **«{_sin_separadores(maquina['nombre'])}» "
+        f"[{_sin_separadores(maquina['codigo'])}]**"
+        + (f" en **{_sin_separadores(maquina.get('planta') or '')}**" if maquina.get("planta") else "")
         + ":",
         "",
     ]
     sla_nuevo = f"{cambios['sla_horas']:g}" if "sla_horas" in cambios else ""
     costo_nuevo = f"{cambios['costo_inactividad_minuto']:g}" if "costo_inactividad_minuto" in cambios else ""
-    # Bloque de código: conserva la indentación y el formato que parsea el gate.
+    # Una viñeta con los campos que parsea el gate: rótulo en negrita, valor literal.
     lineas += [
-        "```",
-        f"- MAQ codigo={_sin_separadores(maquina['codigo'])} "
-        f"| nombre={_sin_separadores(maquina['nombre'])} "
-        f"| planta={_sin_separadores(maquina.get('planta') or '')} "
-        f"| sla={sla_nuevo} | costo={costo_nuevo}",
-        "```",
+        f"- **codigo:** {_sin_separadores(maquina['codigo'])} "
+        f"| **nombre:** {_sin_separadores(maquina['nombre'])} "
+        f"| **planta:** {_sin_separadores(maquina.get('planta') or '')} "
+        f"| **sla:** {sla_nuevo} | **costo:** {costo_nuevo}",
         "",
     ]
     detalles = []
@@ -1084,18 +1131,38 @@ def _parsear_propuesta_parametros(texto: str) -> dict | None:
     maquinas = []
     for linea in texto.splitlines():
         m = _RE_LINEA_PARAMETROS.match(linea.strip())
-        if not m:
+        if m:
+            try:
+                sla = float(m.group("sla")) if m.group("sla").strip() else None
+                costo = float(m.group("costo")) if m.group("costo").strip() else None
+            except ValueError:
+                return None  # propuesta corrupta: se descarta, no se adivina
+            maquinas.append(
+                {
+                    "nombre": m.group("nombre").strip(),
+                    "codigo": m.group("codigo").strip(),
+                    "planta": m.group("planta").strip() or None,
+                    "sla_horas": sla,
+                    "costo_inactividad_minuto": costo,
+                }
+            )
+            continue
+
+        # Formato legible: la viñeta de datos trae codigo + nombre + planta. Las viñetas
+        # humanas («- **SLA:** 4 h → 2 h») no tienen esos campos y se ignoran.
+        pares = _pares_de_linea(linea)
+        if "codigo" not in pares or "nombre" not in pares or "planta" not in pares:
             continue
         try:
-            sla = float(m.group("sla")) if m.group("sla").strip() else None
-            costo = float(m.group("costo")) if m.group("costo").strip() else None
+            sla = float(pares["sla"]) if pares.get("sla") else None
+            costo = float(pares["costo"]) if pares.get("costo") else None
         except ValueError:
-            return None  # propuesta corrupta: se descarta, no se adivina
+            return None
         maquinas.append(
             {
-                "nombre": m.group("nombre").strip(),
-                "codigo": m.group("codigo").strip(),
-                "planta": m.group("planta").strip() or None,
+                "nombre": pares["nombre"],
+                "codigo": pares["codigo"],
+                "planta": pares.get("planta") or None,
                 "sla_horas": sla,
                 "costo_inactividad_minuto": costo,
             }
@@ -1252,20 +1319,19 @@ def _normalizar_severidad(valor: str | None) -> tuple[str, bool]:
 def _texto_propuesta_aviso(maquina: dict, descripcion: str, severidad: str) -> str:
     """Texto exacto que el asistente muestra (y persiste) al proponer registrar una falla.
 
-    La línea `- AVISO codigo=...` va dentro de un bloque de código: conserva los espacios
-    y el formato que el gate parsea, y se lee como una ficha en vez de una línea suelta.
+    Ficha en viñetas: el título y el subtítulo van en negrita y cada campo muestra el
+    rótulo en negrita con el valor literal. El gate parsea esas mismas viñetas.
     """
     return (
         f"{_PREFIJO_PROPUESTA_AVISO}\n\n"
-        f"Voy a registrar un aviso de falla de «{_sin_separadores(maquina['nombre'])}» "
-        f"[{_sin_separadores(maquina['codigo'])}]"
-        + (f" en {_sin_separadores(maquina['planta'])}" if maquina.get("planta") else "")
+        f"Voy a registrar un aviso de falla de "
+        f"**«{_sin_separadores(maquina['nombre'])}» [{_sin_separadores(maquina['codigo'])}]**"
+        + (f" en **{_sin_separadores(maquina['planta'])}**" if maquina.get("planta") else "")
         + ":\n\n"
-        "```\n"
-        f"- AVISO codigo={_sin_separadores(maquina['codigo'])} "
-        f"| severidad={_ETIQUETA_SEVERIDAD[severidad]} "
-        f"| descripcion={_sin_separadores(descripcion)}\n"
-        "```\n\n"
+        "**AVISO**\n"
+        f"- **codigo:** {_sin_separadores(maquina['codigo'])}\n"
+        f"- **severidad:** {_ETIQUETA_SEVERIDAD[severidad]}\n"
+        f"- **descripcion:** {_sin_separadores(descripcion)}\n\n"
         "La falla queda **pendiente** para el supervisor: no se crea una OT al instante.\n\n"
         "**¿Confirmas el registro?** Responde **sí** o **no**."
     )
@@ -1275,6 +1341,24 @@ def _parsear_propuesta_aviso(texto: str) -> dict | None:
     """Datos del aviso propuesto, o None si el formato no cierra (fallo cerrado)."""
     if not texto.startswith(_PREFIJO_PROPUESTA_AVISO):
         return None
+
+    # Formato legible: «- **codigo:** COMP-A1» y compañía.
+    campos = _campos_vineta(texto)
+    if campos.get("codigo") and campos.get("severidad") and campos.get("descripcion"):
+        clave = _normalizar(campos["severidad"])
+        if clave not in _SEVERIDAD_A_CLAVE:
+            return None  # severidad que no cierra: la propuesta se descarta entera
+        descripcion = campos["descripcion"].strip()
+        if len(descripcion) < 5:
+            return None
+        return {
+            "tipo": "aviso",
+            "codigo": campos["codigo"].strip(),
+            "severidad": _SEVERIDAD_A_CLAVE[clave],
+            "descripcion": descripcion,
+        }
+
+    # Formato anterior (una línea con pipes), para propuestas ya persistidas.
     for linea in texto.splitlines():
         m = _RE_LINEA_AVISO.match(linea.strip())
         if not m:
