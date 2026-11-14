@@ -197,7 +197,7 @@ def build_tsquery(*texts: str, max_terms: int = 12) -> str:
 
 
 async def search_chunks_lexical(
-    empresa_id: int, *query_texts: str, limit: int = TOP_K
+    empresa_id: int, *query_texts: str, limit: int = TOP_K, maquina_id: int | None = None
 ) -> list[dict]:
     """
     Búsqueda full-text (comportamiento previo a la Fase 1).
@@ -205,6 +205,8 @@ async def search_chunks_lexical(
     Se conserva por dos motivos: es el fallback cuando los embeddings no están
     disponibles, y sigue siendo mejor que nada para coincidencias exactas de siglas o
     códigos («FAG 6308», «CH-01») que un modelo semántico puede diluir.
+
+    Con `maquina_id` restringe a los documentos ligados a esa máquina (HU-23); `None` = sin filtro.
     """
     tsquery = build_tsquery(*query_texts)
     if not tsquery:
@@ -217,10 +219,11 @@ async def search_chunks_lexical(
         CROSS JOIN to_tsquery('spanish', %(tsquery)s) AS q(query)
         WHERE c.empresa_id = %(empresa_id)s
           AND c.tsv @@ q.query
+          AND (%(maquina_id)s::int IS NULL OR d.maquina_id = %(maquina_id)s)
         ORDER BY rank DESC, c.chunk_id
         LIMIT %(limit)s
         """,
-        {"tsquery": tsquery, "empresa_id": empresa_id, "limit": limit},
+        {"tsquery": tsquery, "empresa_id": empresa_id, "limit": limit, "maquina_id": maquina_id},
     )
 
 
@@ -234,6 +237,8 @@ async def search_chunks_semantic(
     *query_texts: str,
     limit: int = TOP_K,
     min_similarity: float | None = None,
+    maquina_id: int | None = None,
+    vector: list[float] | None = None,
 ) -> list[dict]:
     """
     Búsqueda vectorial: embebe la consulta y ordena por distancia coseno en pgvector.
@@ -247,6 +252,9 @@ async def search_chunks_semantic(
     escrita («compresor» por «compressor», o una frase larga y coloquial). Bajar el
     umbral en un segundo intento es preferible a quedarse sin contexto.
 
+    `maquina_id` restringe a los documentos de esa máquina (HU-23). `vector` permite reutilizar el
+    embedding de la consulta ya calculado (así la búsqueda en dos pasadas embebe una sola vez).
+
     Lanza si el proveedor no está configurado o falla: decidir el fallback es de
     `search_chunks`, no de esta función.
     """
@@ -256,8 +264,9 @@ async def search_chunks_semantic(
 
     umbral = settings.rag_min_similarity if min_similarity is None else min_similarity
 
-    vector = await embed_texto(consulta)
-    filas = await search_similar_chunks(vector, empresa_id=empresa_id, top_k=limit)
+    if vector is None:
+        vector = await embed_texto(consulta)
+    filas = await search_similar_chunks(vector, empresa_id=empresa_id, top_k=limit, maquina_id=maquina_id)
     # `search_similar_chunks` devuelve SIEMPRE los más cercanos, aunque no vengan al caso:
     # sin este filtro, «que hora es» inyectaría un manual. El umbral está medido, no
     # elegido a ojo (ver `rag_min_similarity` en config.py).
@@ -274,9 +283,18 @@ async def search_chunks_semantic(
     ]
 
 
-async def search_chunks(empresa_id: int, *query_texts: str, limit: int = TOP_K) -> list[dict]:
+async def _buscar_pasada(
+    empresa_id: int,
+    query_texts: tuple[str, ...],
+    limit: int,
+    extra: dict,
+    semantico: bool,
+) -> list[dict]:
     """
-    Fragmentos más relevantes de la empresa: semántico, semántico laxo y léxico.
+    Una pasada del pipeline: semántico, semántico laxo y léxico.
+
+    `extra` son kwargs adicionales (`maquina_id`, `vector`) para las búsquedas; vacío = comportamiento
+    previo a HU-23, con las mismas llamadas de siempre. `semantico=False` salta directo al full-text.
 
     Se intenta en tres pasos, del más estricto al más permisivo, porque cada uno falla
     en un caso distinto:
@@ -290,9 +308,9 @@ async def search_chunks(empresa_id: int, *query_texts: str, limit: int = TOP_K) 
        ningún fragmento llega ni al umbral laxo. Es la red que garantiza que el chat
        nunca se quede sin contexto por un servicio externo.
     """
-    if embeddings_disponibles():
+    if semantico:
         try:
-            chunks = await search_chunks_semantic(empresa_id, *query_texts, limit=limit)
+            chunks = await search_chunks_semantic(empresa_id, *query_texts, limit=limit, **extra)
             if chunks:
                 logger.info("RAG: %d fragmento(s) por similitud semántica.", len(chunks))
                 return chunks
@@ -307,6 +325,7 @@ async def search_chunks(empresa_id: int, *query_texts: str, limit: int = TOP_K) 
                 *query_texts,
                 limit=limit,
                 min_similarity=settings.rag_min_similarity_laxa,
+                **extra,
             )
             if chunks:
                 logger.info(
@@ -315,9 +334,66 @@ async def search_chunks(empresa_id: int, *query_texts: str, limit: int = TOP_K) 
                 return chunks
         except Exception as e:  # noqa: BLE001 — el proveedor externo no debe tumbar el chat
             logger.warning("RAG: búsqueda semántica falló (%s); se usa full-text.", e)
-            return await search_chunks_lexical(empresa_id, *query_texts, limit=limit)
+            return await search_chunks_lexical(empresa_id, *query_texts, limit=limit, **_extra_lexico(extra))
 
         logger.info("RAG: sin fragmentos ni con umbral laxo; se intenta full-text.")
     else:
         logger.info("RAG: sin proveedor de embeddings configurado; búsqueda full-text.")
-    return await search_chunks_lexical(empresa_id, *query_texts, limit=limit)
+    return await search_chunks_lexical(empresa_id, *query_texts, limit=limit, **_extra_lexico(extra))
+
+
+def _extra_lexico(extra: dict) -> dict:
+    """El full-text no usa el vector de la consulta: solo el filtro de máquina."""
+    return {k: v for k, v in extra.items() if k == "maquina_id"}
+
+
+def _clave_chunk(c: dict) -> tuple:
+    """Identidad de un fragmento entre pasadas (el camino semántico no trae `chunk_id`)."""
+    return (c["documento_id"], c["contenido"])
+
+
+async def search_chunks(
+    empresa_id: int, *query_texts: str, limit: int = TOP_K, maquina_id: int | None = None
+) -> list[dict]:
+    """
+    Fragmentos más relevantes de la empresa (pipeline de `_buscar_pasada`).
+
+    Sin `maquina_id`: comportamiento histórico, sin cambios.
+
+    Con `maquina_id` (HU-23, «máquina primero + relleno»):
+    - Pasada 1: mismo pipeline filtrado a los documentos de esa máquina (`de_maquina=True`).
+    - Pasada 2, solo si faltan fragmentos para llegar a `limit`: pipeline sin filtro de máquina
+      (docs generales y de otras máquinas de la empresa), sin repetir lo ya elegido
+      (`de_maquina=False`). Así no se pierden procedimientos transversales (seguridad, LOTO).
+    Siempre dentro de la empresa. El embedding de la consulta se calcula una sola vez.
+    """
+    if maquina_id is None:
+        return await _buscar_pasada(empresa_id, query_texts, limit, {}, embeddings_disponibles())
+
+    vector = None
+    if embeddings_disponibles():
+        consulta = " ".join(t for t in query_texts if (t or "").strip()).strip()
+        if consulta:
+            try:
+                vector = await embed_texto(consulta)
+            except Exception as e:  # noqa: BLE001 — el proveedor externo no debe tumbar el chat
+                logger.warning("RAG: no se pudo embeber la consulta (%s); se usa full-text.", e)
+    semantico = vector is not None
+    extra_vec = {"vector": vector} if semantico else {}
+
+    propios = await _buscar_pasada(
+        empresa_id, query_texts, limit, {**extra_vec, "maquina_id": maquina_id}, semantico
+    )
+    for c in propios:
+        c["de_maquina"] = True
+    faltan = limit - len(propios)
+    if faltan <= 0:
+        return propios[:limit]
+
+    elegidos = {_clave_chunk(c) for c in propios}
+    # Se pide de más para poder descartar los ya elegidos y aun así completar el cupo.
+    generales = await _buscar_pasada(empresa_id, query_texts, limit + len(propios), extra_vec, semantico)
+    relleno = [c for c in generales if _clave_chunk(c) not in elegidos][:faltan]
+    for c in relleno:
+        c["de_maquina"] = False
+    return propios + relleno

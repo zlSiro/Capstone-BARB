@@ -179,6 +179,7 @@ async def create_session(
     usuario_id: int,
     empresa_id: int,
     primer_mensaje: str,
+    maquina: dict | None = None,
 ) -> str:
     """Crea una sesión nueva y devuelve su UUID (str).
 
@@ -186,18 +187,27 @@ async def create_session(
     nombre, planta y disciplina: son las columnas que muestra la columna «Equipo» del
     historial (CGBIDA-454). La detección es best-effort: si falla o hay ambigüedad, la
     sesión se crea igual y el título cae al formato de frase.
-    """
-    # Import perezoso: `ai_tools` arrastra LangChain y este módulo lo usan los tests y los
-    # routers de historial, que no necesitan el grafo para listar sesiones.
-    from barb.services.ai_tools import identificar_maquina
 
-    maquina = await identificar_maquina(empresa_id, primer_mensaje)
+    `maquina` (HU-23) es la máquina elegida explícitamente por el usuario, ya validada contra su
+    empresa por quien llama (dict con `maquina_id`, `nombre`, `codigo`, `planta`, `disciplina`).
+    Tiene prioridad sobre `identificar_maquina` y es la única que fija `maquina_id`: la detección
+    por texto solo rellena el snapshot del historial, nunca vincula la sesión a una máquina.
+    """
+    maquina_id = None
+    if maquina:
+        maquina_id = maquina.get("maquina_id")
+    else:
+        # Import perezoso: `ai_tools` arrastra LangChain y este módulo lo usan los tests y los
+        # routers de historial, que no necesitan el grafo para listar sesiones.
+        from barb.services.ai_tools import identificar_maquina
+
+        maquina = await identificar_maquina(empresa_id, primer_mensaje)
 
     row = await fetch_one(
         """
         INSERT INTO chat_session (
             empresa_id, usuario_id, titulo, messages, metadata,
-            machine_name, plant_name, discipline
+            maquina_id, machine_name, plant_name, discipline
         )
         VALUES (
             %(empresa_id)s,
@@ -205,6 +215,7 @@ async def create_session(
             %(titulo)s,
             '[]'::jsonb,
             '{}'::jsonb,
+            %(maquina_id)s,
             %(machine_name)s,
             %(plant_name)s,
             %(discipline)s
@@ -215,6 +226,7 @@ async def create_session(
             "empresa_id": empresa_id,
             "usuario_id": usuario_id,
             "titulo": _make_titulo(primer_mensaje, maquina),
+            "maquina_id": maquina_id,
             "machine_name": (maquina or {}).get("nombre"),
             "plant_name": (maquina or {}).get("planta"),
             "discipline": (maquina or {}).get("disciplina"),
@@ -229,13 +241,44 @@ async def get_session(session_id: str, usuario_id: int) -> dict | None:
     """Devuelve la sesión si pertenece al usuario; None en caso contrario."""
     return await fetch_one(
         """
-        SELECT session_id, usuario_id, empresa_id, titulo, messages, saved_at
+        SELECT session_id, usuario_id, empresa_id, titulo, messages, saved_at,
+               maquina_id, machine_name
         FROM chat_session
         WHERE session_id = %(sid)s AND usuario_id = %(uid)s
         LIMIT 1
         """,
         {"sid": session_id, "uid": usuario_id},
     )
+
+
+async def set_maquina(session_id: str, usuario_id: int, maquina: dict | None) -> bool:
+    """Fija, cambia o quita la máquina vinculada a la sesión (HU-23). True si la sesión es del usuario.
+
+    `maquina` es un dict ya validado contra la empresa (`maquina_id`, `nombre`, `planta`, `disciplina`);
+    `None` desvincula. Actualiza también el snapshot del historial (`machine_name`, `plant_name`,
+    `discipline`): la máquina elegida manda sobre lo que detectó `identificar_maquina`.
+    """
+    m = maquina or {}
+    row = await fetch_one(
+        """
+        UPDATE chat_session
+           SET maquina_id   = %(maquina_id)s,
+               machine_name = %(machine_name)s,
+               plant_name   = %(plant_name)s,
+               discipline   = %(discipline)s
+         WHERE session_id = %(sid)s AND usuario_id = %(uid)s
+        RETURNING session_id
+        """,
+        {
+            "sid": session_id,
+            "uid": usuario_id,
+            "maquina_id": m.get("maquina_id"),
+            "machine_name": m.get("nombre"),
+            "plant_name": m.get("planta"),
+            "discipline": m.get("disciplina"),
+        },
+    )
+    return row is not None
 
 
 def ventana_de_memoria(mensajes: list[dict], limite: int | None) -> list[dict]:
