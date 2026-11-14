@@ -70,6 +70,33 @@ class ChatRequest(BaseModel):
         max_length=2000,
         description="Mensaje del usuario (1 a 2000 caracteres).",
     )
+    # HU-23. Ausente = conserva la máquina de la sesión; int = fija/cambia; null = desvincula.
+    # La diferencia entre ausente y null se lee con `model_fields_set`.
+    maquina_id: int | None = None
+
+
+async def _resolver_maquina_pedida(request, empresa_id: int) -> tuple[bool, dict | None]:
+    """Interpreta `maquina_id` del request: `(cambia, ficha)`.
+
+    404 si la máquina no existe o es de otra empresa. Se llama ANTES del rate limit y del límite
+    de tokens: un request inválido no consume cuota.
+    """
+    if "maquina_id" not in request.model_fields_set:
+        return False, None
+    if request.maquina_id is None:
+        return True, None
+    maquina = await chat_repository.get_maquina_de_empresa(request.maquina_id, empresa_id)
+    if maquina is None:
+        raise HTTPException(status_code=404, detail="Máquina no encontrada.")
+    return True, maquina
+
+
+async def _maquina_de_la_sesion(existing: dict, empresa_id: int) -> dict | None:
+    """Ficha de la máquina vinculada a una sesión existente (None si no tiene o ya no existe)."""
+    mid = existing.get("maquina_id")
+    if mid is None:
+        return None
+    return await chat_repository.get_maquina_de_empresa(int(mid), empresa_id)
 
 
 def _now_ms() -> int:
@@ -87,6 +114,8 @@ async def stream_chat(
     if user["role"] == "super_usuario" or user["empresa_id"] is None:
         raise HTTPException(status_code=403, detail="Tu perfil no tiene acceso a DocChat.")
     empresa_id = int(user["empresa_id"])
+
+    cambia_maquina, maquina_pedida = await _resolver_maquina_pedida(request, empresa_id)
 
     chat_rate_limiter.check(str(user_id))
 
@@ -111,13 +140,20 @@ async def stream_chat(
         history = await chat_repository.load_messages(
             session_id, user_id, limite=settings.chat_memory_window
         )
+        if cambia_maquina:
+            await chat_repository.set_maquina(session_id, user_id, maquina_pedida)
+            maquina_activa = maquina_pedida
+        else:
+            maquina_activa = await _maquina_de_la_sesion(existing, empresa_id)
     else:
         session_id = await chat_repository.create_session(
             usuario_id=user_id,
             empresa_id=empresa_id,
             primer_mensaje=request.message,
+            maquina=maquina_pedida,
         )
         history = []
+        maquina_activa = maquina_pedida
 
     # --- RAG + Skills: el grafo de LangGraph hace retrieval, generación y tools ---
     # Las dos pistas siguientes resuelven preguntas de seguimiento («¿y el torque?»): se
@@ -149,6 +185,7 @@ async def stream_chat(
                 # recibe la OT y quién figura como creador. No viaja al modelo.
                 usuario_id=user_id,
                 rol=user.get("role"),
+                maquina=maquina_activa,
             )
 
             async for chunk in stream:

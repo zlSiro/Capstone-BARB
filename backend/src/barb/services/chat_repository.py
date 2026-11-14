@@ -251,6 +251,24 @@ async def get_session(session_id: str, usuario_id: int) -> dict | None:
     )
 
 
+async def get_maquina_de_empresa(maquina_id: int, empresa_id: int) -> dict | None:
+    """Ficha de la máquina (`maquina_id`, `nombre`, `codigo`, `planta`, `disciplina`) si es de la empresa.
+
+    None si no existe o su planta es de otra empresa: quien llama responde 404 sin revelar cuál de
+    los dos casos fue (HU-23).
+    """
+    return await fetch_one(
+        """
+        SELECT m.maquina_id, m.nombre, m.codigo, p.nombre AS planta, d.nombre AS disciplina
+          FROM maquina m
+          JOIN planta p ON p.planta_id = m.planta_id
+          LEFT JOIN disciplina d ON d.disciplina_id = m.disciplina_id
+         WHERE m.maquina_id = %(mid)s AND p.empresa_id = %(eid)s
+        """,
+        {"mid": maquina_id, "eid": empresa_id},
+    )
+
+
 async def set_maquina(session_id: str, usuario_id: int, maquina: dict | None) -> bool:
     """Fija, cambia o quita la máquina vinculada a la sesión (HU-23). True si la sesión es del usuario.
 

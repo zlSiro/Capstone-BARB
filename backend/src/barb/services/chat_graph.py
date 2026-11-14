@@ -66,6 +66,7 @@ from barb.services.llm_service import (
     RAG_RULES,
     _build_llm_con_fallback,
     _dicts_to_messages,
+    bloque_equipo,
 )
 
 logger = logging.getLogger("barb.chat_graph")
@@ -148,12 +149,15 @@ REGLAS_CON_TOOLS = (
 )
 
 
-def _prompt_sistema(contexto: str) -> str:
+def _prompt_sistema(contexto: str, maquina: dict | None = None) -> str:
     base = settings.barb_system_prompt + RAG_RULES + REGLAS_CON_TOOLS
     # RAG_RULES trae `{context}` como variable de plantilla porque se usa con
     # ChatPromptTemplate. Acá el texto ya viene resuelto, así que se reemplaza literal:
     # si se dejara la llave, el modelo vería "{context}" en el prompt.
-    return base.replace("{context}", contexto or "(sin fragmentos de documentación)")
+    prompt = base.replace("{context}", contexto or "(sin fragmentos de documentación)")
+    # La ficha va DESPUÉS del contexto (y de su reemplazo): el texto de un documento no puede
+    # colarse en ella ni alterarla.
+    return prompt + bloque_equipo(maquina)
 
 
 def crear_grafo(
@@ -162,9 +166,13 @@ def crear_grafo(
     usuario_id: int | None = None,
     rol: str | None = None,
     habla_del_usuario: list[str] | None = None,
+    maquina: dict | None = None,
 ):
     """
     Compila el grafo del chat para una empresa.
+
+    `maquina` (HU-23) es la ficha del equipo fijado en la conversación, ya validada contra la
+    empresa: prioriza sus documentos en el retrieval y se inyecta en el system prompt.
 
     `llm` permite inyectar un modelo falso en los tests: el resto del grafo (retrieval,
     tools, condiciones) es el de producción.
@@ -319,13 +327,16 @@ def crear_grafo(
         pistas = [p for p in estado.get("pistas", []) if p]
         if not pistas:
             return {"contexto": "", "fragmentos": 0}
-        chunks = await search_chunks(empresa_id, *pistas)
+        if maquina:
+            chunks = await search_chunks(empresa_id, *pistas, maquina_id=maquina["maquina_id"])
+        else:
+            chunks = await search_chunks(empresa_id, *pistas)
         logger.info("Grafo: %d fragmento(s) recuperados para el contexto.", len(chunks))
         return {"contexto": format_context(chunks), "fragmentos": len(chunks)}
 
     async def generar(estado: EstadoChat) -> dict:
         mensajes: list[BaseMessage] = [
-            SystemMessage(content=_prompt_sistema(estado.get("contexto", ""))),
+            SystemMessage(content=_prompt_sistema(estado.get("contexto", ""), maquina)),
             *estado["messages"],
         ]
         respuesta = await modelo.ainvoke(mensajes)
@@ -389,9 +400,12 @@ async def astream_respuesta(
     llm: BaseChatModel | None = None,
     usuario_id: int | None = None,
     rol: str | None = None,
+    maquina: dict | None = None,
 ):
     """
     Genera la respuesta en streaming, token a token.
+
+    `maquina`: ficha del equipo fijado en la conversación (HU-23), o None.
 
     Solo se reenvía lo que producen los nodos que hablan al usuario (`_NODOS_QUE_HABLAN`):
     las respuestas normales, las resoluciones del candado de OTs y el texto exacto de la
@@ -411,6 +425,7 @@ async def astream_respuesta(
         usuario_id=usuario_id,
         rol=rol,
         habla_del_usuario=habla_del_usuario,
+        maquina=maquina,
     )
     entrada: EstadoChat = {
         "messages": [*_dicts_to_messages(historial), HumanMessage(content=mensaje)],

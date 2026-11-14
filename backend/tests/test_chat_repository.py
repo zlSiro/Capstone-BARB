@@ -520,3 +520,16 @@ async def test_borrar_maquina_deja_la_sesion_con_snapshot_y_sin_vinculo(cleanup_
     row = await _fila_sesion(sid)
     assert row["maquina_id"] is None
     assert row["machine_name"] == "Temporal HU23"
+
+
+@pytest.mark.asyncio
+async def test_get_maquina_de_empresa_solo_devuelve_maquinas_de_la_empresa(seeded_ids):
+    propia = await _maquina_dict(1)
+    ajena = await _maquina_dict(2)
+
+    ficha = await chat_repository.get_maquina_de_empresa(propia["maquina_id"], 1)
+    assert ficha["nombre"] == propia["nombre"] and ficha["planta"] == propia["planta"]
+    assert set(ficha) == {"maquina_id", "nombre", "codigo", "planta", "disciplina"}
+
+    assert await chat_repository.get_maquina_de_empresa(ajena["maquina_id"], 1) is None
+    assert await chat_repository.get_maquina_de_empresa(2_000_000_000, 1) is None
