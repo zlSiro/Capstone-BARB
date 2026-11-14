@@ -511,6 +511,13 @@ quién pedirle, y el endurecimiento de la Skill de plantas tras el QA del 05-11 
   **código exacto**; el INSERT es la misma lógica del endpoint (`AV-año-id`, una
   transacción).
 - Un aviso **no es una OT**: queda `pendiente` en la bandeja del supervisor.
+- Regla 13 del prompt: un reporte de falla («se cayó la prensa B3, salió aceite…») se
+  propone como aviso aunque no diga «anótalo». Si además pide diagnóstico, primero
+  responde con la documentación y al final ofrece registrarlo. El prompt prohíbe
+  afirmar que no tiene herramientas: las tiene en ese turno (Chat 4 del QA).
+- La severidad se valida contra el mensaje real del usuario, no contra lo que manda el
+  modelo: si la persona dijo «urgentísima», la tool la rechaza y ofrece baja/media/alta/
+  crítica, aunque el modelo la haya traducido a «alta» (Chat 7 del QA).
 
 ### 2.12.2 Mensaje de permisos unificado
 

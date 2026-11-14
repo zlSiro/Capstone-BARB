@@ -506,3 +506,19 @@ def test_las_reglas_de_conversacion_tienen_prioridad_declarada():
 
     prompt = _prompt_sistema("x")
     assert "tienen prioridad sobre la documentación para interpretar" in prompt
+
+
+def test_el_prompt_manda_registrar_la_falla_y_no_negar_las_herramientas():
+    """
+    Chat 4 de la QA: «se cayó la prensa B3, salió aceite…» respondió con el manual y
+    afirmó que no tenía herramientas. La falla reportada debe ir como aviso (aunque no
+    diga «anótalo») y el modelo no puede negar las tools que tiene en ese turno.
+    """
+    from barb.services.chat_graph import _prompt_sistema
+
+    prompt = _prompt_sistema("(fragmentos de prueba)")
+    assert "NUNCA respondas que no tienes acceso a herramientas" in prompt
+    assert "aunque no diga «anótalo»" in prompt
+    assert "prioridad sobre la de responder solo con documentación" in prompt
+    # Una severidad inventada se pasa literal: la tool la rechaza y ofrece las válidas.
+    assert "«urgentísima»" in prompt

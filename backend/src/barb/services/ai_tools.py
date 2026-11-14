@@ -1316,6 +1316,42 @@ def _normalizar_severidad(valor: str | None) -> tuple[str, bool]:
     return "medium", False
 
 
+# El usuario puede pedir una severidad que el sistema no maneja («urgentísima»,
+# «grave»). Es un dato suyo, no del modelo: si la nombró, se valida contra sus propias
+# palabras y no contra la traducción que hizo el modelo (QA 14-11, Chat 7).
+_RE_SEVERIDAD_DICHA = re.compile(
+    r"(?:(?:severidad|prioridad|gravedad)\s+(?:de\s+)?"
+    r"|(?:ponle|ponla|que\s+sea)\s+(?:severidad\s+)?)"
+    r"(?P<valor>[a-záéíóúüñ]+)",
+    re.IGNORECASE,
+)
+_SEVERIDADES_NO_SOPORTADAS = {
+    "urgente",
+    "urgentisima",
+    "urgentisimo",
+    "gravisima",
+    "gravisimo",
+    "grave",
+    "severa",
+    "severo",
+    "extrema",
+    "extremo",
+    "maxima",
+    "maximo",
+    "inmediata",
+    "inmediato",
+}
+
+
+def _severidad_no_soportada(texto: str | None) -> str | None:
+    """La severidad inválida que nombró el usuario en su mensaje, si la nombró."""
+    m = _RE_SEVERIDAD_DICHA.search(texto or "")
+    if not m:
+        return None
+    valor = m.group("valor")
+    return valor if _normalizar(valor) in _SEVERIDADES_NO_SOPORTADAS else None
+
+
 def _texto_propuesta_aviso(maquina: dict, descripcion: str, severidad: str) -> str:
     """Texto exacto que el asistente muestra (y persiste) al proponer registrar una falla.
 
@@ -1853,6 +1889,15 @@ def crear_tools(
         consulta = (nombre_maquina or "").strip()
         if not consulta:
             return "Necesito el nombre o el código de la máquina con la falla."
+
+        # La severidad la dijo (o no) la persona: si nombró una que no existe, se rechaza
+        # aunque el modelo la haya traducido a una válida. Solo mira el mensaje actual.
+        dicha = _severidad_no_soportada((habla_del_usuario or [None])[-1])
+        if dicha:
+            return (
+                f"La severidad «{dicha}» no la reconozco: usa baja, media, alta o crítica. "
+                "Dime cuál prefieres y la propongo con esa."
+            )
 
         sev, reconocida = _normalizar_severidad(severidad)
         if not reconocida:

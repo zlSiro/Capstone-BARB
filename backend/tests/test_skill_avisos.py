@@ -36,8 +36,16 @@ GERENTE_ID = 2  # gerente de la empresa 1 (reportar_falla: True en la matriz)
 MAQUINA_BASE = {"nombre": "Pump E4", "codigo": "PUMP-E4", "planta": None}
 
 
-def _herramientas_avisos(rol: str = "gerente"):
-    return {t.name: t for t in crear_tools(empresa_id=1, usuario_id=GERENTE_ID, rol=rol)}
+def _herramientas_avisos(rol: str = "gerente", habla_del_usuario: list[str] | None = None):
+    return {
+        t.name: t
+        for t in crear_tools(
+            empresa_id=1,
+            usuario_id=GERENTE_ID,
+            rol=rol,
+            habla_del_usuario=habla_del_usuario,
+        )
+    }
 
 
 def _texto_aviso_para_pump(descripcion: str) -> str:
@@ -108,6 +116,64 @@ async def test_la_tool_rechaza_severidad_invalida(db_pool):
     )
     assert "severidad" in salida.lower()
     assert not salida.startswith(_PREFIJO_PROPUESTA_AVISO)
+
+
+@pytest.mark.asyncio
+async def test_la_tool_rechaza_la_severidad_dicha_aunque_el_modelo_la_traduzca(db_pool):
+    """Chat 7 de la QA: la persona dijo «urgentísima» y el modelo mandó «alta».
+
+    La severidad es un dato del usuario: la tool la valida contra el mensaje real y
+    rechaza la propuesta en vez de aceptar una traducción silenciosa.
+    """
+    herramientas = _herramientas_avisos(
+        habla_del_usuario=[
+            "Anota una falla del compresor A1: se paró solo. Ponle severidad urgentísima."
+        ]
+    )
+    salida = await herramientas["proponer_aviso_falla"].ainvoke(
+        {
+            "nombre_maquina": "Pump E4",
+            "descripcion": "Se paró solo y no arranca desde ayer",
+            "severidad": "alta",
+        }
+    )
+    assert "urgentísima" in salida
+    assert "baja, media, alta o crítica" in salida
+    assert not salida.startswith(_PREFIJO_PROPUESTA_AVISO)
+
+    # También sin la palabra «severidad»: «ponle urgentísima».
+    herramientas = _herramientas_avisos(
+        habla_del_usuario=["Ponle urgentísima al aviso del compresor A1."]
+    )
+    salida = await herramientas["proponer_aviso_falla"].ainvoke(
+        {
+            "nombre_maquina": "Pump E4",
+            "descripcion": "Se paró solo y no arranca desde ayer",
+            "severidad": "alta",
+        }
+    )
+    assert "urgentísima" in salida
+    assert not salida.startswith(_PREFIJO_PROPUESTA_AVISO)
+
+
+@pytest.mark.asyncio
+async def test_una_severidad_vieja_no_contamina_la_correccion(db_pool):
+    """Solo manda el mensaje actual: si antes dijo «urgentísima» y ahora «media», vale media."""
+    herramientas = _herramientas_avisos(
+        habla_del_usuario=[
+            "Ponle severidad urgentísima.",
+            "Mejor ponle severidad media y anótala.",
+        ]
+    )
+    salida = await herramientas["proponer_aviso_falla"].ainvoke(
+        {
+            "nombre_maquina": "Pump E4",
+            "descripcion": "Se paró solo y no arranca desde ayer",
+            "severidad": "media",
+        }
+    )
+    assert salida.startswith(_PREFIJO_PROPUESTA_AVISO)
+    assert "- **severidad:** media" in salida
 
 
 @pytest.mark.asyncio
