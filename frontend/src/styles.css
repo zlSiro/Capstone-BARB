@@ -179,6 +179,45 @@
       scroll-behavior: auto !important;
     }
   }
+
+  /*
+   * Markdown del chat (ngx-markdown). El Preflight de Tailwind borra los marcadores de
+   * lista (`ul, ol { list-style: none }`), así que las viñetas de las propuestas no se
+   * veían. Se restauran solo dentro del markdown, sin activar todo el plugin de
+   * tipografía (que cambiaría el resto de la conversación).
+   */
+  markdown ul,
+  markdown ol {
+    margin: 0.25rem 0 0.5rem;
+    padding-left: 1.25rem;
+  }
+  markdown ul {
+    list-style: disc;
+  }
+  markdown ul ul {
+    list-style: circle;
+  }
+  markdown ol {
+    list-style: decimal;
+  }
+  markdown li {
+    margin: 0.125rem 0;
+  }
+  markdown li > p {
+    margin: 0;
+  }
+  markdown p {
+    margin: 0.35rem 0;
+  }
+  markdown p:first-child {
+    margin-top: 0;
+  }
+  markdown p:last-child {
+    margin-bottom: 0;
+  }
+  markdown strong {
+    font-weight: 700;
+  }
 }
 
 @layer components {
