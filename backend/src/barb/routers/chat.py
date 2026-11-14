@@ -558,6 +558,7 @@ async def get_session_detail(
             role=str(m.get("role", "")),
             content=str(m.get("content", "")),
             timestamp=int(m["timestamp"]) if m.get("timestamp") is not None else None,
+            has_image=bool(m.get("has_image", False)),
         )
         for m in messages_raw
     ]
@@ -567,6 +568,8 @@ async def get_session_detail(
         titulo=str(session["titulo"]),
         saved_at=session["saved_at"],
         messages=messages,
+        maquina_id=session.get("maquina_id"),
+        machine_name=session.get("machine_name"),
     )
 
 

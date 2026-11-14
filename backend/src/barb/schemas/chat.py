@@ -31,6 +31,8 @@ class ChatMessage(BaseModel):
     role: str
     content: str
     timestamp: int | None = None
+    # HU-23: el turno llevó una imagen (la imagen en sí no se guarda).
+    has_image: bool = False
 
 
 class SessionDetailResponse(BaseModel):
@@ -39,6 +41,9 @@ class SessionDetailResponse(BaseModel):
     titulo: str
     saved_at: datetime
     messages: list[ChatMessage]
+    # HU-23: máquina vinculada a la conversación, para restaurar el selector del chat.
+    maquina_id: int | None = None
+    machine_name: str | None = None
 
 
 class DeleteSessionResponse(BaseModel):
