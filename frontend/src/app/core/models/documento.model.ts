@@ -17,10 +17,16 @@ export interface Documento {
   activo: boolean;
   created_at: string | null;
   subido_por: string | null;
+  /** Máquina del catálogo a la que está ligado (HU-23); `null` = documento general de la empresa. */
+  maquina_id: number | null;
+  maquina_nombre: string | null;
+  maquina_codigo: string | null;
 }
 
 export interface DocumentoUpdate {
   title?: string;
   notes?: string | null;
   activo?: boolean;
+  /** Ausente = no cambia; número = asigna; `null` = desvincula. */
+  maquina_id?: number | null;
 }

@@ -217,3 +217,73 @@ async def test_delete_session_ok(client, override_auth, mock_repo):
     assert body["deleted"] is True
     assert body["session_id"] == sid
     mock_repo["delete_session"].assert_called_once_with(sid, 1)
+
+# =============================================================================
+# HU-23 — maquina_id / machine_name y has_image en el detalle
+# =============================================================================
+
+@pytest.mark.asyncio
+async def test_get_session_devuelve_maquina_y_has_image(
+    client, override_auth, mock_repo, fake_session_row
+):
+    mock_repo["get_session"].return_value = {
+        **fake_session_row, "maquina_id": 5, "machine_name": "Compressor A1",
+    }
+    mock_repo["load_messages"].return_value = [
+        {"role": "user", "content": "¿qué le pasa?", "timestamp": 1, "has_image": True},
+        {"role": "assistant", "content": "parece una fuga", "timestamp": 2},
+    ]
+
+    r = await client.get(f"/api/chat/sessions/{fake_session_row['session_id']}")
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["maquina_id"] == 5
+    assert body["machine_name"] == "Compressor A1"
+    assert body["messages"][0]["has_image"] is True
+    assert body["messages"][1]["has_image"] is False  # sin marca = False
+
+
+@pytest.mark.asyncio
+async def test_get_session_sin_maquina_devuelve_null(
+    client, override_auth, mock_repo, fake_session_row
+):
+    mock_repo["get_session"].return_value = fake_session_row  # sin las claves nuevas
+    mock_repo["load_messages"].return_value = [{"role": "user", "content": "hola", "timestamp": 1}]
+
+    r = await client.get(f"/api/chat/sessions/{fake_session_row['session_id']}")
+
+    body = r.json()
+    assert r.status_code == 200
+    assert body["maquina_id"] is None and body["machine_name"] is None
+    assert body["messages"][0]["has_image"] is False
+
+
+@pytest.mark.asyncio
+async def test_get_session_restaura_la_maquina_desde_la_base(client, override_auth, db_pool):
+    """Integración: sesión real con máquina y un turno con imagen -> el detalle los devuelve."""
+    from barb.core.db import execute, fetch_one
+    from barb.services import chat_repository
+
+    maquina = await fetch_one(
+        "SELECT m.maquina_id, m.nombre, m.codigo, p.nombre AS planta, d.nombre AS disciplina"
+        "  FROM maquina m JOIN planta p ON p.planta_id = m.planta_id"
+        "  LEFT JOIN disciplina d ON d.disciplina_id = m.disciplina_id"
+        " WHERE p.empresa_id = 1 ORDER BY m.maquina_id LIMIT 1"
+    )
+    sid = await chat_repository.create_session(
+        usuario_id=1, empresa_id=1, primer_mensaje="foto del equipo", maquina=maquina
+    )
+    try:
+        await chat_repository.append_messages(sid, 1, [
+            {"role": "user", "content": "foto del equipo", "timestamp": 1, "has_image": True},
+            {"role": "assistant", "content": "ok", "timestamp": 2},
+        ])
+        r = await client.get(f"/api/chat/sessions/{sid}")
+        body = r.json()
+        assert r.status_code == 200
+        assert body["maquina_id"] == maquina["maquina_id"]
+        assert body["machine_name"] == maquina["nombre"]
+        assert [m["has_image"] for m in body["messages"]] == [True, False]
+    finally:
+        await execute("DELETE FROM chat_session WHERE session_id = %(s)s", {"s": sid})

@@ -38,7 +38,7 @@ Supabase Storage. Responde `201` con el documento creado.
 | `title` | string | ✅ | 1–255 caracteres |
 | `notes` | string | ❌ | Texto libre |
 | `discipline_id` | int | ❌ | Debe existir en `disciplina` |
-| `maquina_id` | int | ❌ | Debe existir en `maquina` |
+| `maquina_id` | int | ❌ | Debe existir en `maquina` **y ser de la empresa del documento** (404 si no; ver sección HU-23) |
 
 **Response `201`:**
 
@@ -120,6 +120,44 @@ metadatos en `documento`.
 **Errores propios:** `404` (no existe) · `403` · `503` · `500`.
 
 ---
+
+---
+
+## Máquina del catálogo en los documentos (HU-23)
+
+Un documento puede ligarse opcionalmente a una máquina de la empresa para que el chat (texto e imagen) priorice sus
+documentos cuando el usuario fija esa máquina en la conversación (ver `contrato_api_chat.md`). Los documentos sin
+máquina son generales de la empresa y siguen sirviendo de relleno.
+
+> Nota: el código actual expone las rutas `POST /api/documents` (alias `/api/documentos`), `GET /api/documents` y
+> `PATCH /api/documents/{id}`, y responde con la forma de abajo. Las secciones anteriores de este contrato
+> describen el diseño original de HU-04 y están desactualizadas respecto de ellas.
+
+| Operación | Campo | Semántica |
+|-----------|-------|-----------|
+| `POST /api/documents` (multipart) | `maquina_id` (int, opcional) | Liga el documento a la máquina al subirlo |
+| `PATCH /api/documents/{id}` (JSON) | `maquina_id` | **Ausente** = no cambia · **entero** = asigna/cambia · `null` = desvincula |
+
+- **Permiso:** el mismo `subir_documentos` (`engineer`, `gerente`, `admin`); no cambia la matriz de roles.
+- **Validación:** la máquina debe pertenecer a la empresa del documento. Si no existe o es de otra empresa responde
+  `404 {"detail": "Máquina no encontrada."}` y **no modifica nada** (en el upload se valida antes de leer y guardar el
+  archivo; en el PATCH, antes de aplicar cualquier cambio, incluidos los demás campos del mismo request).
+- **Respuesta** (POST, PATCH y cada elemento de GET): suma `maquina_id`, `maquina_nombre` y `maquina_codigo`
+  (`null` los tres si el documento no tiene máquina).
+
+```json
+{
+  "id": 12,
+  "title": "Manual Compresor A1",
+  "maquina_id": 5,
+  "maquina_nombre": "Compressor A1",
+  "maquina_codigo": "COMP-A1"
+}
+```
+
+- **Recuperación (RAG):** con máquina en la conversación, `search_chunks` hace dos pasadas: primero los documentos de
+  esa máquina y luego, si falta cupo, los generales de la empresa (nunca de otra empresa). Cada fragmento devuelto
+  lleva `de_maquina` (`true` de la máquina, `false` general).
 
 ## Notas de integración
 

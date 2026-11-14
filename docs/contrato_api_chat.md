@@ -34,7 +34,34 @@ curl -i -N -X POST http://localhost:9000/api/chat/stream \
   -H "Authorization: Bearer $TOKEN" \
   -d '{"message": "Hola"}' \
   --max-time 30
+```
 
+---
+
+## Máquina vinculada a la conversación (HU-23)
+
+`POST /api/chat/stream` acepta un campo opcional `maquina_id` para vincular la conversación a una máquina del
+catálogo de la empresa del usuario. La IA prioriza y cita los documentos de esa máquina (completando con los
+documentos generales de la empresa) y recibe la ficha del equipo en el prompt. El mismo campo existe en
+`POST /api/chat/multimedia` (ver `contrato_api_chat_multimedia.md`).
+
+| Valor de `maquina_id` en el request | Efecto |
+|-------------------------------------|--------|
+| Campo **ausente** | Conserva la máquina de la sesión (los seguimientos la heredan aunque no la nombren) |
+| Entero | Fija o cambia la máquina de la sesión |
+| `null` | Desvincula la sesión de la máquina |
+
+```json
+{ "session_id": "bff4ff3f-6630-4cf6-ab6e-3aec6d1ececd", "message": "¿y el torque?", "maquina_id": 5 }
+```
+
+- **Validación:** la máquina debe pertenecer a la empresa del usuario. Si no existe o es de otra empresa responde
+  `404 {"detail": "Máquina no encontrada."}` (no se revela cuál de los dos casos). La validación ocurre **antes** del
+  rate limit y del límite de tokens: un request inválido no consume cuota.
+- **Historial de Diagnósticos:** `machine_name`, `plant_name` y `discipline` de la sesión se llenan desde la máquina
+  elegida, con prioridad sobre la detección por texto del primer mensaje. La detección por texto solo rellena esos
+  datos; no vincula la sesión (no fija `maquina_id`).
+- Si la máquina se elimina del catálogo, la sesión queda sin vínculo (`maquina_id = null`) y conserva `machine_name`.
 
 ---
 
@@ -98,15 +125,23 @@ json
     {
       "role": "user",
       "content": "Hola",
-      "timestamp": 1790706723216
+      "timestamp": 1790706723216,
+      "has_image": false
     },
     {
       "role": "assistant",
       "content": "¡Hola! Soy BARB...",
-      "timestamp": 1790706723217
+      "timestamp": 1790706723217,
+      "has_image": false
     }
-  ]
+  ],
+  "maquina_id": 5,
+  "machine_name": "Compressor A1"
 }
+HU-23: `maquina_id` / `machine_name` son la máquina vinculada a la conversación (`null` si no tiene) y sirven para
+restaurar el selector al reabrir la sesión. `has_image` es `true` en el mensaje de usuario de un turno con imagen
+(la imagen no se guarda; solo se deja la marca).
+
 Valores de role:
 
 Rol	Descripción

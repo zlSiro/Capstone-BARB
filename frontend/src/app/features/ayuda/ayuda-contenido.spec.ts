@@ -72,6 +72,16 @@ describe('Ayuda: filtrado por perfil', () => {
     expect(svc.tareas().map((t) => t.def.id)).not.toContain('docchat');
   });
 
+  it('«Diagnosticar con la foto de una máquina» la ven los perfiles con DocChat y nadie más', () => {
+    for (const role of ROLES) {
+      TestBed.resetTestingModule();
+      const ve = servicio(role).recorridos().some((r) => r.id === 'diagnostico_foto');
+      expect(ve, role).toBe(puedeAccederRuta(role as never, 'docchat'));
+    }
+    TestBed.resetTestingModule();
+    expect(servicio('super_usuario').recorridos().map((r) => r.id)).not.toContain('diagnostico_foto');
+  });
+
   it('cada recorrido y tarea declara qué necesita (nada queda visible para todos por descuido)', () => {
     for (const r of RECORRIDOS) expect(r.requiere.ruta ?? r.requiere.accion, r.id).toBeDefined();
     for (const t of Object.values(TAREAS)) expect(t.automatica ?? t.requiere, t.id).toBeDefined();

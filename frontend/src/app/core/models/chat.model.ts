@@ -13,6 +13,8 @@ export interface ChatMessage {
    * desde el Historial este campo llega indefinido.
    */
   imageUrl?: string;
+  /** El turno llevó una imagen que ya no está disponible (viene del Historial, HU-23). */
+  hasImage?: boolean;
 }
 
 export interface ChatRequest {
@@ -20,6 +22,8 @@ export interface ChatRequest {
   message: string;
   // Solo para el super_usuario: empresa cuya documentación consulta.
   empresa_id?: number | null;
+  /** HU-23. Ausente = conserva la máquina de la sesión; número = fija/cambia; `null` = desvincula. */
+  maquina_id?: number | null;
 }
 
 // --- Chat multimodal (HU-05, CGBIDA-276): docs/contrato_api_chat_multimedia.md ---
@@ -32,6 +36,8 @@ export interface MultimediaRequest {
   image_base64: string;
   // Solo para el super_usuario (igual que en el chat textual).
   empresa_id?: number | null;
+  /** HU-23: misma semántica que en `ChatRequest`. */
+  maquina_id?: number | null;
 }
 
 // --- Eventos SSE ---
@@ -77,6 +83,8 @@ export interface SessionMessage {
   role: MessageRole | 'system';
   content: string;
   timestamp?: number | null;
+  /** HU-23: el turno llevó una imagen (la imagen no se guarda). */
+  has_image?: boolean;
 }
 
 export interface SessionDetailResponse {
@@ -84,6 +92,9 @@ export interface SessionDetailResponse {
   titulo: string;
   saved_at: string;
   messages: SessionMessage[];
+  /** HU-23: máquina vinculada a la conversación, para restaurar el selector. */
+  maquina_id?: number | null;
+  machine_name?: string | null;
 }
 
 export interface DeleteSessionResponse {

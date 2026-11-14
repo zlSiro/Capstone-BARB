@@ -369,3 +369,167 @@ async def test_delete_session_respeta_aislamiento(cleanup_sessions, seeded_ids):
         {"sid": sid},
     )
     assert row is not None
+
+# =============================================================================
+# HU-23: máquina vinculada a la sesión
+# =============================================================================
+
+async def _maquina_dict(empresa_id: int, codigo: str | None = None, excluir: int | None = None) -> dict:
+    row = await fetch_one(
+        """
+        SELECT m.maquina_id, m.nombre, m.codigo, p.nombre AS planta, d.nombre AS disciplina
+          FROM maquina m
+          JOIN planta p ON p.planta_id = m.planta_id
+          LEFT JOIN disciplina d ON d.disciplina_id = m.disciplina_id
+         WHERE p.empresa_id = %(e)s
+           AND (%(codigo)s::text IS NULL OR m.codigo = %(codigo)s)
+           AND (%(excluir)s::int IS NULL OR m.maquina_id <> %(excluir)s)
+         ORDER BY m.maquina_id LIMIT 1
+        """,
+        {"e": empresa_id, "codigo": codigo, "excluir": excluir},
+    )
+    assert row is not None
+    return row
+
+
+async def _fila_sesion(sid: str) -> dict:
+    return await fetch_one(
+        "SELECT maquina_id, machine_name, plant_name, discipline FROM chat_session WHERE session_id = %(sid)s",
+        {"sid": sid},
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_session_con_maquina_explicita_fija_maquina_id_y_snapshot(cleanup_sessions, seeded_ids):
+    maquina = await _maquina_dict(seeded_ids["empresa_id"])
+    sid = await chat_repository.create_session(
+        usuario_id=seeded_ids["usuario_id"],
+        empresa_id=seeded_ids["empresa_id"],
+        primer_mensaje="¿cuál es el torque?",
+        maquina=maquina,
+    )
+    cleanup_sessions.append(sid)
+
+    row = await _fila_sesion(sid)
+    assert row["maquina_id"] == maquina["maquina_id"]
+    assert row["machine_name"] == maquina["nombre"]
+    assert row["plant_name"] == maquina["planta"]
+    assert row["discipline"] == maquina["disciplina"]
+
+
+@pytest.mark.asyncio
+async def test_maquina_explicita_tiene_prioridad_sobre_identificar_maquina(cleanup_sessions, seeded_ids):
+    # El mensaje nombra PUMP-E4, pero el usuario eligió otra máquina.
+    elegida = await _maquina_dict(seeded_ids["empresa_id"], excluir=(await _maquina_dict(1, "PUMP-E4"))["maquina_id"])
+    sid = await chat_repository.create_session(
+        usuario_id=seeded_ids["usuario_id"],
+        empresa_id=seeded_ids["empresa_id"],
+        primer_mensaje="la bomba PUMP-E4 está vibrando",
+        maquina=elegida,
+    )
+    cleanup_sessions.append(sid)
+
+    row = await _fila_sesion(sid)
+    assert row["maquina_id"] == elegida["maquina_id"]
+    assert row["machine_name"] == elegida["nombre"]
+
+
+@pytest.mark.asyncio
+async def test_maquina_detectada_por_texto_no_vincula_la_sesion(cleanup_sessions, seeded_ids):
+    sid = await chat_repository.create_session(
+        usuario_id=seeded_ids["usuario_id"],
+        empresa_id=seeded_ids["empresa_id"],
+        primer_mensaje="la bomba PUMP-E4 está vibrando demasiado",
+    )
+    cleanup_sessions.append(sid)
+
+    row = await _fila_sesion(sid)
+    assert row["machine_name"] == "Pump E4"  # snapshot del historial
+    assert row["maquina_id"] is None  # sin vínculo explícito
+
+
+@pytest.mark.asyncio
+async def test_set_maquina_cambia_y_desvincula(cleanup_sessions, seeded_ids):
+    sid = await chat_repository.create_session(
+        usuario_id=seeded_ids["usuario_id"], empresa_id=seeded_ids["empresa_id"], primer_mensaje="hola"
+    )
+    cleanup_sessions.append(sid)
+    m1 = await _maquina_dict(seeded_ids["empresa_id"])
+    m2 = await _maquina_dict(seeded_ids["empresa_id"], excluir=m1["maquina_id"])
+
+    assert await chat_repository.set_maquina(sid, seeded_ids["usuario_id"], m1) is True
+    assert (await _fila_sesion(sid))["maquina_id"] == m1["maquina_id"]
+
+    assert await chat_repository.set_maquina(sid, seeded_ids["usuario_id"], m2) is True
+    row = await _fila_sesion(sid)
+    assert row["maquina_id"] == m2["maquina_id"] and row["machine_name"] == m2["nombre"]
+    assert row["plant_name"] == m2["planta"] and row["discipline"] == m2["disciplina"]
+
+    assert await chat_repository.set_maquina(sid, seeded_ids["usuario_id"], None) is True
+    row = await _fila_sesion(sid)
+    assert row == {"maquina_id": None, "machine_name": None, "plant_name": None, "discipline": None}
+
+
+@pytest.mark.asyncio
+async def test_set_maquina_respeta_aislamiento_por_usuario(cleanup_sessions, seeded_ids):
+    sid = await chat_repository.create_session(
+        usuario_id=seeded_ids["usuario_id"], empresa_id=seeded_ids["empresa_id"], primer_mensaje="privada"
+    )
+    cleanup_sessions.append(sid)
+    maquina = await _maquina_dict(seeded_ids["empresa_id"])
+
+    assert await chat_repository.set_maquina(sid, seeded_ids["otro_usuario_id"], maquina) is False
+    assert (await _fila_sesion(sid))["maquina_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_get_session_devuelve_maquina_id_y_machine_name(cleanup_sessions, seeded_ids):
+    maquina = await _maquina_dict(seeded_ids["empresa_id"])
+    sid = await chat_repository.create_session(
+        usuario_id=seeded_ids["usuario_id"], empresa_id=seeded_ids["empresa_id"],
+        primer_mensaje="hola", maquina=maquina,
+    )
+    cleanup_sessions.append(sid)
+
+    s = await chat_repository.get_session(sid, seeded_ids["usuario_id"])
+    assert s["maquina_id"] == maquina["maquina_id"]
+    assert s["machine_name"] == maquina["nombre"]
+
+
+@pytest.mark.asyncio
+async def test_borrar_maquina_deja_la_sesion_con_snapshot_y_sin_vinculo(cleanup_sessions, seeded_ids):
+    """ON DELETE SET NULL: `machine_name` conserva el nombre en el Historial."""
+    from barb.core.db import transaction
+
+    empresa = seeded_ids["empresa_id"]
+    planta = await fetch_one("SELECT planta_id FROM planta WHERE empresa_id = %(e)s LIMIT 1", {"e": empresa})
+    async with transaction() as cur:
+        await cur.execute(
+            "INSERT INTO maquina (planta_id, nombre, codigo) VALUES (%(p)s, 'Temporal HU23', 'TMP-HU23') RETURNING maquina_id",
+            {"p": planta["planta_id"]},
+        )
+        mid = (await cur.fetchone())["maquina_id"]
+    sid = await chat_repository.create_session(
+        usuario_id=seeded_ids["usuario_id"], empresa_id=empresa, primer_mensaje="hola",
+        maquina={"maquina_id": mid, "nombre": "Temporal HU23", "codigo": "TMP-HU23", "planta": "P", "disciplina": None},
+    )
+    cleanup_sessions.append(sid)
+
+    await execute("DELETE FROM maquina WHERE maquina_id = %(m)s", {"m": mid})
+
+    row = await _fila_sesion(sid)
+    assert row["maquina_id"] is None
+    assert row["machine_name"] == "Temporal HU23"
+
+
+@pytest.mark.asyncio
+async def test_get_maquina_de_empresa_solo_devuelve_maquinas_de_la_empresa(seeded_ids):
+    propia = await _maquina_dict(1)
+    ajena = await _maquina_dict(2)
+
+    ficha = await chat_repository.get_maquina_de_empresa(propia["maquina_id"], 1)
+    assert ficha["nombre"] == propia["nombre"] and ficha["planta"] == propia["planta"]
+    assert set(ficha) == {"maquina_id", "nombre", "codigo", "planta", "disciplina"}
+
+    assert await chat_repository.get_maquina_de_empresa(ajena["maquina_id"], 1) is None
+    assert await chat_repository.get_maquina_de_empresa(2_000_000_000, 1) is None

@@ -37,9 +37,10 @@ router = APIRouter()
 _DOC_SELECT = """
     SELECT d.documento_id, d.empresa_id, e.nombre AS empresa_nombre, d.title, d.notes, d.original_name,
            d.content_type, d.size_bytes, d.chunks_indexed, d.activo, d.created_at,
-           u.nombre AS subido_por
+           u.nombre AS subido_por, d.maquina_id, m.nombre AS maquina_nombre, m.codigo AS maquina_codigo
     FROM documento d
     JOIN empresa e ON e.empresa_id = d.empresa_id
+    LEFT JOIN maquina m ON m.maquina_id = d.maquina_id
     LEFT JOIN usuario u ON u.usuario_id = d.usuario_id
 """
 
@@ -58,6 +59,9 @@ def _serialize(r: dict) -> dict:
         "activo": bool(r["activo"]),
         "created_at": r["created_at"].isoformat() if r["created_at"] else None,
         "subido_por": r["subido_por"],
+        "maquina_id": int(r["maquina_id"]) if r["maquina_id"] is not None else None,
+        "maquina_nombre": r["maquina_nombre"],
+        "maquina_codigo": r["maquina_codigo"],
     }
 
 
@@ -65,6 +69,19 @@ class DocumentUpdateRequest(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=255)
     notes: str | None = None
     activo: bool | None = None
+    # Ausente = no cambia; int = asigna máquina; null = desvincula.
+    maquina_id: int | None = None
+
+
+async def _validar_maquina_de_empresa(maquina_id: int, empresa_id: int) -> None:
+    """404 si la máquina no existe o su planta es de otra empresa (no se revela su existencia)."""
+    row = await fetch_one(
+        "SELECT 1 FROM maquina m JOIN planta p ON p.planta_id = m.planta_id"
+        " WHERE m.maquina_id = %(id)s AND p.empresa_id = %(empresa_id)s",
+        {"id": maquina_id, "empresa_id": empresa_id},
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Máquina no encontrada.")
 
 
 async def _documento_visible(documento_id: int, sesion: dict) -> dict:
@@ -95,9 +112,12 @@ async def upload_document(
     title: str = Form(default=""),
     notes: str = Form(default=""),
     empresa_id: int | None = Form(default=None),  # solo lo respeta el super_usuario
+    maquina_id: int | None = Form(default=None),
     sesion: dict = Depends(get_sesion_actual),
 ):
     empresa = empresa_obligatoria(sesion, empresa_id)
+    if maquina_id is not None:
+        await _validar_maquina_de_empresa(maquina_id, empresa)  # antes de leer/guardar nada
     original_name = Path(file.filename or "documento").name  # sin rutas del cliente
 
     data = await file.read(docs.MAX_BYTES + 1)
@@ -122,15 +142,16 @@ async def upload_document(
         async with transaction() as cur:
             await cur.execute(
                 """
-                INSERT INTO documento (empresa_id, usuario_id, title, notes, original_name, stored_name, file_id,
-                                       content_type, size_bytes, chunks_indexed)
-                VALUES (%(empresa_id)s, %(usuario_id)s, %(title)s, %(notes)s, %(original_name)s, %(stored_name)s,
-                        %(file_id)s, %(content_type)s, %(size)s, %(chunks)s)
+                INSERT INTO documento (empresa_id, usuario_id, maquina_id, title, notes, original_name, stored_name,
+                                       file_id, content_type, size_bytes, chunks_indexed)
+                VALUES (%(empresa_id)s, %(usuario_id)s, %(maquina_id)s, %(title)s, %(notes)s, %(original_name)s,
+                        %(stored_name)s, %(file_id)s, %(content_type)s, %(size)s, %(chunks)s)
                 RETURNING documento_id
                 """,
                 {
                     "empresa_id": empresa,
                     "usuario_id": sesion["usuario_id"],
+                    "maquina_id": maquina_id,
                     "title": (title or "").strip() or Path(original_name).stem,
                     "notes": (notes or "").strip() or None,
                     "original_name": original_name,
@@ -164,8 +185,10 @@ async def upload_document(
 @router.patch("/api/documents/{documento_id}", dependencies=[Depends(require_action("subir_documentos"))])
 @router.patch("/api/documentos/{documento_id}", dependencies=[Depends(require_action("subir_documentos"))])
 async def update_document(documento_id: int, payload: DocumentUpdateRequest, sesion: dict = Depends(get_sesion_actual)):
-    await _documento_visible(documento_id, sesion)
+    doc = await _documento_visible(documento_id, sesion)
     changes = payload.model_dump(exclude_unset=True)
+    if changes.get("maquina_id") is not None:
+        await _validar_maquina_de_empresa(changes["maquina_id"], int(doc["empresa_id"]))
     if changes:
         sets = ", ".join(f"{col} = %({col})s" for col in changes)  # columnas: lista cerrada del modelo
         async with transaction() as cur:
