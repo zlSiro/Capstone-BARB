@@ -273,6 +273,8 @@ class MultimediaRequest(BaseModel):
         max_length=2000,
         description="Pregunta del usuario sobre la imagen (1 a 2000 caracteres).",
     )
+    # HU-23: misma semántica que en `ChatRequest` (ausente = conserva, int = fija/cambia, null = desvincula).
+    maquina_id: int | None = None
     image_base64: str = Field(
         ...,
         description="Imagen como data URL: data:image/{jpeg|png|webp};base64,... (≤ 5 MB decodificada).",
@@ -352,6 +354,7 @@ async def stream_multimedia_chat(
     if not request.message.strip():
         raise HTTPException(status_code=400, detail=_MULTIMEDIA_FALTA_INPUT)
     _validate_image(request.image_base64)
+    cambia_maquina, maquina_pedida = await _resolver_maquina_pedida(request, empresa_id)
 
     chat_rate_limiter.check(str(user_id))
 
@@ -376,13 +379,20 @@ async def stream_multimedia_chat(
         history = await chat_repository.load_messages(
             session_id, user_id, limite=settings.chat_memory_window
         )
+        if cambia_maquina:
+            await chat_repository.set_maquina(session_id, user_id, maquina_pedida)
+            maquina_activa = maquina_pedida
+        else:
+            maquina_activa = await _maquina_de_la_sesion(existing, empresa_id)
     else:
         session_id = await chat_repository.create_session(
             usuario_id=user_id,
             empresa_id=empresa_id,
             primer_mensaje=request.message,
+            maquina=maquina_pedida,
         )
         history = []
+        maquina_activa = maquina_pedida
 
     # RAG ligero (D5 v1.1, review de la HU-05): fragmentos de la documentación
     # ACTIVA de la empresa que coincidan con la pregunta. El turno multimodal
@@ -394,7 +404,12 @@ async def stream_multimedia_chat(
     previous_assistant_msgs = [m.get("content", "") for m in history if m.get("role") == "assistant"][-1:]
     # HU-04 Fase 1 — misma búsqueda semántica con fallback léxico que el chat textual:
     # los manuales se buscan por significado también cuando la pregunta trae una imagen.
-    chunks_rag = await search_chunks(empresa_id, request.message, *previous_user_msgs, *previous_assistant_msgs)
+    pistas = [request.message, *previous_user_msgs, *previous_assistant_msgs]
+    if maquina_activa:
+        # HU-23: los documentos de la máquina primero, completando con los generales de la empresa.
+        chunks_rag = await search_chunks(empresa_id, *pistas, maquina_id=maquina_activa["maquina_id"])
+    else:
+        chunks_rag = await search_chunks(empresa_id, *pistas)
     context = format_context(chunks_rag) if chunks_rag else ""
 
     chain = create_multimodal_chain()
@@ -419,6 +434,7 @@ async def stream_multimedia_chat(
                     "history": history,
                     "image": request.image_base64,
                     "context": context,
+                    "maquina": maquina_activa,
                 }
             )
 
@@ -446,9 +462,10 @@ async def stream_multimedia_chat(
 
             try:
                 ts = _now_ms()
-                # D2: se persiste SOLO el texto del turno; la imagen no se guarda (v1).
+                # D2: se persiste SOLO el texto del turno; la imagen no se guarda (v1). Solo se deja
+                # la marca `has_image` (HU-23), nunca el base64 ni una URL.
                 nuevos = [
-                    {"role": "user", "content": request.message, "timestamp": ts},
+                    {"role": "user", "content": request.message, "timestamp": ts, "has_image": True},
                     {
                         "role": "assistant",
                         "content": "".join(assistant_chunks),

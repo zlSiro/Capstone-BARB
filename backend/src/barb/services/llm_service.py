@@ -342,6 +342,22 @@ _MULTIMODAL_VISUAL_INSTRUCTIONS = (
     "sugiere revisar la sección Documentos o pedir que suban el manual correspondiente."
 )
 
+# HU-23: con un equipo seleccionado, si la foto parece de otro, se advierte y se sigue con el elegido.
+_REGLA_DISCREPANCIA = (
+    "\nDISCREPANCIA IMAGEN-EQUIPO: si la imagen parece corresponder a un equipo distinto del "
+    "seleccionado, adviértelo explícitamente al inicio de tu respuesta («la imagen parece ser de "
+    "otro equipo») y continúa el análisis con el equipo seleccionado y su documentación."
+)
+
+# HU-23: sin documentación aplicable (sin equipo seleccionado o sin manuales de ese equipo), solo se
+# ofrece identificación visual y se dice con claridad que falta la documentación. No contiene el
+# encabezado del bloque de documentación para no confundirse con él.
+_SIN_DOCUMENTACION = (
+    "\n\nSIN DOCUMENTACIÓN APLICABLE: no hay documentación de la empresa para esta consulta. "
+    "Responde solo con identificación visual (etiquetada como tal) y aclara explícitamente que no hay "
+    "documentación de la empresa de ese equipo; no inventes valores, torques ni procedimientos."
+)
+
 # Se arma en _prepare_multimodal_input: instrucciones + (documentación si hay) +
 # Reasoning strength al final (se mantiene como última línea del system prompt).
 _REASONING_SUFFIX = "\nReasoning strength: low"
@@ -389,8 +405,14 @@ def _prepare_multimodal_input(payload: dict[str, Any]) -> list[BaseMessage]:
     context = (payload.get("context") or "").strip()
 
     system_content = _MULTIMODAL_VISUAL_INSTRUCTIONS
+    maquina = payload.get("maquina")
+    if maquina:
+        # HU-23: equipo fijado por el usuario. La regla de discrepancia es solo prompt, sin lógica en código.
+        system_content += bloque_equipo(maquina) + _REGLA_DISCREPANCIA
     if context:
         system_content += f"\n\nDOCUMENTACIÓN DE LA EMPRESA:\n{context}"
+    else:
+        system_content += _SIN_DOCUMENTACION
     system_content += _REASONING_SUFFIX
 
     content = [
