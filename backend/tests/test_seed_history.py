@@ -31,7 +31,11 @@ from seed_history import (  # noqa: E402
     generar_ots,
 )
 
-from barb.core.db import fetch_all  # noqa: E402
+from barb.core.db import fetch_all, fetch_one  # noqa: E402
+
+# Las OTs del seed realista: el historial sintético (SYN-HIST-) ya no se aplica.
+PREFIJO_REAL = "REAL-"
+OTS_ESPERADAS = 528
 
 # Reparto equivalente al real, para poder generar sin tocar la base.
 EMPRESAS = {
@@ -275,13 +279,14 @@ def test_downtime_no_supera_el_tiempo_por_mucho(filas):
 # Contra la base: prefijo, idempotencia y borrado seguro
 # =============================================================================
 
-async def test_lo_insertado_respeta_el_prefijo_en_la_bd(client):
+async def test_el_seed_carga_el_historial_realista(client):
+    """El seed inserta las 528 OTs del historial realista (`REAL-`)."""
     filas = await fetch_all(
         "SELECT numero_ot, estado, tipo FROM orden_trabajo WHERE numero_ot LIKE %(p)s",
-        {"p": f"{PREFIJO}%"},
+        {"p": f"{PREFIJO_REAL}%"},
     )
-    assert filas, "el historial sintético debería estar insertado"
-    assert all(f["numero_ot"].startswith(PREFIJO) for f in filas)
+    assert len(filas) == OTS_ESPERADAS, f"{len(filas)} OTs REAL- en la base"
+    assert all(f["numero_ot"].startswith(PREFIJO_REAL) for f in filas)
 
 
 async def test_el_borrado_por_prefijo_no_toca_las_originales(client):
@@ -300,20 +305,16 @@ umero_ot` original empieza
         assert not f["numero_ot"].startswith("SYN-"), f"la fila {f['numero_ot']} se borraría por error"
 
 
-async def test_las_filas_originales_siguen_intactas(client):
-    """El seed ampliado no debe tocar las 30 OTs que ya existían.
-
-    Se identifican por su numeración original (`OT-2026-`). Antes el criterio era «todo lo
-    que no lleva el prefijo sintético», pero eso dejó de ser cierto al aparecer otra fuente
-    de OTs: las que crea la IA desde el chat (`OT-IA-...`). Contar por la numeración
-    original mide lo que este test realmente quiere medir, sin depender de cuántas OTs haya
-    creado la IA mientras corre la suite.
-    """
-    originales = await fetch_all(
-        "SELECT COUNT(*) AS n FROM orden_trabajo WHERE numero_ot LIKE %(p)s",
-        {"p": "OT-2026-%"},
+async def test_el_historial_cubre_24_meses(client):
+    """El seed genera 24 meses calendario: el dashboard necesita esa profundidad."""
+    fila = await fetch_one(
+        """
+        SELECT COUNT(DISTINCT to_char(fecha_creacion, 'YYYY-MM')) AS meses
+          FROM orden_trabajo WHERE numero_ot LIKE %(p)s
+        """,
+        {"p": f"{PREFIJO_REAL}%"},
     )
-    assert int(originales[0]["n"]) == 30, f"esperaba 30 originales, hay {originales[0]['n']}"
+    assert int(fila["meses"]) == 24, f"{fila['meses']} meses distintos"
 
 
 async def test_coherencia_por_muestreo_en_la_bd(client):
@@ -338,10 +339,10 @@ async def test_coherencia_por_muestreo_en_la_bd(client):
             COUNT(*) AS total
         FROM orden_trabajo WHERE numero_ot LIKE %(p)s
         """,
-        {"p": f"{PREFIJO}%"},
+        {"p": f"{PREFIJO_REAL}%"},
     )
     r = filas[0]
-    assert int(r["total"]) > 0
+    assert int(r["total"]) == OTS_ESPERADAS, r["total"]
     assert int(r["sin_empezar_mal"]) == 0, "hay OTs sin empezar con tiempo o costo"
     assert int(r["canceladas_mal"]) == 0, "hay canceladas con costo distinto de cero"
     assert int(r["completadas_mal"]) == 0, "hay completadas sin cierre o sin costo"

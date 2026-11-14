@@ -1,7 +1,7 @@
 """
 Pruebas multi-empresa: aislamiento de datos, super_usuario, mantenedores y RAG por empresa.
 
-Requieren la BD migrada (0004) y sembrada (`scripts/seed.py` aplica seed_multiempresa.sql).
+Requieren la BD migrada y sembrada (`scripts/seed.py` aplica los tres seeds realistas).
 Las pruebas que crean datos los eliminan al terminar.
 """
 
@@ -26,16 +26,16 @@ from barb.services.llm_service import NO_DOCS_ANSWER
 
 # Credenciales del seed ficticio (seeds/seed_multiempresa.sql)
 SUPER = ("super@barb.com", "super123")
-ADMIN_E1 = ("admin@barb.com", "admin123")
-ADMIN_E2 = ("admin@mineranorte.cl", "minera123")
-GERENTE_E1 = ("gerente1@planta.com", "gerente123")
-SUPERVISOR_E1 = ("supervisor1@planta.com", "super123")
-SUPERVISOR_E2 = ("supervisor@mineranorte.cl", "minera123")
-GERENTE_E2 = ("gerente@mineranorte.cl", "minera123")
-TECNICO_E2 = ("pedro@mineranorte.cl", "minera123")
-ENGINEER_E1 = ("engineer1@planta.com", "engineer123")
-OPERADOR_E1 = ("operador1@planta.com", "operador123")
-ADMIN_SUSPENDIDA = ("admin@constructorasur.cl", "sur12345")
+ADMIN_E1 = ("admin@mineradelnorte.cl", "mineria123")
+ADMIN_E2 = ("admin@alimentos.cl", "alimentos123")
+GERENTE_E1 = ("gerente@mineradelnorte.cl", "mineria123")
+SUPERVISOR_E1 = ("supervisor@mineradelnorte.cl", "mineria123")
+SUPERVISOR_E2 = ("supervisor@alimentos.cl", "alimentos123")
+GERENTE_E2 = ("gerente@alimentos.cl", "alimentos123")
+TECNICO_E2 = ("tecnico1@alimentos.cl", "alimentos123")
+ENGINEER_E1 = ("engineer@mineradelnorte.cl", "mineria123")
+OPERADOR_E1 = ("operador@mineradelnorte.cl", "mineria123")
+ADMIN_E3 = ("admin@automotriz.cl", "automotriz123")
 
 
 async def _login(client, creds) -> dict:
@@ -146,12 +146,12 @@ async def test_catalogos_filtrados_por_empresa(client):
     tecnicos = (await client.get("/api/technicians", headers=h2)).json()
     assert {p["name"] for p in plantas} == {"Planta Concentradora Calama", "Faena Chancado Norte"}
     assert len(maquinas) == 7
-    assert {t["email"] for t in tecnicos} == {"pedro@mineranorte.cl", "marta@mineranorte.cl"}
+    assert {t["email"] for t in tecnicos} == {"tecnico1@alimentos.cl", "tecnico2@alimentos.cl"}
 
 
 async def test_no_se_puede_crear_ot_con_maquina_o_tecnico_de_otra_empresa(client):
     # Supervisor de empresa 2 (el único rol que crea OT directas) con la máquina de la empresa 1 (id 1 = Compressor A1).
-    h = await _login(client, ("supervisor@mineranorte.cl", "minera123"))
+    h = await _login(client, ("supervisor@alimentos.cl", "alimentos123"))
     r = await client.post(
         "/api/work-orders",
         headers=h,
@@ -192,15 +192,30 @@ async def test_super_usuario_no_accede_a_datos_operativos(client):
 
 async def test_login_devuelve_empresa_y_super_no_tiene(client):
     r = await client.post("/api/auth/login", json={"email": ADMIN_E2[0], "password": ADMIN_E2[1]})
-    assert r.json()["user"]["empresa_nombre"] == "Minera Norte S.A."
+    assert r.json()["user"]["empresa_nombre"] == "Planta de Alimentos"
     r = await client.post("/api/auth/login", json={"email": SUPER[0], "password": SUPER[1]})
     user = r.json()["user"]
     assert user["role"] == "super_usuario" and user["empresa_id"] is None
 
 
 async def test_empresa_suspendida_no_puede_iniciar_sesion(client):
-    r = await client.post("/api/auth/login", json={"email": ADMIN_SUSPENDIDA[0], "password": ADMIN_SUSPENDIDA[1]})
-    assert r.status_code == 403
+    """Suspender la empresa debe cortar el login de sus usuarios.
+
+    Se arma el escenario en la base (el seed crea las tres empresas activas) y se
+    restaura en el `finally` para no contaminar el resto de la suite.
+    """
+    from barb.core.db import execute as _execute
+
+    try:
+        await _execute(
+            "UPDATE empresa SET estado = 'suspended' WHERE rut = '77.333.333-3'"
+        )
+        r = await client.post(
+            "/api/auth/login", json={"email": ADMIN_E3[0], "password": ADMIN_E3[1]}
+        )
+        assert r.status_code == 403, r.text
+    finally:
+        await _execute("UPDATE empresa SET estado = 'active' WHERE rut = '77.333.333-3'")
 
 
 CAMPOS_ELIMINADOS = {"plan", "max_plantas", "licencia_inicio", "licencia_fin"}
@@ -375,7 +390,7 @@ async def test_super_solo_crea_y_gestiona_gerentes(client):
 
 
 async def test_gerente_puede_gestionar_usuarios_de_su_empresa(client):
-    hg = await _login(client, ("gerente@mineranorte.cl", "minera123"))
+    hg = await _login(client, ("gerente@alimentos.cl", "alimentos123"))
     usuarios = (await client.get("/api/usuarios", headers=hg)).json()
     assert usuarios and {u["empresa_nombre"] for u in usuarios} == {"Minera Norte S.A."}
     assert {u["rol"] for u in usuarios} == {"admin"}

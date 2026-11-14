@@ -130,24 +130,46 @@ SELECT e.empresa_id, v.nombre, v.email, v.password_hash, v.rol
 FROM empresa e
 CROSS JOIN (VALUES
     -- password: mineria123
-    ('Administrador Minera del Norte', 'admin@mineradelnorte.cl',
+    (1, 'Administrador Minera del Norte', 'admin@mineradelnorte.cl',
      '$2b$12$TJrykEFiGHr649wpNCuhruIXyqI6nxUU7QaWwfJUxQX8tvWxUdemK', 'admin'),
-    ('Carolina Sepúlveda', 'gerente@mineradelnorte.cl',
+    (2, 'Carolina Sepúlveda', 'gerente@mineradelnorte.cl',
      '$2b$12$TJrykEFiGHr649wpNCuhruIXyqI6nxUU7QaWwfJUxQX8tvWxUdemK', 'gerente'),
-    ('Rodrigo Fuentes', 'gerente2@mineradelnorte.cl',
+    (3, 'Rodrigo Fuentes', 'gerente2@mineradelnorte.cl',
      '$2b$12$TJrykEFiGHr649wpNCuhruIXyqI6nxUU7QaWwfJUxQX8tvWxUdemK', 'gerente'),
-    ('Matías Contreras', 'tecnico1@mineradelnorte.cl',
+    (4, 'Matías Contreras', 'tecnico1@mineradelnorte.cl',
      '$2b$12$TJrykEFiGHr649wpNCuhruIXyqI6nxUU7QaWwfJUxQX8tvWxUdemK', 'tecnico'),
-    ('Paula Riquelme', 'tecnico2@mineradelnorte.cl',
+    (5, 'Paula Riquelme', 'tecnico2@mineradelnorte.cl',
      '$2b$12$TJrykEFiGHr649wpNCuhruIXyqI6nxUU7QaWwfJUxQX8tvWxUdemK', 'tecnico'),
-    ('Sebastián Araya', 'tecnico3@mineradelnorte.cl',
+    (6, 'Sebastián Araya', 'tecnico3@mineradelnorte.cl',
      '$2b$12$TJrykEFiGHr649wpNCuhruIXyqI6nxUU7QaWwfJUxQX8tvWxUdemK', 'tecnico'),
     -- supervisor: es el rol que opera las OT (crea, asigna, valida y cierra)
-    ('Javiera Soto', 'supervisor@mineradelnorte.cl',
+    (7, 'Javiera Soto', 'supervisor@mineradelnorte.cl',
      '$2b$12$TJrykEFiGHr649wpNCuhruIXyqI6nxUU7QaWwfJUxQX8tvWxUdemK', 'supervisor')
-) AS v(nombre, email, password_hash, rol)
+) AS v(orden, nombre, email, password_hash, rol)
+WHERE e.rut = '77.111.111-1'
+  AND NOT EXISTS (SELECT 1 FROM usuario u WHERE u.email = v.email)
+  ORDER BY v.orden;
+
+-- Roles de consulta y operación de Minera del Norte: los usan los tests de permisos
+-- (engineer puede cambiar estado de OT, operador solo consulta). Misma clave de la empresa.
+INSERT INTO usuario (empresa_id, nombre, email, password_hash, rol)
+SELECT e.empresa_id, v.nombre, v.email,
+       '$2b$12$TJrykEFiGHr649wpNCuhruIXyqI6nxUU7QaWwfJUxQX8tvWxUdemK', v.rol
+FROM empresa e
+CROSS JOIN (VALUES
+    ('Ingeniero de Procesos', 'engineer@mineradelnorte.cl', 'engineer'),
+    ('Operador de Sala',      'operador@mineradelnorte.cl', 'operador'),
+    ('Operador de Sala 2',    'operador2@mineradelnorte.cl', 'operador')
+) AS v(nombre, email, rol)
 WHERE e.rut = '77.111.111-1'
   AND NOT EXISTS (SELECT 1 FROM usuario u WHERE u.email = v.email);
+
+-- Super usuario de la plataforma (sin empresa): administra todas las empresas.
+-- Es el único rol que puede ver el listado global de transacciones.
+INSERT INTO usuario (empresa_id, nombre, email, password_hash, rol)
+SELECT NULL, 'Super Usuario BARB', 'super@barb.com',
+       '$2b$12$mngW7s/ANfKp3aqdtUAvoOGfMISOtgCU3so9tdg7hF.FkODsPm8Ba', 'super_usuario'
+WHERE NOT EXISTS (SELECT 1 FROM usuario u WHERE u.email = 'super@barb.com');
 
 -- 2.2 Planta de Alimentos -----------------------------------------------------
 INSERT INTO usuario (empresa_id, nombre, email, password_hash, rol)
@@ -155,24 +177,25 @@ SELECT e.empresa_id, v.nombre, v.email, v.password_hash, v.rol
 FROM empresa e
 CROSS JOIN (VALUES
     -- password: alimentos123
-    ('Administrador Planta de Alimentos', 'admin@alimentos.cl',
+    (1, 'Administrador Planta de Alimentos', 'admin@alimentos.cl',
      '$2b$12$b6zQavSoWrduNh3z6UKnJePAExmSsbo3Jt7MNoF8v2uxffKiAqbSG', 'admin'),
-    ('Francisca Toledo', 'gerente@alimentos.cl',
+    (2, 'Francisca Toledo', 'gerente@alimentos.cl',
      '$2b$12$b6zQavSoWrduNh3z6UKnJePAExmSsbo3Jt7MNoF8v2uxffKiAqbSG', 'gerente'),
-    ('Andrés Bravo', 'gerente2@alimentos.cl',
+    (3, 'Andrés Bravo', 'gerente2@alimentos.cl',
      '$2b$12$b6zQavSoWrduNh3z6UKnJePAExmSsbo3Jt7MNoF8v2uxffKiAqbSG', 'gerente'),
-    ('Camila Paredes', 'tecnico1@alimentos.cl',
+    (4, 'Camila Paredes', 'tecnico1@alimentos.cl',
      '$2b$12$b6zQavSoWrduNh3z6UKnJePAExmSsbo3Jt7MNoF8v2uxffKiAqbSG', 'tecnico'),
-    ('Jorge Salinas', 'tecnico2@alimentos.cl',
+    (5, 'Jorge Salinas', 'tecnico2@alimentos.cl',
      '$2b$12$b6zQavSoWrduNh3z6UKnJePAExmSsbo3Jt7MNoF8v2uxffKiAqbSG', 'tecnico'),
-    ('Daniela Vera', 'tecnico3@alimentos.cl',
+    (6, 'Daniela Vera', 'tecnico3@alimentos.cl',
      '$2b$12$b6zQavSoWrduNh3z6UKnJePAExmSsbo3Jt7MNoF8v2uxffKiAqbSG', 'tecnico'),
     -- supervisor: es el rol que opera las OT (crea, asigna, valida y cierra)
-    ('Manuel Ortiz', 'supervisor@alimentos.cl',
+    (7, 'Manuel Ortiz', 'supervisor@alimentos.cl',
      '$2b$12$b6zQavSoWrduNh3z6UKnJePAExmSsbo3Jt7MNoF8v2uxffKiAqbSG', 'supervisor')
-) AS v(nombre, email, password_hash, rol)
+) AS v(orden, nombre, email, password_hash, rol)
 WHERE e.rut = '77.222.222-2'
-  AND NOT EXISTS (SELECT 1 FROM usuario u WHERE u.email = v.email);
+  AND NOT EXISTS (SELECT 1 FROM usuario u WHERE u.email = v.email)
+  ORDER BY v.orden;
 
 -- 2.3 Manufactura Automotriz --------------------------------------------------
 INSERT INTO usuario (empresa_id, nombre, email, password_hash, rol)
@@ -180,24 +203,25 @@ SELECT e.empresa_id, v.nombre, v.email, v.password_hash, v.rol
 FROM empresa e
 CROSS JOIN (VALUES
     -- password: automotriz123
-    ('Administrador Manufactura Automotriz', 'admin@automotriz.cl',
+    (1, 'Administrador Manufactura Automotriz', 'admin@automotriz.cl',
      '$2b$12$Qj2ynleWgWiKueQMpnTK4OlEoKmBsHadePh9fWXkWwUkK//URI1MK', 'admin'),
-    ('Ignacio Herrera', 'gerente@automotriz.cl',
+    (2, 'Ignacio Herrera', 'gerente@automotriz.cl',
      '$2b$12$Qj2ynleWgWiKueQMpnTK4OlEoKmBsHadePh9fWXkWwUkK//URI1MK', 'gerente'),
-    ('Valentina Rojas', 'gerente2@automotriz.cl',
+    (3, 'Valentina Rojas', 'gerente2@automotriz.cl',
      '$2b$12$Qj2ynleWgWiKueQMpnTK4OlEoKmBsHadePh9fWXkWwUkK//URI1MK', 'gerente'),
-    ('Felipe Guzmán', 'tecnico1@automotriz.cl',
+    (4, 'Felipe Guzmán', 'tecnico1@automotriz.cl',
      '$2b$12$Qj2ynleWgWiKueQMpnTK4OlEoKmBsHadePh9fWXkWwUkK//URI1MK', 'tecnico'),
-    ('Antonia Reyes', 'tecnico2@automotriz.cl',
+    (5, 'Antonia Reyes', 'tecnico2@automotriz.cl',
      '$2b$12$Qj2ynleWgWiKueQMpnTK4OlEoKmBsHadePh9fWXkWwUkK//URI1MK', 'tecnico'),
-    ('Marcelo Díaz', 'tecnico3@automotriz.cl',
+    (6, 'Marcelo Díaz', 'tecnico3@automotriz.cl',
      '$2b$12$Qj2ynleWgWiKueQMpnTK4OlEoKmBsHadePh9fWXkWwUkK//URI1MK', 'tecnico'),
     -- supervisor: es el rol que opera las OT (crea, asigna, valida y cierra)
-    ('Constanza Lagos', 'supervisor@automotriz.cl',
+    (7, 'Constanza Lagos', 'supervisor@automotriz.cl',
      '$2b$12$Qj2ynleWgWiKueQMpnTK4OlEoKmBsHadePh9fWXkWwUkK//URI1MK', 'supervisor')
-) AS v(nombre, email, password_hash, rol)
+) AS v(orden, nombre, email, password_hash, rol)
 WHERE e.rut = '77.333.333-3'
-  AND NOT EXISTS (SELECT 1 FROM usuario u WHERE u.email = v.email);
+  AND NOT EXISTS (SELECT 1 FROM usuario u WHERE u.email = v.email)
+  ORDER BY v.orden;
 
 -- -----------------------------------------------------------------------------
 -- 3. Disciplinas

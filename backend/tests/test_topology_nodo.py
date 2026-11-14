@@ -23,8 +23,8 @@ import pytest
 
 from barb.core.db import execute, fetch_all, fetch_one
 
-ADMIN_E1 = ("admin@barb.com", "admin123")
-ADMIN_E2 = ("admin@mineranorte.cl", "minera123")
+ADMIN_E1 = ("admin@mineradelnorte.cl", "mineria123")
+ADMIN_E2 = ("admin@alimentos.cl", "alimentos123")
 SUPER = ("super@barb.com", "super123")
 
 MAQUINA_CON_OTS = "m_1"

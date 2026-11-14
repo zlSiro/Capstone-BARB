@@ -10,11 +10,11 @@ import pytest
 from barb.core.permissions import ACCIONES, ROLES
 
 RUTA = "/api/stats/financial-impact"
-GERENTE = ("gerente1@planta.com", "gerente123")
-SUPERVISOR = ("supervisor1@planta.com", "super123")
-ENGINEER = ("engineer1@planta.com", "engineer123")
-ADMIN = ("admin@barb.com", "admin123")
-OPERADOR = ("operador1@planta.com", "operador123")
+GERENTE = ("gerente@mineradelnorte.cl", "mineria123")
+SUPERVISOR = ("supervisor@mineradelnorte.cl", "mineria123")
+ENGINEER = ("engineer@mineradelnorte.cl", "mineria123")
+ADMIN = ("admin@mineradelnorte.cl", "mineria123")
+OPERADOR = ("operador@mineradelnorte.cl", "mineria123")
 
 CAMPOS_FINANCIEROS_EN_FINANCIALS = {"ahorro_generado", "costo_total_acumulado"}
 CAMPOS_FINANCIEROS_POR_MAQUINA = {"ahorroGenerado", "costo_total"}

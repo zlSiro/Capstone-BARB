@@ -30,7 +30,7 @@ from barb.routers import stats
 # las expectativas de estas pruebas siguen siendo válidas sin editarlas.
 SIN_BARB = stats.settings.impact_without_barb_minutes
 
-GERENTE_E1 = ("gerente1@planta.com", "gerente123")
+GERENTE_E1 = ("gerente@mineradelnorte.cl", "mineria123")
 STATS_PY = pathlib.Path(stats.__file__)
 
 

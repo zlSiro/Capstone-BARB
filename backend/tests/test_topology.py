@@ -24,10 +24,10 @@ import barb.routers.topology as topology
 from barb.core.db import fetch_all
 
 # Credenciales del seed (seeds/seed_data.sql) — empresa 1
-ADMIN_E1 = ("admin@barb.com", "admin123")
+ADMIN_E1 = ("admin@mineradelnorte.cl", "mineria123")
 # La empresa 2 es la única del seed con disciplina repartida en 2 plantas (d_13 y d_14),
 # así que es la que permite ejercitar A-3.
-ADMIN_E2 = ("admin@mineranorte.cl", "minera123")
+ADMIN_E2 = ("admin@alimentos.cl", "alimentos123")
 
 CAMPOS_NODO = {"nodo_id", "nombre_visual", "tipo", "icono", "pos_x", "pos_y", "estado_actual"}
 CAMPOS_CONEXION = {"conexion_id", "origen_nodo_id", "destino_nodo_id", "tipo_relacion"}
@@ -283,7 +283,7 @@ async def test_usuario_normal_no_puede_espiar_otra_empresa_con_empresa_id(client
     Verificado en vivo: `?empresa_id=1` y `?empresa_id=999` se ignoran y devuelven
     los datos de la empresa del usuario.
     """
-    h = await _login(client, ("admin@mineranorte.cl", "minera123"))  # empresa 2
+    h = await _login(client, ("admin@alimentos.cl", "alimentos123"))  # empresa 2
     base = await _topologia(client, h)
     for intento in ("?empresa_id=1", "?empresa_id=999"):
         r = await client.get(f"/api/topology{intento}", headers=h)

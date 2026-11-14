@@ -8,14 +8,14 @@ from barb.core.db import execute, fetch_one
 
 MARCA = "Test asignacion"
 
-SUPERVISOR = {"email": "supervisor1@planta.com", "password": "super123"}
-GERENTE = {"email": "gerente1@planta.com", "password": "gerente123"}
-ENGINEER = {"email": "engineer1@planta.com", "password": "engineer123"}
-ADMIN = {"email": "admin@barb.com", "password": "admin123"}
-TECNICO = {"email": "carlos@planta.com", "password": "tecnico123"}
-TECNICO_2 = {"email": "ana@planta.com", "password": "tecnico123"}
-OPERADOR = {"email": "operador1@planta.com", "password": "operador123"}
-SUPERVISOR_E2 = {"email": "supervisor@mineranorte.cl", "password": "minera123"}
+SUPERVISOR = {"email": "supervisor@mineradelnorte.cl", "password": "mineria123"}
+GERENTE = {"email": "gerente@mineradelnorte.cl", "password": "mineria123"}
+ENGINEER = {"email": "engineer@mineradelnorte.cl", "password": "mineria123"}
+ADMIN = {"email": "admin@mineradelnorte.cl", "password": "mineria123"}
+TECNICO = {"email": "tecnico1@mineradelnorte.cl", "password": "mineria123"}
+TECNICO_2 = {"email": "tecnico2@mineradelnorte.cl", "password": "mineria123"}
+OPERADOR = {"email": "operador@mineradelnorte.cl", "password": "mineria123"}
+SUPERVISOR_E2 = {"email": "supervisor@alimentos.cl", "password": "alimentos123"}
 
 
 async def _login(client, creds) -> dict:

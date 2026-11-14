@@ -10,10 +10,10 @@ import pytest
 from barb.core.db import execute, fetch_one
 from barb.services.realtime import EVENT_OT_CREATED, EVENT_OT_STATUS_CHANGED, broker
 
-ADMIN = {"email": "admin@barb.com", "password": "admin123"}
-GERENTE = {"email": "gerente1@planta.com", "password": "gerente123"}
-SUPERVISOR = {"email": "supervisor1@planta.com", "password": "super123"}
-OTRA_EMPRESA = {"email": "admin@mineranorte.cl", "password": "minera123"}
+ADMIN = {"email": "admin@mineradelnorte.cl", "password": "mineria123"}
+GERENTE = {"email": "gerente@mineradelnorte.cl", "password": "mineria123"}
+SUPERVISOR = {"email": "supervisor@mineradelnorte.cl", "password": "mineria123"}
+OTRA_EMPRESA = {"email": "admin@alimentos.cl", "password": "alimentos123"}
 
 MARCA = "Test HU-10 realtime"
 
@@ -177,8 +177,8 @@ async def test_reconexion_recupera_el_evento_perdido_con_last_event_id(client, o
 async def test_el_tecnico_solo_recibe_eventos_de_sus_ot_y_el_payload_no_expone_la_lista_interna(client, ot):
     """`ot` está asignada a carlos (id 4). Otro técnico, suscrito a la misma empresa, no debe enterarse."""
     empresa = await _empresa_de(client, ADMIN)
-    carlos = await fetch_one("SELECT usuario_id FROM usuario WHERE email = 'carlos@planta.com'")
-    ana = await fetch_one("SELECT usuario_id FROM usuario WHERE email = 'ana@planta.com'")
+    carlos = await fetch_one("SELECT usuario_id FROM usuario WHERE email = 'tecnico1@mineradelnorte.cl'")
+    ana = await fetch_one("SELECT usuario_id FROM usuario WHERE email = 'tecnico2@mineradelnorte.cl'")
 
     with (
         broker.subscribe(empresa, solo_usuario_id=carlos["usuario_id"]) as de_carlos,

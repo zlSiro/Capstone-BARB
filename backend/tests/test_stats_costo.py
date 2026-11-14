@@ -21,7 +21,7 @@ import pathlib
 from barb.core.db import fetch_all
 from barb.routers import stats
 
-GERENTE_E1 = ("gerente1@planta.com", "gerente123")
+GERENTE_E1 = ("gerente@mineradelnorte.cl", "mineria123")
 STATS_PY = pathlib.Path(stats.__file__)
 
 

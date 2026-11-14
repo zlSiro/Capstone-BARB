@@ -16,7 +16,7 @@ from psycopg_pool import PoolTimeout
 
 from barb.routers import stats
 
-GERENTE_E1 = ("gerente1@planta.com", "gerente123")
+GERENTE_E1 = ("gerente@mineradelnorte.cl", "mineria123")
 
 
 async def _login(client, creds) -> dict:

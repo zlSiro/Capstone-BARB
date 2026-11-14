@@ -17,11 +17,11 @@ from barb.services.overdue_report import (
 )
 
 TZ = ZoneInfo("America/Santiago")
-ADMIN = {"email": "admin@barb.com", "password": "admin123"}
-GERENTE = {"email": "gerente1@planta.com", "password": "gerente123"}
-SUPERVISOR = {"email": "supervisor1@planta.com", "password": "super123"}
-TECNICO = {"email": "carlos@planta.com", "password": "tecnico123"}
-OTRA_EMPRESA = {"email": "admin@mineranorte.cl", "password": "minera123"}
+ADMIN = {"email": "admin@mineradelnorte.cl", "password": "mineria123"}
+GERENTE = {"email": "gerente@mineradelnorte.cl", "password": "mineria123"}
+SUPERVISOR = {"email": "supervisor@mineradelnorte.cl", "password": "mineria123"}
+TECNICO = {"email": "tecnico1@mineradelnorte.cl", "password": "mineria123"}
+OTRA_EMPRESA = {"email": "admin@alimentos.cl", "password": "alimentos123"}
 MARCA = "Test OT atrasada"
 TOKEN = "token-de-prueba"
 

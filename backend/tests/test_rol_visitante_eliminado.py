@@ -11,7 +11,7 @@ from fastapi import HTTPException
 from barb.core.db import execute, fetch_one
 from barb.core.permissions import ACCIONES, ROLES, ROLES_GESTIONABLES_POR_ADMIN, RUTAS, puede_ejecutar_accion
 
-ADMIN_E1 = {"email": "admin@barb.com", "password": "admin123"}
+ADMIN_E1 = {"email": "admin@mineradelnorte.cl", "password": "mineria123"}
 SUPER = {"email": "super@barb.com", "password": "super123"}
 
 ROLES_VIGENTES = {"operador", "tecnico", "supervisor", "engineer", "gerente", "admin", "super_usuario"}

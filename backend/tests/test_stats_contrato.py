@@ -19,9 +19,9 @@ from __future__ import annotations
 from barb.core.db import fetch_one
 from barb.routers import stats
 
-GERENTE_E1 = ("gerente1@planta.com", "gerente123")
-GERENTE_E2 = ("gerente@mineranorte.cl", "minera123")
-TECNICO = ("carlos@planta.com", "tecnico123")
+GERENTE_E1 = ("gerente@mineradelnorte.cl", "mineria123")
+GERENTE_E2 = ("gerente@alimentos.cl", "alimentos123")
+TECNICO = ("tecnico1@mineradelnorte.cl", "mineria123")
 
 RUTA = "/api/stats/financial-impact"
 

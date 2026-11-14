@@ -21,7 +21,7 @@ from barb.routers.stats import (
 # El dashboard es de consulta del GERENTE desde el rediseño de roles (f32a4c3,
 # HU-12/502): `admin` quedó con la ruta `dashboard` en False y recibía 403.
 # Por eso estos tests entran como gerente de la empresa 1.
-GERENTE_E1 = ("gerente1@planta.com", "gerente123")
+GERENTE_E1 = ("gerente@mineradelnorte.cl", "mineria123")
 HIST = "/api/stats/historical"
 FIN = "/api/stats/financial-impact"
 
