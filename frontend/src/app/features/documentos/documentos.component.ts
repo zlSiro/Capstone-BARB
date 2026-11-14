@@ -2,7 +2,8 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormField, form, validate } from '@angular/forms/signals';
 
-import { Documento, Empresa } from '../../core/models';
+import { Documento, Empresa, Machine, Plant } from '../../core/models';
+import { CatalogService } from '../../core/services/catalog.service';
 import { DocumentsService } from '../../core/services/documents.service';
 import { EmpresasService } from '../../core/services/empresas.service';
 import { PermissionsService } from '../../core/permissions/permissions.service';
@@ -21,6 +22,12 @@ interface UploadModel {
   title: string;
   notes: string;
   empresa_id: string; // solo super_usuario
+  maquina_id: string; // '' = sin máquina (documento general)
+}
+
+interface GrupoMaquinas {
+  planta: string;
+  maquinas: Machine[];
 }
 
 /**
@@ -97,6 +104,19 @@ interface UploadModel {
             <label for="doc-notes" class="fld-label">{{ 'documentos.notas' | translate }}</label>
             <input id="doc-notes" type="text" class="fld-input" [formField]="f.notes" [attr.placeholder]="'documentos.ej_manual_del_fabricante' | translate" />
           </div>
+          <div class="md:col-span-2">
+            <label for="doc-maquina" class="fld-label">{{ 'documentos.maquina_opcional' | translate }}</label>
+            <select id="doc-maquina" class="fld-input" [formField]="f.maquina_id">
+              <option value="">{{ 'documentos.sin_maquina' | translate }}</option>
+              @for (g of grupos(); track g.planta) {
+                <optgroup [label]="g.planta">
+                  @for (m of g.maquinas; track m.id) {
+                    <option [value]="m.id">{{ m.name }}@if (m.codigo) { ({{ m.codigo }}) }</option>
+                  }
+                </optgroup>
+              }
+            </select>
+          </div>
           <div class="md:col-span-2 flex justify-end">
             <button type="submit" class="btn-primary" [disabled]="uploading()">
               {{ (uploading() ? 'documentos.subiendo_e_indexando' : 'documentos.subir_documento') | translate }}
@@ -121,6 +141,7 @@ interface UploadModel {
                 @if (tenant.isSuper()) {
                   <th scope="col" class="px-4 py-2 text-left">{{ 'documentos.empresa' | translate }}</th>
                 }
+                <th scope="col" class="px-4 py-2 text-left">{{ 'documentos.maquina' | translate }}</th>
                 <th scope="col" class="px-4 py-2 text-left">{{ 'documentos.subido_por' | translate }}</th>
                 <th scope="col" class="px-4 py-2 text-right">{{ 'documentos.tamano' | translate }}</th>
                 <th scope="col" class="px-4 py-2 text-right">{{ 'documentos.fragmentos' | translate }}</th>
@@ -139,6 +160,23 @@ interface UploadModel {
                   @if (tenant.isSuper()) {
                     <td class="px-4 py-2" [attr.data-label]="'documentos.empresa' | translate">{{ d.empresa_nombre }}</td>
                   }
+                  <td class="px-4 py-2" [attr.data-label]="'documentos.maquina' | translate">
+                    @if (permissions.canPerform('subir_documentos')) {
+                      <select class="fld-input" data-testid="doc-maquina-fila" (change)="cambiarMaquina(d, $event)"
+                              [attr.aria-label]="'documentos.maquina_de' | translate: { v0: d.title }">
+                        <option value="" [selected]="d.maquina_id === null">{{ 'documentos.sin_maquina' | translate }}</option>
+                        @for (g of grupos(); track g.planta) {
+                          <optgroup [label]="g.planta">
+                            @for (m of g.maquinas; track m.id) {
+                              <option [value]="m.id" [selected]="m.id === d.maquina_id">{{ m.name }}@if (m.codigo) { ({{ m.codigo }}) }</option>
+                            }
+                          </optgroup>
+                        }
+                      </select>
+                    } @else {
+                      {{ d.maquina_nombre ?? '—' }}
+                    }
+                  </td>
                   <td class="px-4 py-2" [attr.data-label]="'documentos.subido_por' | translate">{{ d.subido_por ?? '—' }}</td>
                   <td class="px-4 py-2 text-right" [attr.data-label]="'documentos.tamano' | translate">{{ size(d.size_bytes) }}</td>
                   <td class="px-4 py-2 text-right" [attr.data-label]="'documentos.fragmentos' | translate">{{ d.chunks_indexed }}</td>
@@ -165,7 +203,7 @@ interface UploadModel {
                 </tr>
               } @empty {
                 <tr>
-                  <td [attr.colspan]="tenant.isSuper() ? 8 : 7" class="py-6 text-center text-tinta-suave">
+                  <td [attr.colspan]="tenant.isSuper() ? 9 : 8" class="py-6 text-center text-tinta-suave">
                     {{ 'documentos.aun_no_hay_documentos' | translate }}
                   </td>
                 </tr>
@@ -184,11 +222,25 @@ export class DocumentosComponent {
   private readonly auth = inject(AuthService);
   private readonly service = inject(DocumentsService);
   private readonly empresasService = inject(EmpresasService);
+  private readonly catalog = inject(CatalogService);
   private readonly toast = inject(ToastService);
 
   protected readonly accept = ACCEPT;
   protected readonly documentos = signal<Documento[]>([]);
   protected readonly empresas = signal<Empresa[]>([]);
+  private readonly maquinas = signal<Machine[]>([]);
+  private readonly plantas = signal<Plant[]>([]);
+
+  /** Máquinas del catálogo agrupadas por planta, para los selectores (subir y editar). */
+  protected readonly grupos = computed<GrupoMaquinas[]>(() => {
+    const nombres = new Map(this.plantas().map(p => [p.id, p.name]));
+    const porPlanta = new Map<string, Machine[]>();
+    for (const m of this.maquinas()) {
+      const planta = (m.plant_id !== null ? nombres.get(m.plant_id) : undefined) ?? '—';
+      porPlanta.set(planta, [...(porPlanta.get(planta) ?? []), m]);
+    }
+    return [...porPlanta].map(([planta, maquinas]) => ({ planta, maquinas }));
+  });
   protected readonly loading = signal(true);
   protected readonly error = signal<string | null>(null);
   protected readonly uploading = signal(false);
@@ -204,6 +256,7 @@ export class DocumentosComponent {
     title: '',
     notes: '',
     empresa_id: this.tenant.empresaId() ? String(this.tenant.empresaId()) : '',
+    maquina_id: '',
   });
   protected readonly f = form(this.model, (p) => {
     validate(p.empresa_id, ({ value }) =>
@@ -212,6 +265,8 @@ export class DocumentosComponent {
 
   constructor() {
     this.load();
+    this.catalog.getMachines().subscribe({ next: (m) => this.maquinas.set(m) });
+    this.catalog.getPlants().subscribe({ next: (p) => this.plantas.set(p) });
     if (this.tenant.isSuper()) {
       this.empresasService.getAll().subscribe({ next: (e) => this.empresas.set(e) });
     }
@@ -272,13 +327,14 @@ export class DocumentosComponent {
     if (m.title.trim()) body.append('title', m.title.trim());
     if (m.notes.trim()) body.append('notes', m.notes.trim());
     if (this.tenant.isSuper()) body.append('empresa_id', m.empresa_id);
+    if (m.maquina_id) body.append('maquina_id', m.maquina_id);
 
     this.uploading.set(true);
     this.service.upload(body).subscribe({
       next: (doc) => {
         this.uploading.set(false);
         this.toast.success(`"${doc.title}" indexado (${doc.chunks_indexed} fragmentos).`);
-        this.model.update(cur => ({ ...cur, title: '', notes: '' }));
+        this.model.update(cur => ({ ...cur, title: '', notes: '', maquina_id: '' }));
         this.file.set(null);
         // El <input type=file> no es controlable por el modelo: se limpia directamente.
         const input = document.getElementById('doc-file') as HTMLInputElement | null;
@@ -299,6 +355,23 @@ export class DocumentosComponent {
         this.toast.success(this.i18n.tr(updated.activo ? 'documentos.la_ia_volvera_a' : 'documentos.la_ia_dejara_de'));
       },
       error: (err) => this.toast.error(apiErrorMessage(err, this.i18n.tr('documentos.no_se_pudo_actualizar'))),
+    });
+  }
+
+  /** Asigna, cambia o quita la máquina de un documento (PATCH `maquina_id`; vacío = desvincula). */
+  protected cambiarMaquina(d: Documento, event: Event): void {
+    const select = event.target as HTMLSelectElement;
+    const maquinaId = select.value ? Number(select.value) : null;
+    this.service.update(d.id, { maquina_id: maquinaId }).subscribe({
+      next: (updated) => {
+        this.documentos.update(list => list.map(x => (x.id === updated.id ? updated : x)));
+        this.toast.success(this.i18n.tr(maquinaId === null ? 'documentos.maquina_desvinculada' : 'documentos.maquina_asignada'));
+      },
+      error: (err) => {
+        // Se restaura el valor anterior: el selector no debe quedar mostrando algo que no se guardó.
+        select.value = d.maquina_id === null ? '' : String(d.maquina_id);
+        this.toast.error(apiErrorMessage(err, this.i18n.tr('documentos.no_se_pudo_asignar_maquina')));
+      },
     });
   }
 

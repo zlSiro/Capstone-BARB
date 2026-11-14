@@ -53,6 +53,13 @@ const es = {
     incluir_en_la_ia_2: 'Incluir en la IA',
     seleccionar_archivo: 'Seleccionar archivo',
     ningun_archivo_seleccionado: 'Ningún archivo seleccionado',
+    maquina: 'Máquina',
+    maquina_opcional: 'Máquina (opcional)',
+    sin_maquina: 'Sin máquina (documento general)',
+    maquina_de: 'Máquina de {v0}',
+    maquina_asignada: 'Máquina asignada al documento.',
+    maquina_desvinculada: 'Documento desvinculado de la máquina.',
+    no_se_pudo_asignar_maquina: 'No se pudo asignar la máquina al documento.',
   },
 };
 
@@ -110,6 +117,13 @@ const en: typeof es = {
     incluir_en_la_ia_2: 'Include in the AI',
     seleccionar_archivo: 'Select file',
     ningun_archivo_seleccionado: 'No file selected',
+    maquina: 'Machine',
+    maquina_opcional: 'Machine (optional)',
+    sin_maquina: 'No machine (general document)',
+    maquina_de: 'Machine of {v0}',
+    maquina_asignada: 'Machine assigned to the document.',
+    maquina_desvinculada: 'Document unlinked from the machine.',
+    no_se_pudo_asignar_maquina: 'The machine could not be assigned to the document.',
   },
 };
 
