@@ -66,7 +66,7 @@ def test_un_rol_desconocido_falla_cerrado():
 
 @pytest.mark.asyncio
 async def test_el_tecnico_no_puede_proponer_ot():
-    salida = await _tools(TECNICO)["proponer_ot"].ainvoke({"nombre_maquina": "Compressor A1", "descripcion_problema": PROBLEMA})
+    salida = await _tools(TECNICO)["proponer_ot"].ainvoke({"nombre_maquina": "Chancador de cono Sandvik H8800", "descripcion_problema": PROBLEMA})
     assert salida == SIN_PERMISO_OT
 
 
@@ -78,14 +78,14 @@ def test_el_mensaje_de_rechazo_es_el_definido_por_el_negocio():
 @pytest.mark.parametrize("rol", ["operador", "tecnico", "engineer", "gerente", "admin", "super_usuario"])
 async def test_todo_rol_que_no_es_supervisor_recibe_el_mensaje_al_intentar_generar_una_ot(rol):
     """La intención de crear una OT desde el chat, sin un aviso de falla, se rechaza con el texto del negocio."""
-    salida = await _tools(rol)["proponer_ot"].ainvoke({"nombre_maquina": "Compressor A1", "descripcion_problema": PROBLEMA})
+    salida = await _tools(rol)["proponer_ot"].ainvoke({"nombre_maquina": "Chancador de cono Sandvik H8800", "descripcion_problema": PROBLEMA})
     assert salida == "No tiene privilegios para generar OT sin un aviso de falla. Por favor generar conforme al flujo"
 
 
 @pytest.mark.asyncio
 async def test_el_gerente_no_puede_proponer_ot():
     """La creación directa de OT es solo del supervisor: el gerente genera OT desde un aviso."""
-    salida = await _tools(GERENTE)["proponer_ot"].ainvoke({"nombre_maquina": "Compressor A1", "descripcion_problema": PROBLEMA})
+    salida = await _tools(GERENTE)["proponer_ot"].ainvoke({"nombre_maquina": "Chancador de cono Sandvik H8800", "descripcion_problema": PROBLEMA})
     assert salida == SIN_PERMISO_OT
 
 
@@ -95,7 +95,7 @@ async def test_el_supervisor_si_puede_proponer_ot(db_pool, caplog):
     antes = await fetch_one("SELECT COUNT(*) AS n FROM orden_trabajo")
     with caplog.at_level(logging.WARNING):
         salida = await _tools(SUPERVISOR)["proponer_ot"].ainvoke(
-            {"nombre_maquina": "Compressor A1", "descripcion_problema": PROBLEMA}
+            {"nombre_maquina": "Chancador de cono Sandvik H8800", "descripcion_problema": PROBLEMA}
         )
     despues = await fetch_one("SELECT COUNT(*) AS n FROM orden_trabajo")
 
@@ -114,7 +114,7 @@ async def test_el_tecnico_no_crea_la_ot_aunque_confirme(db_pool):
     antes = await fetch_one("SELECT COUNT(*) AS n FROM orden_trabajo")
 
     salida = await crear_ot_aprobada(
-        consulta_maquina="Compressor A1",
+        consulta_maquina="Chancador de cono Sandvik H8800",
         problema=PROBLEMA,
         prioridad="high",
         empresa_id=1,
@@ -133,7 +133,7 @@ async def test_otra_empresa_no_crea_aunque_sea_supervisor(db_pool):
     antes = await fetch_one("SELECT COUNT(*) AS n FROM orden_trabajo")
 
     salida = await crear_ot_aprobada(
-        consulta_maquina="Compressor A1",
+        consulta_maquina="Chancador de cono Sandvik H8800",
         problema=PROBLEMA,
         prioridad="high",
         empresa_id=2,
@@ -210,7 +210,7 @@ def _sin_retrieval(monkeypatch):
 async def test_el_grafo_no_crea_ot_con_un_tecnico(db_pool):
     """Un técnico que confirma una propuesta no crea nada: el gate también valida."""
     propuesta = _texto_propuesta(
-        {"nombre": "Compressor A1", "codigo": "COMP-A1", "planta": "Planta Norte"},
+        {"nombre": "Chancador de cono Sandvik H8800", "codigo": "COMP-A1", "planta": "Planta Norte"},
         PROBLEMA,
         "high",
     )

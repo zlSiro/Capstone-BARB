@@ -100,8 +100,8 @@ async def test_create_session_guarda_equipo_y_titulo_segmentado(cleanup_sessions
     )
     assert row is not None
     assert row["titulo"] == "PUMP-E4 — vibrando demasiado"
-    assert row["machine_name"] == "Pump E4"
-    assert row["plant_name"] == "Planta Central San Bernardo"
+    assert row["machine_name"] == "Bomba de pulpa KSB"
+    assert row["plant_name"] == "Planta de Vapor"
     assert row["discipline"] == "Hidráulica"
 
 
@@ -149,7 +149,7 @@ async def test_create_session_titulo_fallback(cleanup_sessions, seeded_ids):
 # =============================================================================
 
 def test_make_titulo_usa_codigo_y_problema():
-    maquina = {"nombre": "Pump E4", "codigo": "PUMP-E4"}
+    maquina = {"nombre": "Bomba de pulpa KSB", "codigo": "PUMP-E4"}
     titulo = chat_repository._make_titulo(
         "Necesito saber por qué la bomba PUMP-E4 está vibrando demasiado "
         "y qué debo revisar primero",

@@ -254,7 +254,7 @@ def test_la_propuesta_de_parametros_parsea_redonda():
     """Round-trip del texto: lo que redacta la tool es EXACTO lo que parsea el gate
     (con el SLA intacto y el campo no tocado vacío)."""
     texto = _texto_propuesta_parametros(
-        {"nombre": "Pump E4", "codigo": "PUMP-E4", "planta": "Planta Central San Bernardo"},
+        {"nombre": "Bomba de pulpa KSB", "codigo": "PUMP-E4", "planta": "Planta de Vapor"},
         {"sla_horas": 6, "costo_inactividad_minuto": None},
         {"sla_horas": 8.0},
     )
@@ -262,7 +262,7 @@ def test_la_propuesta_de_parametros_parsea_redonda():
     assert texto.startswith(_PREFIJO_PROPUESTA_PARAMETROS)
     datos = _parsear_propuesta_parametros(texto)
     assert datos["tipo"] == "parametros"
-    assert datos["codigo"] == "PUMP-E4" and datos["nombre"] == "Pump E4"
+    assert datos["codigo"] == "PUMP-E4" and datos["nombre"] == "Bomba de pulpa KSB"
     assert datos["sla_horas"] == 8.0
     assert datos["costo_inactividad_minuto"] is None, "costo no tocado = sin cambio"
 
@@ -579,7 +579,7 @@ async def test_el_grafo_crea_planta_con_confirmacion(db_pool, monkeypatch):
 
 def _propuesta_parametros() -> str:
     return _texto_propuesta_parametros(
-        {"nombre": "Pump E4", "codigo": "PUMP-E4", "planta": "Planta Candado SLA"},
+        {"nombre": "Bomba de pulpa KSB", "codigo": "PUMP-E4", "planta": "Planta Candado SLA"},
         {"sla_horas": 6, "costo_inactividad_minuto": 1000},
         {"sla_horas": 8.0},
     )
@@ -615,7 +615,7 @@ async def test_el_grafo_cambia_parametros_con_confirmacion(db_pool, monkeypatch)
         estado = await grafo.ainvoke(_entrada([AIMessage(content=_propuesta_parametros()), HumanMessage(content="sí")]))
 
         final = estado["messages"][-1]
-        assert "Actualicé «Pump E4»" in final.content and "6 h → 8 h" in final.content
+        assert "Actualicé «Bomba de pulpa KSB»" in final.content and "6 h → 8 h" in final.content
         fila = await fetch_one("SELECT sla_horas FROM maquina WHERE codigo = 'PUMP-E4'")
         assert float(fila["sla_horas"]) == 8
     finally:

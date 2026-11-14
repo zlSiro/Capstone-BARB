@@ -46,7 +46,7 @@ def tools_chat():
 async def test_crear_ot_crea_una_ot_real_y_coherente(db_pool):
     """La fila creada tiene que ser una OT válida, no un registro a medias."""
     salida = await crear_ot_aprobada(
-        "Compresor A1",
+        "Compresor de Amoníaco",
         "Vibración y ruido metálico al arrancar, desde ayer",
         "alta",
         empresa_id=1,
@@ -72,7 +72,7 @@ async def test_crear_ot_crea_una_ot_real_y_coherente(db_pool):
         assert fila["estado"] == "pending"
         assert fila["tipo"] == "corrective"
         assert fila["priority"] == "high", "«alta» debe normalizarse a high"
-        assert fila["maquina"] == "Compressor A1"
+        assert fila["maquina"] == "Chancador de cono Sandvik H8800"
         assert "Vibración y ruido metálico" in fila["descripcion_problema"]
         assert fila["creado_por"] == 1, "el creador es el usuario logueado"
         # Al no ser técnico, se asigna a un técnico real de la empresa.
@@ -93,7 +93,7 @@ async def test_crear_ot_no_duplica_la_misma_orden(db_pool):
     Protección contra el doble llamado: el modelo puede repetir la tool, o el grafo
     reintentar tras un error, y el usuario no debe ver dos OTs iguales.
     """
-    datos = ("Compresor A1", "Fuga de aceite en la tapa del cárter", "medium")
+    datos = ("Compresor de Amoníaco", "Fuga de aceite en la tapa del cárter", "medium")
     primera = await crear_ot_aprobada(*datos, empresa_id=1, usuario_id=1, rol="supervisor")
     segunda = await crear_ot_aprobada(*datos, empresa_id=1, usuario_id=1, rol="supervisor")
 
@@ -137,7 +137,7 @@ async def test_crear_ot_no_crea_nada_si_la_maquina_no_existe(db_pool):
 async def test_proponer_ot_pide_detalle_si_la_descripcion_es_corta(db_pool, tools_chat):
     antes = await fetch_one("SELECT COUNT(*) AS n FROM orden_trabajo")
 
-    salida = await tools_chat["proponer_ot"].ainvoke({"nombre_maquina": "Compresor A1", "descripcion_problema": "falla"})
+    salida = await tools_chat["proponer_ot"].ainvoke({"nombre_maquina": "Compresor de Amoníaco", "descripcion_problema": "falla"})
 
     despues = await fetch_one("SELECT COUNT(*) AS n FROM orden_trabajo")
     assert antes["n"] == despues["n"]
@@ -156,7 +156,7 @@ async def test_crear_ot_no_escribe_en_otra_empresa(db_pool):
     )
 
     salida = await crear_ot_aprobada(
-        "Compressor A1",  # es de la empresa 1
+        "Chancador de cono Sandvik H8800",  # es de la empresa 1
         "Intento de escritura cruzada entre empresas",
         "medium",
         empresa_id=2,
@@ -218,7 +218,7 @@ async def test_proponer_ot_no_toca_la_base(db_pool, tools_chat):
 
     salida = await tools_chat["proponer_ot"].ainvoke(
         {
-            "nombre_maquina": "Compressor A1",
+            "nombre_maquina": "Chancador de cono Sandvik H8800",
             "descripcion_problema": "Ruido metálico al arrancar, desde ayer",
             "prioridad": "alta",
         }
@@ -234,13 +234,13 @@ async def test_la_propuesta_persistida_es_parseable_por_el_gate(db_pool, tools_c
     """El texto que queda en el historial es lo que el gate re-parsea al turno siguiente."""
     salida = await tools_chat["proponer_ot"].ainvoke(
         {
-            "nombre_maquina": "Compressor A1",
+            "nombre_maquina": "Chancador de cono Sandvik H8800",
             "descripcion_problema": "Ruido metálico al arrancar, desde ayer",
             "prioridad": "alta",
         }
     )
     borrador = propuesta_pendiente([AIMessage(content=salida)])
     assert borrador is not None, "la propuesta se reconoce en el historial"
-    assert borrador["consulta_maquina"] == "Compressor A1"
+    assert borrador["consulta_maquina"] == "Chancador de cono Sandvik H8800"
     assert borrador["problema"] == "Ruido metálico al arrancar, desde ayer"
     assert borrador["prioridad"] == "high", "«alta» se normaliza antes de persistir"

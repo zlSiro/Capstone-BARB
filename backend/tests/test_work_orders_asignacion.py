@@ -57,7 +57,7 @@ async def test_el_supervisor_reasigna_el_tecnico_y_la_prioridad(client, ot):
     resp = await client.patch(_url(ot), json=cuerpo, headers=await _login(client, SUPERVISOR))
     assert resp.status_code == 200, resp.text
     data = resp.json()
-    assert data["tecnico_id"] == nuevo and data["tecnico_nombre"] == "Ana Silva" and data["priority"] == "urgent"
+    assert data["tecnico_id"] == nuevo and data["tecnico_nombre"] == "Paula Riquelme" and data["priority"] == "urgent"
     assert data["estado"] == "pending"  # reasignar no cambia el estado
 
 

@@ -16,8 +16,8 @@ from barb.core.db import execute, fetch_one
 from barb.services import document_repository as repo
 from barb.services.document_repository import EMBEDDING_DIM
 
-EMPRESA_1 = 1  # Planta Demo BARB (seed)
-EMPRESA_2 = 2  # Minera Norte S.A. (seed)
+EMPRESA_1 = 1  # Minera del Norte (seed)
+EMPRESA_2 = 2  # Planta de Alimentos (seed)
 
 
 @pytest_asyncio.fixture

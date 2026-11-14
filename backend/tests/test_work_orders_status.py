@@ -84,7 +84,7 @@ async def test_cambio_queda_auditado_con_usuario_y_timestamp(client, ot):
     primero = history[1]
     assert primero["from_status"] == "pending"
     assert primero["comment"] == "Se inicia el trabajo"
-    assert primero["user_name"] == "Supervisor Turno A"
+    assert primero["user_name"] == "Javiera Soto"
     assert primero["user_role"] == "supervisor"
     assert primero["changed_at"].endswith("Z")
 

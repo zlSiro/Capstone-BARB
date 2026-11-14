@@ -41,7 +41,7 @@ class _LLMFalso:
 
 
 def _propuesta() -> str:
-    maquina = {"nombre": "Compressor A1", "codigo": "COMP-A1", "planta": "Planta Norte"}
+    maquina = {"nombre": "Chancador de cono Sandvik H8800", "codigo": "COMP-A1", "planta": "Planta Norte"}
     return _texto_propuesta(maquina, "Ruido metálico al arrancar", "high")
 
 
@@ -70,7 +70,7 @@ def _maquina_conocida(monkeypatch):
     """proponer_ot resuelve la máquina sin tocar la base."""
 
     async def resolver(empresa_id, consulta, accion):
-        return ({"nombre": "Compressor A1", "codigo": "COMP-A1", "planta": "Planta Norte"}, None)
+        return ({"nombre": "Chancador de cono Sandvik H8800", "codigo": "COMP-A1", "planta": "Planta Norte"}, None)
 
     monkeypatch.setattr(ai_tools, "_resolver_maquina", resolver)
 
@@ -116,7 +116,7 @@ async def test_el_turno_de_propuesta_termina_con_el_texto_exacto(_maquina_conoci
                     {
                         "name": "proponer_ot",
                         "args": {
-                            "nombre_maquina": "Compressor A1",
+                            "nombre_maquina": "Chancador de cono Sandvik H8800",
                             "descripcion_problema": "Ruido metálico al arrancar",
                             "prioridad": "high",
                         },
@@ -148,7 +148,7 @@ async def test_confirmacion_inserta_la_ot(_insert_espia):
     assert final.content.startswith("OT creada: **OT-IA-")
     assert len(_insert_espia) == 1
     consulta, problema, prioridad, empresa_id, usuario_id, rol = _insert_espia[0]
-    assert (consulta, problema, prioridad) == ("Compressor A1", "Ruido metálico al arrancar", "high")
+    assert (consulta, problema, prioridad) == ("Chancador de cono Sandvik H8800", "Ruido metálico al arrancar", "high")
     assert (empresa_id, usuario_id, rol) == (1, 1, "supervisor")
     assert len(modelo.llamadas) == 0, "la confirmación no vuelve a invocar al modelo"
 
@@ -183,13 +183,13 @@ async def test_respuesta_ambigua_repregunta_con_el_mismo_texto(_insert_espia):
 @pytest.mark.asyncio
 async def test_sin_propuesta_el_gate_pasa_derecho(_insert_espia):
     """Sin propuesta pendiente, el gate no interviene y el turno corre normal."""
-    modelo = _LLMFalso([AIMessage(content="El Compressor A1 tiene 3 OTs abiertas.")])
+    modelo = _LLMFalso([AIMessage(content="El Chancador de cono Sandvik H8800 tiene 3 OTs abiertas.")])
     grafo = crear_grafo(empresa_id=1, llm=modelo, usuario_id=1, rol="supervisor")
 
-    estado = await grafo.ainvoke(_entrada([HumanMessage(content="¿cuántas OTs tiene el Compressor A1?")]))
+    estado = await grafo.ainvoke(_entrada([HumanMessage(content="¿cuántas OTs tiene el Chancador de cono Sandvik H8800?")]))
 
     final = estado["messages"][-1]
-    assert final.content == "El Compressor A1 tiene 3 OTs abiertas."
+    assert final.content == "El Chancador de cono Sandvik H8800 tiene 3 OTs abiertas."
     assert len(modelo.llamadas) == 1, "el turno llegó hasta generate"
     assert _insert_espia == []
 

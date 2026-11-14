@@ -480,6 +480,15 @@ WHERE NOT EXISTS (
      WHERE ch.documento_id = d.documento_id AND ch.orden = c.orden
 );
 
+-- Un 8% de las OTs cerradas incumple el SLA (1 de cada 12). Sin esto el cumplimiento
+-- queda plano en 100% y el KPI del dashboard no dice nada: una planta real tiene
+-- incumplimientos, y el semáforo de salud necesita esa señal para no pintar siempre verde.
+UPDATE orden_trabajo
+   SET fecha_cierre = fecha_vencimiento + interval '4 hours'
+ WHERE numero_ot LIKE 'REAL-%'
+   AND estado = 'completed'
+   AND fecha_vencimiento IS NOT NULL
+   AND mod(ot_id, 12) = 0;
 -- -----------------------------------------------------------------------------
 -- 7. Lecturas de sensores — 6 por sensor, en los últimos 6 meses
 -- -----------------------------------------------------------------------------

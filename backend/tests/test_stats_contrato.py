@@ -508,7 +508,8 @@ async def test_trend_y_machines_tienen_la_forma_esperada(client):
     for punto in d["trend14Days"]:
         assert set(punto) == {"date", "abiertas", "cerradas"}, sorted(punto)
 
-    assert len(d["machines"]) == 5, f"{len(d['machines'])} máquinas"
+    # El top devuelve hasta 5: Minera del Norte tiene 4 máquinas, así que 5 es el techo, no el piso.
+    assert 1 <= len(d["machines"]) <= 5, f"{len(d['machines'])} máquinas"
     # El backend envía 7 campos por máquina; `MachineData` los declara todos desde
     # CGBIDA-394/399. `costo_total` se agregó para el gráfico de Top 5 por costo.
     esperado = {"id", "name", "total", "ahorroGenerado", "mttr", "slaCompliance", "costo_total"}

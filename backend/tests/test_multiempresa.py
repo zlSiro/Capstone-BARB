@@ -116,8 +116,8 @@ async def test_ots_solo_de_la_propia_empresa(client):
     ots2 = (await client.get("/api/work-orders", headers=h2)).json()
 
     assert ots1 and ots2
-    assert {o["empresa_nombre"] for o in ots1} == {"Planta Demo BARB"}
-    assert {o["empresa_nombre"] for o in ots2} == {"Minera Norte S.A."}
+    assert {o["empresa_nombre"] for o in ots1} == {"Minera del Norte"}
+    assert {o["empresa_nombre"] for o in ots2} == {"Planta de Alimentos"}
     assert not {o["numero_ot"] for o in ots1} & {o["numero_ot"] for o in ots2}
 
 
@@ -134,9 +134,9 @@ async def test_no_se_puede_ver_ni_modificar_una_ot_de_otra_empresa(client):
 
 async def test_parametro_empresa_id_es_ignorado_por_usuarios_de_empresa(client):
     h1 = await _login(client, ADMIN_E1)
-    e2 = await _empresa_id(client, await _login(client, SUPER), "Minera Norte S.A.")
+    e2 = await _empresa_id(client, await _login(client, SUPER), "Planta de Alimentos")
     ots = (await client.get(f"/api/work-orders?empresa_id={e2}", headers=h1)).json()
-    assert {o["empresa_nombre"] for o in ots} == {"Planta Demo BARB"}
+    assert {o["empresa_nombre"] for o in ots} == {"Minera del Norte"}
 
 
 async def test_catalogos_filtrados_por_empresa(client):
@@ -144,13 +144,13 @@ async def test_catalogos_filtrados_por_empresa(client):
     plantas = (await client.get("/api/plants", headers=h2)).json()
     maquinas = (await client.get("/api/machines", headers=h2)).json()
     tecnicos = (await client.get("/api/technicians", headers=h2)).json()
-    assert {p["name"] for p in plantas} == {"Planta Concentradora Calama", "Faena Chancado Norte"}
+    assert {p["name"] for p in plantas} == {"Molienda SAG", "Chancado Primario"}
     assert len(maquinas) == 7
     assert {t["email"] for t in tecnicos} == {"tecnico1@alimentos.cl", "tecnico2@alimentos.cl"}
 
 
 async def test_no_se_puede_crear_ot_con_maquina_o_tecnico_de_otra_empresa(client):
-    # Supervisor de empresa 2 (el único rol que crea OT directas) con la máquina de la empresa 1 (id 1 = Compressor A1).
+    # Supervisor de empresa 2 (el único rol que crea OT directas) con la máquina de la empresa 1 (id 1 = Chancador de cono Sandvik H8800).
     h = await _login(client, ("supervisor@alimentos.cl", "alimentos123"))
     r = await client.post(
         "/api/work-orders",
@@ -164,13 +164,13 @@ async def test_stats_y_topologia_solo_de_la_empresa(client):
     h2 = await _login(client, GERENTE_E2)
     stats = (await client.get("/api/stats/financial-impact", headers=h2)).json()
     assert {m["name"] for m in stats["machines"]} <= {
-        "Molino SAG 1", "Bomba de Pulpa BP-3", "Celda de Flotación CF-2", "Sistema Lubricación Molino",
-        "Chancador Primario CH-01", "Correa Overland CV-12", "Subestación Eléctrica SE-4",
+        "Molino SAG con motor Siemens", "Bomba de pulpa KSB", "Bomba de pulpa KSB", "Chancador de cono Sandvik H8800",
+        "Chancador de cono Sandvik H8800", "Correa Overland", "Molino SAG con motor Siemens",
     }
     topo = (await client.get("/api/topology", headers=h2)).json()
     nombres = {n["nombre_visual"] for n in topo["nodos"]}
-    assert "Chancador Primario CH-01" in nombres
-    assert "Compressor A1" not in nombres
+    assert "Chancador de cono Sandvik H8800" in nombres
+    assert "Chancador de cono Sandvik H8800" not in nombres
 
 
 # =============================================================================
@@ -332,7 +332,7 @@ async def test_super_crea_edita_suspende_y_elimina_empresa_con_gerente_inicial(c
 async def test_admin_solo_ve_usuarios_de_su_empresa(client):
     h2 = await _login(client, ADMIN_E2)
     usuarios = (await client.get("/api/usuarios", headers=h2)).json()
-    assert usuarios and {u["empresa_nombre"] for u in usuarios} == {"Minera Norte S.A."}
+    assert usuarios and {u["empresa_nombre"] for u in usuarios} == {"Planta de Alimentos"}
     assert "super_usuario" not in {u["rol"] for u in usuarios}
 
 
@@ -357,7 +357,7 @@ async def test_admin_no_puede_tocar_usuarios_de_otra_empresa_ni_crear_super(clie
 
 async def test_super_solo_crea_y_gestiona_gerentes(client):
     hs = await _login(client, SUPER)
-    e2 = await _empresa_id(client, hs, "Minera Norte S.A.")
+    e2 = await _empresa_id(client, hs, "Planta de Alimentos")
     base = {"nombre": "Gerente Nuevo", "password": "secreto123", "empresa_id": e2}
 
     # Otros perfiles (incluido otro super_usuario) -> 403
@@ -392,7 +392,7 @@ async def test_super_solo_crea_y_gestiona_gerentes(client):
 async def test_gerente_puede_gestionar_usuarios_de_su_empresa(client):
     hg = await _login(client, ("gerente@alimentos.cl", "alimentos123"))
     usuarios = (await client.get("/api/usuarios", headers=hg)).json()
-    assert usuarios and {u["empresa_nombre"] for u in usuarios} == {"Minera Norte S.A."}
+    assert usuarios and {u["empresa_nombre"] for u in usuarios} == {"Planta de Alimentos"}
     assert {u["rol"] for u in usuarios} == {"admin"}
     r = await client.post(
         "/api/usuarios", headers=hg,
@@ -408,7 +408,7 @@ async def test_gerente_puede_gestionar_usuarios_de_su_empresa(client):
 
 async def test_admin_no_puede_asignar_otra_empresa_al_crear_usuario(client):
     h1, hs = await _login(client, ADMIN_E1), await _login(client, SUPER)
-    e2 = await _empresa_id(client, hs, "Minera Norte S.A.")
+    e2 = await _empresa_id(client, hs, "Planta de Alimentos")
     email = f"cruce-{uuid.uuid4().hex[:6]}@x.cl"
     r = await client.post(
         "/api/usuarios", headers=h1,
@@ -416,7 +416,7 @@ async def test_admin_no_puede_asignar_otra_empresa_al_crear_usuario(client):
     )
     try:
         assert r.status_code == 201
-        assert r.json()["empresa_nombre"] == "Planta Demo BARB"  # se ignora el empresa_id enviado
+        assert r.json()["empresa_nombre"] == "Minera del Norte"  # se ignora el empresa_id enviado
     finally:
         if r.status_code == 201:
             await client.delete(f"/api/usuarios/{r.json()['usuario_id']}", headers=h1)
@@ -541,10 +541,10 @@ async def test_cada_empresa_solo_ve_sus_documentos(client):
     h1, h2 = await _login(client, ENGINEER_E1), await _login(client, ADMIN_E2)
     d1 = (await client.get("/api/documents", headers=h1)).json()
     d2 = (await client.get("/api/documents", headers=h2)).json()
-    assert {d["empresa_nombre"] for d in d1} == {"Planta Demo BARB"}
-    assert {d["empresa_nombre"] for d in d2} == {"Minera Norte S.A."}
-    assert any(d["title"] == "Manual Chancador Primario CH-01" for d in d2)
-    assert not any(d["title"] == "Manual Chancador Primario CH-01" for d in d1)
+    assert {d["empresa_nombre"] for d in d1} == {"Minera del Norte"}
+    assert {d["empresa_nombre"] for d in d2} == {"Planta de Alimentos"}
+    assert any(d["title"] == "Manual Chancador de cono Sandvik H8800" for d in d2)
+    assert not any(d["title"] == "Manual Chancador de cono Sandvik H8800" for d in d1)
 
 
 async def test_operador_ve_documentos_pero_no_sube_ni_elimina(client):
@@ -575,7 +575,7 @@ async def test_subir_documento_lo_indexa_y_la_ia_lo_encuentra_solo_en_su_empresa
     try:
         assert doc["chunks_indexed"] == 1 and doc["activo"] is True
         e1 = doc["empresa_id"]
-        e2 = await _empresa_id(client, hs, "Minera Norte S.A.")
+        e2 = await _empresa_id(client, hs, "Planta de Alimentos")
 
         assert [c["title"] for c in await docs.search_chunks(e1, clave)] == ["Doc de prueba"]
         assert await docs.search_chunks(e2, clave) == []  # otra empresa: nada

@@ -65,19 +65,19 @@ async def test_edita_nombre_y_codigo(client, ctx):
     r = await client.patch(
         f"/api/maquinas/{maquina_id}",
         headers=ctx["tokens"]["admin"],
-        json={"nombre": "Compressor A1", "codigo": "COMP-A1"},
+        json={"nombre": "Chancador de cono Sandvik H8800", "codigo": "COMP-A1"},
     )
 
     assert r.status_code == 200, r.text
     cuerpo = r.json()
-    assert cuerpo["nombre"] == "Compressor A1"
+    assert cuerpo["nombre"] == "Chancador de cono Sandvik H8800"
     assert cuerpo["codigo"] == "COMP-A1"
     assert cuerpo["planta_id"] == planta_id
 
     fila = await fetch_one(
         "SELECT nombre, codigo FROM maquina WHERE maquina_id = %(m)s", {"m": maquina_id}
     )
-    assert fila == {"nombre": "Compressor A1", "codigo": "COMP-A1"}
+    assert fila == {"nombre": "Chancador de cono Sandvik H8800", "codigo": "COMP-A1"}
 
 
 @pytest.mark.asyncio

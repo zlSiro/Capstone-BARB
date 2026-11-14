@@ -305,5 +305,6 @@ async def test_preview_excluye_finales(client, empresa_id):
     await _crear_ot_atrasada(client, 3, "cancelled")  # final: no suma
     data = (await client.get("/api/notificaciones/preview", headers=sup)).json()
     assert data["total"] == antes + 1
-    assert all(o["dias_atraso"] >= 1 for o in data["ots"])
+    # Vencida puede ser por horas: `dias_atraso` es 0 en ese caso (el redondeo es a días).
+    assert all(o["dias_atraso"] >= 0 for o in data["ots"])
     assert all(o["estado"] not in ("completed", "cancelled") for o in data["ots"])

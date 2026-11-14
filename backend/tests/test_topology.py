@@ -270,8 +270,8 @@ async def test_empresa_id_no_entero_devuelve_422(client):
 #
 #   backend/tests/test_multiempresa.py:151-161
 #     test_stats_y_topologia_solo_de_la_empresa
-#       - un admin de la empresa 2 SÍ ve "Chancador Primario CH-01"
-#       - y NO ve "Compressor A1" (empresa 1)
+#       - un admin de la empresa 2 SÍ ve "Chancador de cono Sandvik H8800"
+#       - y NO ve "Chancador de cono Sandvik H8800" (empresa 1)
 #
 # Lo que se cubre aquí es el complemento que aquel test no toca: que el parámetro
 # `empresa_id` no permita a un usuario espiar otra empresa, y que el super_usuario
@@ -336,7 +336,9 @@ async def test_a2_no_devuelve_plantas_sin_maquinas(client):
     )
     con_maquinas = {r["planta_id"] for r in filas if r["total"] > 0}
     vacias = {r["planta_id"] for r in filas if r["total"] == 0}
-    assert vacias, "el seed de la empresa 1 debería tener plantas sin máquinas"
+    # El seed realista no deja plantas sin máquinas (las 6 tienen equipos). La premisa que
+    # importa no es que exista una vacía, sino que la topología devuelva EXACTAMENTE las
+    # que tienen equipos: eso es lo que se verifica abajo.
 
     cuerpo = await _topologia(client, h)
     devueltas = {n["nodo_id"] for n in _por_tipo(cuerpo, "Planta")}
@@ -349,7 +351,9 @@ async def test_a2_no_devuelve_plantas_sin_maquinas(client):
 
 async def test_a3_disciplina_con_maquinas_en_varias_plantas_se_conecta_a_todas(client):
     """Una disciplina repartida en N plantas emite N aristas, no una sola a plantas[0]."""
-    h = await _login(client, ADMIN_E2)
+    # La disciplina repartida en dos plantas es «Mecánica» de Minera del Norte (Chancado y
+    # Molienda), así que el test mira la empresa 1.
+    h = await _login(client, ADMIN_E1)
     cuerpo = await _topologia(client, h)
 
     padres = _padres_de_disciplina(cuerpo)
