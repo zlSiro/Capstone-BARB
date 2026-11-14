@@ -56,6 +56,11 @@ consultas puramente textuales y con RAG).
   turno. La tabla `chat_debug_attachment` (migración 0002) existe para la
   persistencia futura de adjuntos + el bucket de Supabase Storage (PR #21)
   si el PO la pide — documentado como mejora futura, no bloqueante.
+- **HU-23:** el mensaje de usuario de un turno con imagen se persiste con
+  `has_image: true` (solo la marca: ni base64 ni URL). La imagen sigue sin
+  guardarse; la persistencia queda pendiente de la política de
+  confidencialidad del PO. `GET /api/chat/sessions/{id}` devuelve `has_image`
+  por mensaje y el historial muestra un indicador «imagen enviada».
 
 ### D3 — Endpoint separado: `POST /api/chat/multimedia`
 
@@ -98,7 +103,33 @@ historial como cualquier otra).
   pruebas reales el multimodal describía cualquier equipo con conocimiento
   general mientras el chat textual negaba saber del tema (el asistente parecía
   "amnésico" en la misma conversación). La vinculación con la máquina del
-  catálogo (binding por `machine_id`) queda en la **HU-23**.
+  catálogo se cerró en la **HU-23** (ver más abajo).
+- **HU-23 — máquina del catálogo vinculada a la conversación (cierre):**
+  - El usuario puede fijar, opcionalmente, una máquina de su empresa
+    (`maquina_id` en `/api/chat/stream` y `/api/chat/multimedia`; semántica
+    ausente = conserva · entero = fija/cambia · `null` = desvincula). Se guarda
+    en `chat_session.maquina_id` (migración 0016, FK `ON DELETE SET NULL`; se
+    eliminó `machine_id VARCHAR`, sin uso), así que los seguimientos de texto o
+    imagen heredan la máquina aunque no la nombren. `machine_name` /
+    `plant_name` / `discipline` quedan como snapshot para el Historial y la
+    máquina elegida manda sobre `identificar_maquina`.
+  - Los documentos pueden ligarse a una máquina (`documento.maquina_id`, vía
+    `POST`/`PATCH /api/documents`). `search_chunks(..., maquina_id=)` busca
+    primero en los documentos de esa máquina y completa con los generales de la
+    empresa (así no se pierden procedimientos transversales como LOTO); el
+    embedding de la consulta se calcula una sola vez para las dos pasadas.
+  - El prompt recibe la ficha `EQUIPO SELECCIONADO: nombre (código) — planta …,
+    disciplina …`. Reglas solo de prompt (sin lógica en código): citar los
+    `[Documento: …]` de la máquina; **advertir y seguir con el seleccionado** si
+    la imagen parece de otro equipo; sin equipo y sin documentación aplicable,
+    identificación visual + aclaración explícita de que no hay documentación.
+  - Un `maquina_id` de otra empresa responde 404 y se valida antes del rate
+    limit y del límite de tokens (no consume cuota).
+  - Sin servicio externo nuevo: pgvector + full-text + muse-glimmer. Se
+    descartó un VLM dedicado, la autodetección desde la imagen y el vínculo por
+    mensaje. Fuera de alcance: multi-imagen, video, persistencia de imágenes,
+    filtro del Historial por máquina y asignación masiva a documentos
+    existentes.
 - Los seguimientos de texto también mejoraron (v1.1): el stream textual incluye
   el último mensaje del **asistente** en los términos de búsqueda, para que un
   turno con imagen ("es un chancador de mandíbulas") aporte el contexto que los
