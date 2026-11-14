@@ -110,6 +110,23 @@ async def test_la_tool_pide_descripcion_util(db_pool):
 
 
 @pytest.mark.asyncio
+async def test_la_tool_exige_15_caracteres(db_pool):
+    """«se paró solo» (12) ya no alcanza: el supervisor necesita contexto."""
+    herramientas = _herramientas_avisos()
+
+    corta = await herramientas["proponer_aviso_falla"].ainvoke(
+        {"nombre_maquina": "Pump E4", "descripcion": "se paró solo", "severidad": "media"}
+    )
+    assert "15" in corta
+    assert not corta.startswith(_PREFIJO_PROPUESTA_AVISO)
+
+    suficiente = await herramientas["proponer_aviso_falla"].ainvoke(
+        {"nombre_maquina": "Pump E4", "descripcion": "se paró y no arranca", "severidad": "media"}
+    )
+    assert suficiente.startswith(_PREFIJO_PROPUESTA_AVISO)
+
+
+@pytest.mark.asyncio
 async def test_la_tool_rechaza_severidad_invalida(db_pool):
     salida = await _herramientas_avisos()["proponer_aviso_falla"].ainvoke(
         {"nombre_maquina": "Pump E4", "descripcion": "Fuga de aceite importante", "severidad": "catastrófica"}
@@ -210,6 +227,17 @@ def test_parsear_propuesta_aviso_cierra_redonda():
     assert datos["codigo"] == "PUMP-E4"
     assert datos["severidad"] == "medium"
     assert datos["descripcion"] == "El motor se recalienta con carga plena"
+
+
+def test_el_parser_sigue_leyendo_propuestas_con_el_minimo_anterior():
+    """Una propuesta ya persistida con 10-14 caracteres debe seguir resolviéndose.
+
+    El piso de 15 es de la generación; el parser mantiene 5 para que un «sí» sobre una
+    propuesta vieja no se pierda.
+    """
+    datos = _parsear_propuesta_aviso(_texto_aviso_para_pump("se paró solo"))
+    assert datos is not None
+    assert datos["descripcion"] == "se paró solo"
 
 
 def test_parsear_propuesta_aviso_rechaza_severidad_que_no_cierra():

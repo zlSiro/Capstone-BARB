@@ -511,6 +511,9 @@ quién pedirle, y el endurecimiento de la Skill de plantas tras el QA del 05-11 
   **código exacto**; el INSERT es la misma lógica del endpoint (`AV-año-id`, una
   transacción).
 - Un aviso **no es una OT**: queda `pendiente` en la bandeja del supervisor.
+- La descripción exige **mínimo 15 caracteres** (`_MIN_DESCRIPCION_AVISO`): «falla» o
+  «se paró solo» no le sirven al supervisor. El parser del gate conserva su piso de 5
+  para no invalidar propuestas ya persistidas con el mínimo anterior.
 - Regla 13 del prompt: un reporte de falla («se cayó la prensa B3, salió aceite…») se
   propone como aviso aunque no diga «anótalo». Si además pide diagnóstico, primero
   responde con la documentación y al final ofrece registrarlo. El prompt prohíbe

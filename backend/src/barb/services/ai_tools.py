@@ -1283,6 +1283,11 @@ async def actualizar_parametros_aprobada(
 
 _PREFIJO_PROPUESTA_AVISO = "PROPUESTA DE AVISO DE FALLA"
 
+# La nota que leerá el supervisor: 15 caracteres como piso para que no llegue «falla» ni
+# «se paró solo». El parser del gate conserva su piso de 5 para no invalidar propuestas
+# ya persistidas con el mínimo anterior.
+_MIN_DESCRIPCION_AVISO = 15
+
 _PREFIJO_AVISO = "AV-"  # espejo de routers.avisos.PREFIJO (importarlo traería la capa HTTP)
 
 # Una sola línea con separador "|", misma disciplina que las otras propuestas.
@@ -1881,8 +1886,11 @@ def crear_tools(
             return _mensaje_sin_permiso("reportar_falla")
 
         desc = " ".join((descripcion or "").split())
-        if len(desc) < 10:
-            return "Necesito una descripción concreta de la falla (mínimo 10 caracteres): qué pasa, dónde y desde cuándo."
+        if len(desc) < _MIN_DESCRIPCION_AVISO:
+            return (
+                f"Necesito una descripción concreta de la falla (mínimo "
+                f"{_MIN_DESCRIPCION_AVISO} caracteres): qué pasa, dónde y desde cuándo."
+            )
         if len(desc) > 2000:
             return "La descripción es demasiado larga para el chat (máximo 2000); resumela y lo propongo."
 
