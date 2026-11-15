@@ -600,7 +600,12 @@ SELECT count(*) FROM usuario WHERE email LIKE '%@mineradelnorte.cl'; -- 10</code
   <footer class="pb-8 text-center text-xs text-slate-500">
     <p>
       Fuente: corrida completa de <code class="rounded bg-slate-200 px-1">pytest</code> sobre la base
-      reconstruida (790 pasan / 27 fallan) + consultas directas a PostgreSQL para los valores reales.
+      reconstruida (858 pasan / 27 fallan) + consultas directas a PostgreSQL para los valores reales.
+    </p>
+    <p class="mt-1">
+      El conteo varía ±1 entre corridas: dos tests de ahorro comparan con redondeo de punto flotante
+      y otros dependen de filas que dejan corridas anteriores. Para un número estable hay que limpiar
+      primero los residuos de prueba (<code class="rounded bg-slate-200 px-1">Empresa Test …</code> y sus OTs).
     </p>
     <p class="mt-1">Diagnóstico sin cambios de código ni de datos. Actualizado tras el merge de main (HU-23 + PR #67).</p>
   </footer>
