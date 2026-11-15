@@ -204,13 +204,26 @@ async def test_disciplina_de_otra_empresa_da_404(client, db_pool):
 
 @pytest.mark.asyncio
 async def test_la_empresa_1_ve_sus_propias_plantas(client, db_pool):
-    """Contraprueba: el filtro no bloquea lo legítimo."""
+    """Contraprueba: el filtro no bloquea lo legítimo, y el KPI se calcula de verdad."""
     h = await _login(client, GERENTE_E1)
     fila = await fetch_one(
         "SELECT p.planta_id AS id FROM planta p WHERE p.empresa_id = 1 ORDER BY p.planta_id LIMIT 1"
     )
-    r = await client.get(f"/api/stats/financial-impact?planta_id={int(fila['id'])}", headers=h)
+    planta = int(fila["id"])
+    r = await client.get(f"/api/stats/financial-impact?planta_id={planta}", headers=h)
     assert r.status_code == 200, r.text
+    datos = r.json()
+
+    # El total del alcance filtrado coincide con el COUNT real de esa planta.
+    esperado = await _ots("m.planta_id = %(p)s", {"p": planta})
+    assert _suma_por_tipo(datos) == esperado, (_suma_por_tipo(datos), esperado)
+
+    # Y las máquinas que lista son las de esa planta, no las de la empresa entera.
+    propias = await _ids_de_maquinas_de_la_planta(planta)
+    assert propias, "la planta elegida debería tener máquinas"
+    for lista in ("machines", "machines_por_costo"):
+        ids = {int(m["id"]) for m in datos[lista]}
+        assert ids <= propias, f"{lista} trajo máquinas de otra planta: {ids - propias}"
 
 
 # =============================================================================

@@ -261,10 +261,27 @@ async def test_el_estado_demo_ya_no_existe(client, db_pool):
 async def test_mantenedor_de_empresas_es_exclusivo_del_super(client):
     for creds in (ADMIN_E1, ADMIN_E2, ENGINEER_E1, OPERADOR_E1):
         h = await _login(client, creds)
-        assert (await client.get("/api/empresas", headers=h)).status_code == 403
+        negado = await client.get("/api/empresas", headers=h)
+        assert negado.status_code == 403, negado.text
+        # El 403 tiene que decir QUÉ permiso falta: un mensaje genérico no permite
+        # distinguir un problema de matriz de roles de un fallo del endpoint.
+        assert "gestionar_empresas" in negado.json()["detail"], negado.text
         assert (await client.post("/api/empresas", headers=h, json={"nombre": "Hack"})).status_code == 403
+
     hs = await _login(client, SUPER)
-    assert (await client.get("/api/empresas", headers=hs)).status_code == 200
+    r = await client.get("/api/empresas", headers=hs)
+    assert r.status_code == 200, r.text
+    empresas = r.json()
+    # El listado del super trae las tres empresas reales con su RUT, no una lista vacía.
+    reales = {(e["nombre"], e["rut"]) for e in empresas}
+    assert {
+        ("Minera del Norte", "77.111.111-1"),
+        ("Planta de Alimentos", "77.222.222-2"),
+        ("Manufactura Automotriz", "77.333.333-3"),
+    } <= reales, sorted(reales)
+    for e in empresas:
+        assert e["nombre"].strip() and e["rut"].strip(), e
+        assert isinstance(e["usuarios_total"], int) and e["usuarios_total"] >= 0, e
 
 
 async def test_super_crea_edita_suspende_y_elimina_empresa_con_gerente_inicial(client):
@@ -566,7 +583,24 @@ async def test_cada_empresa_solo_ve_sus_documentos(client):
 
 async def test_operador_ve_documentos_pero_no_sube_ni_elimina(client):
     h = await _login(client, OPERADOR_E1)
-    assert (await client.get("/api/documents", headers=h)).status_code == 200
+    r = await client.get("/api/documents", headers=h)
+    assert r.status_code == 200, r.text
+    docs = r.json()
+
+    # Ve la documentación de su empresa, y solo la de su empresa.
+    assert len(docs) > 0, "el operador debería ver los manuales de Minera del Norte"
+    assert {d["empresa_nombre"] for d in docs} <= {"Minera del Norte"}, {
+        d["empresa_nombre"] for d in docs
+    }
+    assert all(d["title"].strip() for d in docs), "hay documentos sin título"
+
+    # Pero no es autor de ninguno: su rol es de consulta. Si el seed o un endpoint
+    # llegaran a atribuirle un documento, este test lo detecta.
+    autores = {d.get("subido_por") for d in docs}
+    assert "Operador de Sala" not in autores, autores
+    assert "operador@mineradelnorte.cl" not in autores, autores
+
+    # Y no puede subir ni borrar.
     files = {"file": ("a.txt", io.BytesIO(b"hola"), "text/plain")}
     assert (await client.post("/api/documents", headers=h, files=files)).status_code == 403
     assert (await client.delete("/api/documents/1", headers=h)).status_code == 403
