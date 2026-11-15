@@ -238,7 +238,7 @@ INSERT INTO OT_AUDIT_LOG (ot_id, usuario_id, estado_anterior, estado_nuevo, come
 (5, 4, 'pending', 'cancelled', 'Cancelada, operario lo destrabó manualmente');
 
 -- Chat Sessions — conversaciones guardadas desde DocChat (10 ejemplos)
-INSERT INTO CHAT_SESSION (empresa_id, titulo, saved_by, usuario_id, discipline, plant_id, plant_name, machine_id, machine_name, active_manual, messages, metadata, saved_at) VALUES
+INSERT INTO CHAT_SESSION (empresa_id, titulo, saved_by, usuario_id, discipline, plant_id, plant_name, maquina_id, machine_name, active_manual, messages, metadata, saved_at) VALUES
 (1, 'Diagnóstico fuga hidráulica prensa B3', 'Carlos Mendoza', 4,
  'Hidráulica', '1', 'Planta Central San Bernardo', '3', 'Hydraulic Press B3', NULL,
  '[{"role":"user","content":"La prensa B3 muestra una caída de presión de 50 bar en 30 segundos. ¿Cuál es el procedimiento?","timestamp":1748000000000},{"role":"assistant","content":"⚠️ Esto indica una fuga activa. Pasos: 1) Despresurizar el sistema. 2) Inspeccionar mangueras de alta presión. 3) Revisar sellos del cilindro principal.","timestamp":1748000010000}]'::jsonb,
