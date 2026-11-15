@@ -86,15 +86,30 @@ describe('salud-operacional: colores e iconos', () => {
   });
 });
 
-describe('salud-operacional: linea simple', () => {
-  it('muestra el SLA con un decimal', () => {
-    const { el } = setup(datos({ sla: 91.25 }));
-    expect(texto(el, 'sla-salud')).toContain('91.3%');
+describe('salud-operacional: sin linea de SLA duplicada', () => {
+  it('no repite el SLA ni las vencidas debajo del semaforo', () => {
+    // CGBIDA-550: el semaforo y su motivo ya dicen las dos cosas.
+    const { el } = setup(datos({ sla: 91.25, vencidas: 7 }));
+
+    expect(el.querySelector('[data-testid="sla-salud"]')).toBeNull();
+    expect(el.querySelector('[data-testid="resumen-salud"]')).toBeNull();
+    expect(el.querySelector('[data-testid="vencidas-salud"]')).toBeNull();
   });
 
-  it('muestra la cantidad de OTs vencidas', () => {
-    const { el } = setup(datos({ vencidas: 7 }));
-    expect(texto(el, 'vencidas-salud')).toContain('7');
+  it('los contadores llevan color en el numero', () => {
+    const { el } = setup(
+      datos({ desglose: { completadas: 4, en_curso: 2, pendientes: 1 } }),
+    );
+
+    const color = (clave: string) =>
+      el
+        .querySelector(`[data-testid="desglose-${clave}"] p`)
+        ?.getAttribute('class') ?? '';
+
+    // Verde / azul / naranja: los tokens del tema (ok, accion, alerta).
+    expect(color('completadas')).toContain('text-ok');
+    expect(color('en-curso')).toContain('text-accion');
+    expect(color('pendientes')).toContain('text-alerta');
   });
 });
 
@@ -106,9 +121,9 @@ describe('salud-operacional: sin datos', () => {
     expect(luz.style.background).toBe('var(--neutro)');
   });
 
-  it('sin datos el SLA se muestra con guion', () => {
+  it('sin datos los contadores quedan en 0', () => {
     const { el } = setup(null);
-    expect(texto(el, 'sla-salud')).toContain('—');
+    expect(texto(el, "desglose-completadas")).toContain("0");
   });
 
   it('sin datos el motivo es el aviso de falta de historial', () => {
@@ -123,5 +138,37 @@ describe('salud-operacional: ya no tiene las sub-tarjetas viejas', () => {
     expect(el.querySelector('[data-testid="componentes-salud"]')).toBeNull();
     expect(el.querySelector('[data-testid="anillo-salud"]')).toBeNull();
     expect(el.querySelector('[data-testid="indice-salud"]')).toBeNull();
+  });
+});
+
+
+describe('salud-operacional: desglose de OTs (CGBIDA-550)', () => {
+  it('muestra los tres contadores con los valores del backend', () => {
+    const { el } = setup({
+      ...datos(),
+      desglose: { completadas: 42, en_curso: 7, pendientes: 13 },
+    });
+
+    expect(texto(el, "desglose-completadas")).toContain("42");
+    expect(texto(el, "desglose-en-curso")).toContain("7");
+    expect(texto(el, "desglose-pendientes")).toContain("13");
+  });
+
+  it('los rotula en el idioma activo', () => {
+    const { el } = setup({
+      ...datos(),
+      desglose: { completadas: 1, en_curso: 2, pendientes: 3 },
+    });
+
+    expect(texto(el, "desglose-completadas")).toContain("Completadas");
+    expect(texto(el, "desglose-en-curso")).toContain("En curso");
+    expect(texto(el, "desglose-pendientes")).toContain("Pendientes");
+  });
+
+  it('sin desglose muestra 0 y no rompe', () => {
+    const { el } = setup(datos());
+
+    expect(texto(el, "desglose-completadas")).toContain("0");
+    expect(el.querySelector('[data-testid="desglose-salud"]')).not.toBeNull();
   });
 });

@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { of, throwError } from 'rxjs';
 
-import { HistoricoRespuesta, PeriodoHistorico } from '../../../../core/models';
+import { HistoricoRespuesta, PeriodoHistorico, SIN_FILTROS } from '../../../../core/models';
 import { StatsService } from '../../../../core/services/stats.service';
 import { SlaHistoricoComponent } from './sla-historico.component';
 
@@ -52,14 +52,10 @@ function setup(res: HistoricoRespuesta | Error = respuesta()) {
   return { fixture, el: fixture.nativeElement as HTMLElement, getHistorical };
 }
 
-function clic(el: HTMLElement, testid: string): void {
-  (el.querySelector(`[data-testid="${testid}"]`) as HTMLElement).click();
-}
-
 describe('sla-historico: carga inicial', () => {
-  it('pide el último semestre al arrancar', () => {
+  it('pide la ventana del panel al arrancar (por defecto, histórico)', () => {
     const { getHistorical } = setup();
-    expect(getHistorical).toHaveBeenCalledWith('month', 180);
+    expect(getHistorical).toHaveBeenCalledWith(SIN_FILTROS);
   });
 
   it('dibuja el SVG con un punto por período', () => {
@@ -83,44 +79,48 @@ describe('sla-historico: carga inicial', () => {
   });
 });
 
-describe('sla-historico: selector de ventana', () => {
-  it('ofrece las cuatro opciones', () => {
+describe('sla-historico: ventana global (CGBIDA-550)', () => {
+  it('ya no tiene selector propio de ventana', () => {
     const { el } = setup();
-    expect(el.querySelectorAll('[data-testid^="rango-hist-"]')).toHaveLength(4);
+    expect(el.querySelector('[data-testid="selector-historico"]')).toBeNull();
+    expect(el.querySelectorAll('[data-testid^="rango-hist-"]')).toHaveLength(0);
   });
 
-  it('arranca con la opción del semestre activa', () => {
+  it('vuelve a pedir cuando el panel cambia el rango', () => {
+    const { fixture, getHistorical } = setup();
+
+    fixture.componentRef.setInput('filtros', { ...SIN_FILTROS, rango: 30 });
+    fixture.detectChanges();
+
+    expect(getHistorical).toHaveBeenCalledTimes(2);
+    expect(getHistorical).toHaveBeenLastCalledWith({ ...SIN_FILTROS, rango: 30 });
+  });
+
+  it('vuelve a pedir cuando cambia la planta', () => {
+    const { fixture, getHistorical } = setup();
+
+    fixture.componentRef.setInput('filtros', { ...SIN_FILTROS, planta_id: 4 });
+    fixture.detectChanges();
+
+    expect(getHistorical).toHaveBeenLastCalledWith({ ...SIN_FILTROS, planta_id: 4 });
+  });
+
+  it('no muestra el rótulo de la ventana: ya lo dice el filtro global', () => {
     const { el } = setup();
-    const activo = el.querySelector('[data-testid="rango-hist-semestre"]') as HTMLElement;
-    expect(activo.getAttribute('aria-pressed')).toBe('true');
+    expect(el.querySelector('[data-testid="hist-rango-activo"]')).toBeNull();
   });
 
-  it('un año pide semestres de 365 días', () => {
-    const { fixture, el, getHistorical } = setup();
-    clic(el, 'rango-hist-anio');
-    fixture.detectChanges();
-    expect(getHistorical).toHaveBeenCalledWith('semester', 365);
-  });
+  it('el SVG ocupa el ancho del contenedor y no lleva alto fijo', () => {
+    const { el } = setup();
+    const svg = el.querySelector('[data-testid="hist-svg"]') as SVGElement;
 
-  it('3 años pide años de 1095 días', () => {
-    const { fixture, el, getHistorical } = setup();
-    clic(el, 'rango-hist-tres');
-    fixture.detectChanges();
-    expect(getHistorical).toHaveBeenCalledWith('year', 1095);
-  });
-
-  it('5 años pide años de 1825 días', () => {
-    const { fixture, el, getHistorical } = setup();
-    clic(el, 'rango-hist-cinco');
-    fixture.detectChanges();
-    expect(getHistorical).toHaveBeenCalledWith('year', 1825);
-  });
-
-  it('no vuelve a pedir si se elige la ventana activa', () => {
-    const { fixture, el, getHistorical } = setup();
-    clic(el, 'rango-hist-semestre');
-    fixture.detectChanges();
-    expect(getHistorical).toHaveBeenCalledTimes(1);
+    // `w-full` + viewBox del ancho medido: sin esto el dibujo quedaba centrado con
+    // cientos de px en blanco a los lados (CGBIDA-550).
+    expect(svg.getAttribute("class")).toContain("w-full");
+    expect(svg.getAttribute("class")).not.toContain("h-[240px]");
+    expect(svg.getAttribute("height")).toBe("220");
+    // En jsdom no hay ResizeObserver: el ancho por defecto es 720.
+    expect(svg.getAttribute("viewBox")).toBe("0 0 720 220");
   });
 });
 
@@ -175,5 +175,56 @@ describe('sla-historico: escala dinamica del eje Y (UX)', () => {
     const { el } = setup(res);
     const eje = el.querySelector('[data-testid="hist-svg"]')!.textContent ?? '';
     expect(eje).toContain('15');
+  });
+});
+
+describe('sla-historico: tooltip del punto (CGBIDA-550)', () => {
+  /** Dispara un evento de mouse sobre el i-esimo punto. */
+  function sobrePunto(el: HTMLElement, indice: number, tipo: 'mouseenter' | 'mouseleave' = 'mouseenter'): void {
+    const punto = el.querySelectorAll('[data-testid="hist-punto"]')[indice] as SVGElement;
+    punto.dispatchEvent(new MouseEvent(tipo, { bubbles: true, clientX: 40, clientY: 40 }));
+  }
+
+  it('no usa el tooltip nativo del navegador', () => {
+    // El elemento title del SVG es el que dibuja el cuadro blanco.
+    const { el } = setup();
+    expect(el.querySelector('title')).toBeNull();
+  });
+
+  it('al pasar el cursor muestra el tooltip con el periodo y el SLA', () => {
+    const { fixture, el } = setup();
+
+    sobrePunto(el, 0);
+    fixture.detectChanges();
+
+    const tip = el.querySelector('[data-testid="hist-tooltip"]');
+    expect(tip).not.toBeNull();
+    expect(tip!.textContent).toContain('2026-01');
+    expect(tip!.textContent).toContain('SLA');
+    expect(tip!.textContent).toContain('90%');
+  });
+
+  it('el tooltip usa los tokens del tema, no colores fijos', () => {
+    const { fixture, el } = setup();
+
+    sobrePunto(el, 0);
+    fixture.detectChanges();
+
+    const clases = el.querySelector('[data-testid="hist-tooltip"]')!.getAttribute('class') ?? '';
+    expect(clases).toContain('bg-superficie');
+    expect(clases).toContain('rounded-control');
+    expect(clases).toContain('shadow-lg');
+  });
+
+  it('al salir del punto el tooltip se oculta', () => {
+    const { fixture, el } = setup();
+
+    sobrePunto(el, 0);
+    fixture.detectChanges();
+    expect(el.querySelector('[data-testid="hist-tooltip"]')).not.toBeNull();
+
+    sobrePunto(el, 0, 'mouseleave');
+    fixture.detectChanges();
+    expect(el.querySelector('[data-testid="hist-tooltip"]')).toBeNull();
   });
 });

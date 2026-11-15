@@ -38,7 +38,11 @@ export interface Aviso {
 export interface AvisoCreatePayload {
   maquina_id: number;
   descripcion: string;
-  severidad: WorkOrderSeverity;
+  /**
+   * Gravedad del aviso. **Opcional**: el operario ya no la elige (la define el supervisor
+   * al revisar el aviso). Si se omite, el backend aplica `medium` por defecto.
+   */
+  severidad?: WorkOrderSeverity;
 }
 
 export interface AvisoGenerarOtPayload {

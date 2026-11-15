@@ -207,8 +207,18 @@
         </div>
       }
 
+      <!-- Máquina de la conversación (HU-23): opcional, vale para texto e imagen -->
+      <app-maquina-selector
+        data-tour="chat-maquina"
+        class="mb-3"
+        [maquinas]="maquinas()"
+        [plantas]="plantas()"
+        [disabled]="isLoading()"
+        [(value)]="maquinaId"
+      />
+
       <div class="flex items-end gap-2">
-        <div class="shrink-0">
+        <div class="shrink-0" data-tour="chat-imagen">
           <app-image-attachment
             [disabled]="isLoading()"
             (imageSelected)="onImageSelected($event)"

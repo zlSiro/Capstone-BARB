@@ -4,10 +4,13 @@ import { Component, DestroyRef, ElementRef, ViewChild, computed, inject, signal 
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { ChatService } from '../../core/services/chat.service';
+import { CatalogService } from '../../core/services/catalog.service';
 import { ChatMessage, SessionListItem } from '../../core/models/chat.model';
+import { Machine, Plant } from '../../core/models';
 import { tituloCorto } from '../../core/utils/chat-titulo';
 import { MessageBubbleComponent } from './message-bubble.component';
 import { ImageAttachmentComponent } from './image-attachment.component';
+import { MaquinaSelectorComponent } from './maquina-selector.component';
 import { ToastService } from '../../core/services/toast.service';
 import { I18nService } from '../../core/i18n/i18n.service';
 import { TranslatePipe } from '../../core/i18n/translate.pipe';
@@ -35,11 +38,12 @@ export function clampAnchoHistorial(px: number): number {
 
 @Component({
   selector: 'app-doc-chat',
-  imports: [FormsModule, MessageBubbleComponent, ImageAttachmentComponent, TranslatePipe, Icon],
+  imports: [FormsModule, MessageBubbleComponent, ImageAttachmentComponent, MaquinaSelectorComponent, TranslatePipe, Icon],
   templateUrl: './doc-chat.component.html',
 })
 export class DocChatComponent {
   private readonly chatService = inject(ChatService);
+  private readonly catalog = inject(CatalogService);
   private readonly route = inject(ActivatedRoute);
   private readonly i18n = inject(I18nService);
   private readonly toast = inject(ToastService);
@@ -70,6 +74,17 @@ export class DocChatComponent {
   // Data URL de la imagen lista para analizar; null = sin imagen.
   readonly attachedImage = signal<string | null>(null);
 
+  // ── Máquina de la conversación (HU-23) ──
+  readonly maquinas = signal<Machine[]>([]);
+  readonly plantas = signal<Plant[]>([]);
+  /** Máquina elegida en el selector; `null` = sin máquina. */
+  readonly maquinaId = signal<number | null>(null);
+  /**
+   * Máquina que el backend ya conoce para la sesión actual (`null` en una sesión nueva). El request solo
+   * lleva `maquina_id` cuando `maquinaId` es distinta: «ausente» conserva la de la sesión.
+   */
+  private maquinaSincronizada: number | null = null;
+
   // ── Sidebar state ──
   readonly sessions = signal<SessionListItem[]>([]);
   readonly loadingSessions = signal(false);
@@ -77,6 +92,8 @@ export class DocChatComponent {
 
   constructor() {
     this.loadSessions();
+    this.catalog.getMachines().subscribe({ next: (m) => this.maquinas.set(m) });
+    this.catalog.getPlants().subscribe({ next: (p) => this.plantas.set(p) });
 
     // Si llega ?session_id=XXX desde un bookmark/URL, cargar esa sesión
     this.route.queryParams.subscribe((params) => {
@@ -233,8 +250,12 @@ export class DocChatComponent {
             role: m.role === 'assistant' ? 'assistant' : 'user',
             content: m.content,
             createdAt: m.timestamp ? new Date(m.timestamp) : new Date(),
+            ...(m.has_image ? { hasImage: true } : {}),
           })),
         );
+        // HU-23: se restaura la máquina de la conversación en el selector.
+        this.maquinaId.set(detail.maquina_id ?? null);
+        this.maquinaSincronizada = detail.maquina_id ?? null;
         this.sessionId.set(sessionId);
         this.isLoading.set(false);
         this.scrollToBottom();
@@ -279,6 +300,8 @@ export class DocChatComponent {
     this.errorMessage.set(null);
     this.inputText.set('');
     this.attachedImage.set(null);
+    this.maquinaId.set(null);
+    this.maquinaSincronizada = null;
     this.reajustarAlturaInput();
   }
 
@@ -330,6 +353,9 @@ export class DocChatComponent {
     this.scrollToBottom();
 
     const wasNewSession = this.sessionId() === null;
+    // Solo viaja cuando cambió respecto de lo que el backend ya tiene (null explícito = desvincular).
+    const maquina = this.maquinaId();
+    const cambioMaquina = maquina !== this.maquinaSincronizada ? { maquina_id: maquina } : {};
 
     // Con imagen → turno multimodal (CGBIDA-276); sin imagen → stream textual (HU-03).
     const stream = image
@@ -337,13 +363,16 @@ export class DocChatComponent {
           session_id: this.sessionId(),
           message: text,
           image_base64: image,
+          ...cambioMaquina,
         })
-      : this.chatService.streamChat({ session_id: this.sessionId(), message: text });
+      : this.chatService.streamChat({ session_id: this.sessionId(), message: text, ...cambioMaquina });
 
     stream.subscribe({
         next: (event) => {
           if (event.type === 'session') {
             this.sessionId.set(event.data.session_id);
+            // El backend ya aplicó la máquina antes de emitir `session`.
+            this.maquinaSincronizada = maquina;
           } else if (event.type === 'token') {
             this.messages.update((msgs) =>
               msgs.map((m) =>

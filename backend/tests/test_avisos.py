@@ -74,6 +74,31 @@ async def test_el_operador_reporta_una_falla_y_queda_pendiente(client, maquina_i
     assert aviso["machine_name"] and aviso["plant_name"]
 
 
+async def test_sin_severidad_el_backend_usa_medium(client, maquina_id, limpieza):
+    """La gravedad ya no la elige el operario: el schema la toma opcional y cae en `medium`.
+
+    El formulario dejó de mandarla (la define el supervisor), así que el reporte no puede
+    fallar por un campo ausente.
+    """
+    aviso = await _reportar(client, OPERADOR, maquina_id, texto="sin severidad")
+    assert aviso["severidad"] == "medium"
+    assert aviso["severity"] == "medium"
+
+
+async def test_sin_severidad_por_multipart_tambien_funciona(client, maquina_id, limpieza):
+    """El modal envía FormData (por la foto opcional): el mismo default aplica ahí."""
+    resp = await client.post(
+        "/api/avisos",
+        files={
+            "maquina_id": (None, str(maquina_id)),
+            "descripcion": (None, f"{MARCA}: sin severidad multipart"),
+        },
+        headers=await _login(client, OPERADOR),
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["severidad"] == "medium"
+
+
 @pytest.mark.parametrize("creds", [OPERADOR, TECNICO, SUPERVISOR, ENGINEER, GERENTE])
 async def test_pueden_reportar_quienes_trabajan_en_planta(client, maquina_id, limpieza, creds):
     assert (await _reportar(client, creds, maquina_id))["estado"] == "pendiente"

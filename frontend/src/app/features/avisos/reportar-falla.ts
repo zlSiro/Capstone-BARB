@@ -4,22 +4,20 @@ import { Router } from '@angular/router';
 import { DomSanitizer, SafeUrl } from '@angular/platform-browser';
 
 import { PermissionsService } from '../../core/permissions/permissions.service';
-import { Aviso, Machine, WorkOrderSeverity } from '../../core/models';
+import { Aviso, Discipline, Machine, Plant } from '../../core/models';
 import { AvisosApi } from '../../core/services/avisos-api';
 import { CatalogService } from '../../core/services/catalog.service';
 import { ToastService } from '../../core/services/toast.service';
 import { apiErrorMessage } from '../../core/utils/http-error';
 import { Icon } from '../../shared/components/ui/icon/icon';
 import { ModalComponent } from '../../shared/components/ui/modal/modal.component';
-import { GRAVEDADES, sintomasFrecuentes } from './etiquetas';
-import { GravedadMedidor } from './gravedad-medidor';
+import { sintomasFrecuentes } from './etiquetas';
 import { reducirImagen } from './reducir-imagen';
 
 import { TranslatePipe } from '../../core/i18n/translate.pipe';
 import { I18nService } from '../../core/i18n/i18n.service';
 interface ReportarFallaModel {
   machineId: string;
-  severidad: WorkOrderSeverity;
   descripcion: string;
 }
 
@@ -29,7 +27,7 @@ const CLAVE_BORRADOR = 'barb.aviso.borrador';
 const CLAVE_RECIENTES = 'barb.aviso.maquinas';
 const MAX_RECIENTES = 4;
 
-const modeloInicial = (): ReportarFallaModel => ({ machineId: '', severidad: 'medium', descripcion: '' });
+const modeloInicial = (): ReportarFallaModel => ({ machineId: '', descripcion: '' });
 
 function leer<T>(clave: string, defecto: T): T {
   try {
@@ -57,13 +55,15 @@ function borrar(clave: string): void {
 }
 
 /**
- * Reportar una falla, pensado para hacerse de pie, con una mano y a veces con guantes: máquina → qué pasa → gravedad →
- * foto. En móvil es una hoja inferior con el botón de enviar siempre visible. El aviso llega al supervisor, que decide
- * si se genera una orden de trabajo. Lo escrito se guarda como borrador si se cierra sin enviar.
+ * Reportar una falla, pensado para hacerse de pie, con una mano y a veces con guantes:
+ * planta → disciplina → máquina → qué pasa → foto. En móvil es una hoja inferior con el
+ * botón de enviar siempre visible. El aviso llega al supervisor, que decide si se genera
+ * una orden de trabajo y con qué gravedad. Lo escrito se guarda como borrador si se cierra
+ * sin enviar.
  */
 @Component({
   selector: 'app-reportar-falla',
-  imports: [FormField, ModalComponent, Icon, GravedadMedidor, TranslatePipe],
+  imports: [FormField, ModalComponent, Icon, TranslatePipe],
   template: `
     <app-modal
       [title]="(creado() ? 'avisos.aviso_enviado' : 'avisos.reportar_una_falla') | translate"
@@ -80,6 +80,47 @@ function borrar(clave: string): void {
         </div>
       } @else {
         <div class="grid gap-6">
+          <!--
+            Filtros en cascada: planta -> disciplina -> maquina. Con 21 maquinas el select
+            unico obligaba a buscar a mano; acotando por planta y disciplina el operario
+            llega al equipo en dos toques. Planta manda: sin ella la disciplina y la
+            maquina quedan deshabilitadas.
+          -->
+          <div class="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label for="aviso-planta" class="fld-label">{{ 'avisos.planta' | translate }}</label>
+              <select
+                id="aviso-planta"
+                class="fld-input"
+                data-testid="select-planta"
+                [value]="plantaId()"
+                (change)="cambiarPlanta($any($event.target).value)">
+                <option value="">{{ 'avisos.selecciona_la_planta' | translate }}</option>
+                @for (p of plantas(); track p.id) {
+                  <option [value]="p.id" [selected]="plantaId() === '' + p.id">{{ p.name }}</option>
+                }
+              </select>
+            </div>
+            <div>
+              <label for="aviso-disciplina" class="fld-label">{{ 'avisos.disciplina' | translate }}</label>
+              <select
+                id="aviso-disciplina"
+                class="fld-input"
+                data-testid="select-disciplina"
+                [disabled]="!plantaId()"
+                [value]="disciplinaId()"
+                (change)="cambiarDisciplina($any($event.target).value)">
+                <option value="">{{ 'avisos.todas_las_disciplinas' | translate }}</option>
+                @for (d of disciplinasDePlanta(); track d.id) {
+                  <option [value]="d.id" [selected]="disciplinaId() === '' + d.id">{{ d.name }}</option>
+                }
+              </select>
+              @if (!plantaId()) {
+                <p class="fld-ayuda" data-testid="ayuda-planta">{{ 'avisos.elige_planta_primero' | translate }}</p>
+              }
+            </div>
+          </div>
+
           <div>
             <label for="aviso-machine" class="fld-label">{{ 'avisos.1_que_maquina_tiene' | translate }}</label>
             @if (recientes().length) {
@@ -91,17 +132,26 @@ function borrar(clave: string): void {
                 }
               </div>
             }
-            <select
-              id="aviso-machine"
-              [formField]="avisoForm.machineId"
-              [attr.aria-invalid]="avisoForm.machineId().touched() && avisoForm.machineId().invalid()"
-              [attr.aria-describedby]="avisoForm.machineId().touched() && avisoForm.machineId().invalid() ? 'aviso-machine-error' : null"
-              class="fld-input">
-              <option value="">{{ 'avisos.selecciona_la_maquina' | translate }}</option>
-              @for (m of machines(); track m.id) {
-                <option [value]="m.id">{{ m.name }}</option>
-              }
-            </select>
+            <!--
+              El select de máquina va dentro de un fieldset deshabilitado: Signal Forms no
+              permite [disabled] sobre el mismo nodo que [formField], y un fieldset
+              deshabilitado desactiva a sus hijos de forma nativa.
+            -->
+            <fieldset class="m-0 min-w-0 border-0 p-0" [disabled]="!plantaId()" data-testid="campo-maquina">
+              <select
+                id="aviso-machine"
+                [formField]="avisoForm.machineId"
+                [attr.aria-invalid]="avisoForm.machineId().touched() && avisoForm.machineId().invalid()"
+                [attr.aria-describedby]="avisoForm.machineId().touched() && avisoForm.machineId().invalid() ? 'aviso-machine-error' : null"
+                class="fld-input">
+                <option value="">{{ 'avisos.selecciona_la_maquina' | translate }}</option>
+                @for (m of maquinasFiltradas(); track m.id) {
+                  <!-- selected ademas de value: las opciones se crean despues del
+                       cambio de planta, y sin esto el select se queda en blanco. -->
+                  <option [value]="m.id" [selected]="model().machineId === '' + m.id">{{ m.name }}</option>
+                }
+              </select>
+            </fieldset>
             @if (avisoForm.machineId().touched() && avisoForm.machineId().invalid()) {
               <p id="aviso-machine-error" role="alert" class="fld-error">{{ avisoForm.machineId().errors()[0]?.message | translate }}</p>
             }
@@ -126,27 +176,6 @@ function borrar(clave: string): void {
               <p id="aviso-descripcion-error" role="alert" class="fld-error">{{ avisoForm.descripcion().errors()[0]?.message | translate }}</p>
             }
           </div>
-
-          <fieldset>
-            <legend class="fld-label">{{ 'avisos.3_que_tan_grave' | translate }}</legend>
-            <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              @for (g of gravedades; track g.value) {
-                <label
-                  class="flex min-h-14 cursor-pointer items-center justify-center rounded-control border-2 px-2 py-2 transition-colors has-[:focus-visible]:outline-3 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-accion"
-                  [class]="model().severidad === g.value ? 'border-accion bg-accion-suave' : 'border-borde-control bg-superficie hover:bg-superficie-2'">
-                  <input
-                    type="radio"
-                    name="aviso-severidad"
-                    class="sr-only"
-                    [value]="g.value"
-                    [checked]="model().severidad === g.value"
-                    (change)="elegirGravedad(g.value)" />
-                  <app-gravedad [severidad]="g.value" />
-                </label>
-              }
-            </div>
-            <p class="fld-ayuda">{{ 'avisos.el_supervisor_define_la' | translate }}</p>
-          </fieldset>
 
           <div>
             <span id="aviso-foto-label" class="fld-label">{{ 'avisos.4_foto_de_la' | translate }}</span>
@@ -221,7 +250,6 @@ export class ReportarFalla {
   readonly closed = output<void>();
   readonly created = output<Aviso>();
 
-  protected readonly gravedades = GRAVEDADES;
   protected readonly sintomas = computed(() => sintomasFrecuentes());
   protected readonly machines = signal<Machine[]>([]);
   protected readonly recientes = signal<Machine[]>([]);
@@ -231,6 +259,39 @@ export class ReportarFalla {
   protected readonly foto = signal<File | null>(null);
   protected readonly preview = signal<SafeUrl | null>(null);
   private previewUrl: string | null = null;
+
+  /** Catálogos de los filtros en cascada. */
+  protected readonly plantas = signal<Plant[]>([]);
+  protected readonly disciplinas = signal<Discipline[]>([]);
+  protected readonly plantaId = signal('');
+  protected readonly disciplinaId = signal('');
+
+  /**
+   * Disciplinas que tienen al menos una máquina en la planta elegida.
+   *
+   * Se derivan de las máquinas en vez de listar todas: así no se ofrece una disciplina
+   * que en esa planta no tiene equipos y el select nunca queda en un callejón sin salida.
+   */
+  protected readonly disciplinasDePlanta = computed(() => {
+    const planta = this.plantaId();
+    if (!planta) return [];
+    const ids = new Set(
+      this.machines()
+        .filter((m) => String(m.plant_id) === planta && m.discipline_id !== null)
+        .map((m) => m.discipline_id as number)
+    );
+    return this.disciplinas().filter((d) => ids.has(d.id));
+  });
+
+  /** Máquinas de la planta y la disciplina elegidas (la disciplina es opcional). */
+  protected readonly maquinasFiltradas = computed(() => {
+    const planta = this.plantaId();
+    if (!planta) return [];
+    const disciplina = this.disciplinaId();
+    return this.machines().filter(
+      (m) => String(m.plant_id) === planta && (!disciplina || String(m.discipline_id) === disciplina)
+    );
+  });
 
   protected readonly model = signal<ReportarFallaModel>({ ...modeloInicial(), ...leer<Partial<ReportarFallaModel>>(CLAVE_BORRADOR, {}) });
   protected readonly avisoForm = form(this.model, (f) => {
@@ -251,11 +312,34 @@ export class ReportarFalla {
       if (m.machineId || m.descripcion.trim()) guardar(CLAVE_BORRADOR, m);
     });
 
+    // Catálogos de los filtros. Si fallan, la cascada queda vacía pero el resto del
+    // formulario sigue funcionando: no se bloquea el reporte por un catálogo caído.
+    this.catalog.getPlants().subscribe({
+      next: (plantas) => this.plantas.set(plantas ?? []),
+      error: () => this.plantas.set([]),
+    });
+    this.catalog.getDisciplines().subscribe({
+      next: (disciplinas) => this.disciplinas.set(disciplinas ?? []),
+      error: () => this.disciplinas.set([]),
+    });
+
     this.catalog.getMachines().subscribe({
       next: (machines) => {
         this.machines.set(machines ?? []);
         const ids = leer<number[]>(CLAVE_RECIENTES, []);
         this.recientes.set(ids.map((id) => (machines ?? []).find((m) => m.id === id)).filter((m): m is Machine => !!m));
+        // Si el borrador tenía una máquina, se restauran planta y disciplina para que el
+        // select pueda mostrarla: sin esto la máquina elegida quedaría fuera del filtro.
+        const guardada = this.model().machineId;
+        if (guardada) {
+          const maquina = (machines ?? []).find((m) => String(m.id) === guardada);
+          if (maquina) {
+            this.plantaId.set(maquina.plant_id === null ? '' : String(maquina.plant_id));
+            this.disciplinaId.set(
+              maquina.discipline_id === null ? '' : String(maquina.discipline_id)
+            );
+          }
+        }
       },
       error: () => this.toast.error(this.i18n.tr('avisos.no_se_pudieron_cargar_2')),
     });
@@ -266,11 +350,28 @@ export class ReportarFalla {
   }
 
   protected elegirMaquina(id: number): void {
+    // Elegir una máquina (incluidas las recientes) sincroniza los filtros para que el
+    // select la muestre seleccionada: si se elige desde el pill, la planta y la
+    // disciplina se completan solas.
+    const maquina = this.machines().find((m) => m.id === id);
+    if (maquina) {
+      this.plantaId.set(maquina.plant_id === null ? '' : String(maquina.plant_id));
+      this.disciplinaId.set(maquina.discipline_id === null ? '' : String(maquina.discipline_id));
+    }
     this.model.update((m) => ({ ...m, machineId: String(id) }));
   }
 
-  protected elegirGravedad(severidad: WorkOrderSeverity): void {
-    this.model.update((m) => ({ ...m, severidad }));
+  /** Al cambiar de planta se limpia la disciplina y la máquina elegida: ya no aplican. */
+  protected cambiarPlanta(planta: string): void {
+    this.plantaId.set(planta);
+    this.disciplinaId.set('');
+    this.model.update((m) => (m.machineId ? { ...m, machineId: '' } : m));
+  }
+
+  /** Al cambiar de disciplina se limpia la máquina: puede no pertenecer a esa disciplina. */
+  protected cambiarDisciplina(disciplina: string): void {
+    this.disciplinaId.set(disciplina);
+    this.model.update((m) => (m.machineId ? { ...m, machineId: '' } : m));
   }
 
   protected agregarSintoma(texto: string): void {
@@ -323,7 +424,7 @@ export class ReportarFalla {
 
     const m = this.model();
     this.enviando.set(true);
-    const payload = { maquina_id: Number(m.machineId), descripcion: m.descripcion.trim(), severidad: m.severidad };
+    const payload = { maquina_id: Number(m.machineId), descripcion: m.descripcion.trim() };
     this.api.create(payload, this.foto()).subscribe({
       next: (aviso) => {
         this.enviando.set(false);
@@ -342,6 +443,10 @@ export class ReportarFalla {
   protected reportarOtra(): void {
     this.creado.set(null);
     this.quitarFoto();
+    // También se limpian los filtros: si quedara la planta, el select de máquina seguiría
+    // habilitado y con las opciones de la falla anterior.
+    this.plantaId.set('');
+    this.disciplinaId.set('');
     this.model.set(modeloInicial());
     this.avisoForm().reset();
   }

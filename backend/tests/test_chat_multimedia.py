@@ -467,8 +467,12 @@ async def test_persistencia_guarda_solo_texto(client, override_auth, mock_repo):
     assert nuevos[0]["content"] == "¿Qué ves?"
     assert nuevos[1]["role"] == "assistant"
     assert nuevos[1]["content"] == "respuesta visual"
-    # D2: la imagen NUNCA llega a la persistencia
-    assert "image" not in str(nuevos).lower()
+    # D2: la imagen NUNCA llega a la persistencia. Solo queda la marca `has_image` (HU-23), que se
+    # excluye del chequeo textual porque contiene la palabra «image».
+    assert nuevos[0]["has_image"] is True
+    assert "has_image" not in nuevos[1]
+    sin_marca = [{k: v for k, v in m.items() if k != "has_image"} for m in nuevos]
+    assert "image" not in str(sin_marca).lower()
     assert "base64" not in str(nuevos)
 
 

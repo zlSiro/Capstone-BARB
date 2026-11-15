@@ -147,6 +147,18 @@ export interface SaludOperacionalData {
   estancadas: number;
   /** Subconjunto vencido: vencimiento pasado y estado no final. */
   vencidas: number;
+  /**
+   * Desglose de las OTs del período por estado (CGBIDA-550).
+   *
+   * Opcional: si el backend no lo manda (versión anterior), la tarjeta muestra los
+   * contadores en 0 en vez de romperse. `pendientes` agrupa lo que todavía no tiene a
+   * nadie trabajando (pending, assigned, overdue) y `en_curso` lo que sí.
+   */
+  desglose?: {
+    completadas: number;
+    en_curso: number;
+    pendientes: number;
+  };
 }
 
 /** Una fila del Top 5 con peor MTTR (CGBIDA-516). */
@@ -225,3 +237,64 @@ export interface FinancialStats {
   /** Top 5 con peor MTBF (menos tiempo entre fallas) — CGBIDA-517. */
   top_5_peor_mtbf?: TopMtbfData[];
 }
+
+// =============================================================================
+// Filtros globales del Dashboard (CGBIDA-550)
+// =============================================================================
+
+/**
+ * Ventana temporal o agrupación del Dashboard.
+ *
+ * `7` es una ventana (últimos 7 días). Las cadenas son agrupaciones: no acotan la ventana
+ * —viajan con `days = null`— y solo cambian el tamaño del balde del gráfico histórico.
+ * `'all'` es el default: histórico completo agrupado por mes.
+ */
+export type RangoTemporal = 7 | 'mes' | 'semestre' | 'anio' | 'cinco' | 'all';
+
+/**
+ * Filtros globales: todo lo que el panel de control manda junto.
+ *
+ * Los tres de topología son `null` cuando no acotan nada. `rango` y `moneda` no acotan
+ * datos — son presentación — pero viajan en el mismo objeto porque salen de la misma barra
+ * de mandos y se emiten de una sola vez (CGBIDA-550).
+ */
+export interface FiltrosDashboard {
+  planta_id: number | null;
+  disciplina_id: number | null;
+  maquina_id: number | null;
+  rango: RangoTemporal;
+  moneda: 'CLP' | 'USD';
+}
+
+/** Estado inicial y al limpiar: toda la empresa, histórico completo, en pesos. */
+export const SIN_FILTROS: FiltrosDashboard = {
+  planta_id: null,
+  disciplina_id: null,
+  maquina_id: null,
+  rango: 'all',
+  moneda: 'CLP',
+};
+
+/** `true` si al menos un filtro de topología está activo. */
+export function hayFiltrosTopologia(f: FiltrosDashboard): boolean {
+  return f.planta_id !== null || f.disciplina_id !== null || f.maquina_id !== null;
+}
+
+/**
+ * Cómo se pide el histórico para cada rango.
+ *
+ * Ojo con la granularidad: la serie se dibuja con un punto por período. Una ventana corta
+ * con granularidad mensual caería en un solo punto (por eso 7 días va día a día), y las
+ * agrupaciones no llevan `days` porque muestran todo el histórico en baldes más grandes.
+ */
+export const GRANULARIDAD_POR_RANGO: Record<
+  RangoTemporal,
+  { granularity: 'day' | 'month' | 'semester' | 'year' | '5year'; days?: number }
+> = {
+  7: { granularity: 'day', days: 7 },
+  mes: { granularity: 'month' },
+  semestre: { granularity: 'semester' },
+  anio: { granularity: 'year' },
+  cinco: { granularity: '5year' },
+  all: { granularity: 'month' },
+};

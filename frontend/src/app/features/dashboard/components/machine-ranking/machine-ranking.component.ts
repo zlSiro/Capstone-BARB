@@ -1,4 +1,14 @@
-import { Component, ElementRef, computed, inject, input, signal } from '@angular/core';
+import {
+  Component,
+  DestroyRef,
+  ElementRef,
+  afterNextRender,
+  computed,
+  inject,
+  input,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MachineData } from '../../../../core/models';
 import { I18nService } from '../../../../core/i18n/i18n.service';
@@ -99,13 +109,16 @@ const MIL = new Intl.NumberFormat('es-CL');
         </figcaption>
 
         <!--
-          max-w-[520px]: el viewBox es 420x240, así que con w-full en una columna de ~760
-          px el gráfico se escalaba a ~434 px de alto. Acotado a 520 px queda en ~297 px,
-          cerca de los 240 del legacy, y se centra en la tarjeta.
+          El SVG ocupa el ancho de la tarjeta y se alinea a la IZQUIERDA (CGBIDA-550).
+          El ancho sale de medir el contenedor; si por lo que sea la medición no llega
+          (o el viewBox queda más angosto que la caja), xMinYMid pega el dibujo al
+          borde izquierdo y deja el espacio sobrante a la derecha, en vez de centrarlo.
         -->
         <svg
-          [attr.viewBox]="'0 0 ' + ANCHO + ' ' + ALTO"
-          class="mx-auto w-full max-w-[480px]"
+          [attr.viewBox]="'0 0 ' + ANCHO() + ' ' + ALTO"
+          [attr.height]="ALTO"
+          preserveAspectRatio="xMinYMid meet"
+          class="w-full"
           role="img"
           [attr.aria-label]="t().topMachinesTitle"
           (mousemove)="mover($event)"
@@ -150,7 +163,7 @@ const MIL = new Intl.NumberFormat('es-CL');
             <!-- Zona de hover para el tooltip. -->
             <rect
               [attr.x]="PAD_IZQ" [attr.y]="fila.y - ALTURA_FILA / 2"
-              [attr.width]="ANCHO - PAD_IZQ - PAD_DER" [attr.height]="ALTURA_FILA"
+              [attr.width]="ANCHO() - PAD_IZQ - PAD_DER" [attr.height]="ALTURA_FILA"
               fill="transparent"
               [attr.data-testid]="'zona-' + fila.id"
               (mouseenter)="entrar($index, $event)"
@@ -214,6 +227,7 @@ const MIL = new Intl.NumberFormat('es-CL');
 })
 export class MachineRankingComponent {
   private i18n = inject(I18nService);
+  private destroyRef = inject(DestroyRef);
   private host = inject(ElementRef<HTMLElement>);
   private currency = inject(CurrencyService);
 
@@ -276,8 +290,13 @@ export class MachineRankingComponent {
   protected readonly t = computed(() => this.i18n.tree().financial);
 
   // Geometría del viewBox. Proporciones del legacy: 220 px de alto útil, barra de 16.
-  protected readonly ANCHO = 420;
+  // Ancho medido del contenedor: el viewBox lo usa tal cual, así la escala es 1:1 y el
+  // gráfico ocupa la tarjeta de lado a lado (CGBIDA-550).
+  private readonly anchoMedido = signal(420);
+  protected readonly ANCHO = computed(() => Math.max(280, Math.round(this.anchoMedido())));
   protected readonly ALTO = 240;
+
+  private readonly lienzo = viewChild<ElementRef<HTMLElement>>('lienzo');
   protected readonly PAD_IZQ = 150; // Espacio para los nombres (el legacy usaba 90 px).
   protected readonly PAD_DER = 16;
   protected readonly PAD_SUP = 18;
@@ -287,7 +306,10 @@ export class MachineRankingComponent {
 
   protected readonly etiquetaMetrica = computed(() => METRICAS[this.metrica()].etiqueta);
 
-  private readonly anchoUtil = this.ANCHO - this.PAD_IZQ - this.PAD_DER;
+  /** Ancho util del lienzo, reactivo al ancho medido. */
+  private get anchoUtil(): number {
+    return this.ANCHO() - this.PAD_IZQ - this.PAD_DER;
+  }
 
   /**
    * Equipos ordenados por la métrica activa, descendente.

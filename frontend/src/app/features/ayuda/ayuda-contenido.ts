@@ -51,6 +51,12 @@ export const RECORRIDOS: readonly RecorridoDef[] = [
   { id: 'ver_ot', requiere: { ruta: 'menu' }, pantalla: '/work-orders', pasos: [{ ruta: '/work-orders', objetivo: 'ot-fila' }, { objetivo: 'ot-fila' }] },
   { id: 'docchat', requiere: { ruta: 'docchat' }, pantalla: '/chat', pasos: [{ ruta: '/chat', objetivo: 'chat-pregunta' }, { objetivo: 'chat-pregunta' }] },
   {
+    id: 'diagnostico_foto',
+    requiere: { ruta: 'docchat' },
+    pantalla: '/chat',
+    pasos: [{ ruta: '/chat', objetivo: 'chat-maquina' }, { objetivo: 'chat-imagen' }, { objetivo: 'chat-pregunta' }],
+  },
+  {
     id: 'iniciar_enviar',
     requiere: { accion: 'iniciar_ot_asignada' },
     pantalla: '/work-orders',

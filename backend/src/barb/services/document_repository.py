@@ -265,8 +265,11 @@ async def search_similar_chunks(
     query_embedding: list[float],
     empresa_id: int,
     top_k: int = 4,
+    maquina_id: int | None = None,
 ) -> list[dict]:
     """Top-k chunks más similares por distancia coseno, SOLO de la empresa.
+
+    Con `maquina_id` restringe a los documentos ligados a esa máquina (HU-23); `None` = sin filtro.
 
     Considera únicamente documentos con `activo = TRUE` y devuelve el título
     del documento (para citar la fuente, como piden las RAG_RULES del chat).
@@ -282,8 +285,9 @@ async def search_similar_chunks(
         FROM documento_embedding e
         JOIN documento d ON d.documento_id = e.documento_id
         WHERE d.empresa_id = %(empresa_id)s AND d.activo = TRUE
+          AND (%(maquina_id)s::int IS NULL OR d.maquina_id = %(maquina_id)s)
         ORDER BY e.embedding::halfvec(2048) <=> %(query)s::halfvec(2048)
         LIMIT %(top_k)s
         """,
-        {"query": query, "empresa_id": empresa_id, "top_k": top_k},
+        {"query": query, "empresa_id": empresa_id, "top_k": top_k, "maquina_id": maquina_id},
     )
