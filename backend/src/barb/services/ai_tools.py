@@ -1357,6 +1357,22 @@ def _severidad_no_soportada(texto: str | None) -> str | None:
     return valor if _normalizar(valor) in _SEVERIDADES_NO_SOPORTADAS else None
 
 
+def _descripcion_literal(descripcion: str, habla_del_usuario: list[str] | None) -> bool:
+    """True si cada palabra con contenido de la descripción la dijo el usuario.
+
+    El modelo tendía a rellenar el mínimo de caracteres inventando síntomas o fechas
+    («no arranca desde hace poco tiempo, no responde al arranque» cuando la persona solo
+    dijo «no arranca»). La descripción es la nota que lee el supervisor: se compara
+    contra los últimos mensajes del usuario y, si aparece una palabra que nadie dijo, la
+    propuesta se descarta. Sin historial (tests) no se aplica.
+    """
+    if not habla_del_usuario:
+        return True
+    dichas = set(re.findall(r"[a-z0-9]+", _normalizar(" ".join(habla_del_usuario))))
+    palabras = re.findall(r"[a-z0-9]+", _normalizar(descripcion))
+    return all(p in dichas for p in palabras if len(p) >= 3)
+
+
 def _texto_propuesta_aviso(maquina: dict, descripcion: str, severidad: str) -> str:
     """Texto exacto que el asistente muestra (y persiste) al proponer registrar una falla.
 
@@ -1888,11 +1904,16 @@ def crear_tools(
         desc = " ".join((descripcion or "").split())
         if len(desc) < _MIN_DESCRIPCION_AVISO:
             return (
-                f"Necesito una descripción concreta de la falla (mínimo "
-                f"{_MIN_DESCRIPCION_AVISO} caracteres): qué pasa, dónde y desde cuándo."
+                f"La descripción de la falla es insuficiente: el aviso requiere al menos "
+                f"{_MIN_DESCRIPCION_AVISO} caracteres con qué pasa, dónde y desde cuándo."
             )
         if len(desc) > 2000:
-            return "La descripción es demasiado larga para el chat (máximo 2000); resumela y lo propongo."
+            return "La descripción es demasiado larga (máximo 2000 caracteres): resúmela."
+        if not _descripcion_literal(desc, habla_del_usuario):
+            return (
+                "La descripción no es literal: debe usar solo las palabras del usuario, "
+                "sin agregar síntomas, fechas ni contexto que no haya mencionado."
+            )
 
         consulta = (nombre_maquina or "").strip()
         if not consulta:
@@ -1903,13 +1924,13 @@ def crear_tools(
         dicha = _severidad_no_soportada((habla_del_usuario or [None])[-1])
         if dicha:
             return (
-                f"La severidad «{dicha}» no la reconozco: usa baja, media, alta o crítica. "
+                f"La severidad «{dicha}» no es válida: usa baja, media, alta o crítica. "
                 "Dime cuál prefieres y la propongo con esa."
             )
 
         sev, reconocida = _normalizar_severidad(severidad)
         if not reconocida:
-            return f"La severidad «{severidad}» no la reconocí: usa baja, media, alta o crítica."
+            return f"La severidad «{severidad}» no es válida: usa baja, media, alta o crítica."
 
         maquina, error = await _resolver_maquina(empresa_id, consulta, "registro una falla")
         if error:

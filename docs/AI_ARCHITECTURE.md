@@ -514,6 +514,13 @@ quién pedirle, y el endurecimiento de la Skill de plantas tras el QA del 05-11 
 - La descripción exige **mínimo 15 caracteres** (`_MIN_DESCRIPCION_AVISO`): «falla» o
   «se paró solo» no le sirven al supervisor. El parser del gate conserva su piso de 5
   para no invalidar propuestas ya persistidas con el mínimo anterior.
+- La descripción es **literal y con procedencia**: cada palabra con contenido debe
+  existir en los últimos mensajes del usuario. Si el modelo rellena el mínimo inventando
+  síntomas o fechas («no arranca desde hace poco tiempo…» cuando solo dijeron «no
+  arranca»), la propuesta se descarta (`_descripcion_literal`).
+- Regla 15 del prompt (estilo): segunda persona y respuesta directa; prohibido narrar el
+  razonamiento, hablar de «el usuario» en tercera persona o meta-comentar («la
+  herramienta me pide…», «pregunto al usuario…»).
 - Regla 13 del prompt: un reporte de falla («se cayó la prensa B3, salió aceite…») se
   propone como aviso aunque no diga «anótalo». Si además pide diagnóstico, primero
   responde con la documentación y al final ofrece registrarlo. El prompt prohíbe

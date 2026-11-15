@@ -522,3 +522,14 @@ def test_el_prompt_manda_registrar_la_falla_y_no_negar_las_herramientas():
     assert "prioridad sobre la de responder solo con documentación" in prompt
     # Una severidad inventada se pasa literal: la tool la rechaza y ofrece las válidas.
     assert "«urgentísima»" in prompt
+
+
+def test_el_prompt_exige_hablarle_al_usuario_en_segunda_persona():
+    """QA: el bot narraba su plan («el usuario dijo…», «pregunto al usuario…»)."""
+    from barb.services.chat_graph import _prompt_sistema
+
+    prompt = _prompt_sistema("x")
+    assert "Háblale siempre en segunda persona" in prompt
+    assert "ESTILO DE RESPUESTA" in prompt
+    assert "«pregunto al usuario»" in prompt
+    assert "«la herramienta me pide…»" in prompt
