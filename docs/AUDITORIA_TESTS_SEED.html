@@ -235,9 +235,9 @@
             <tr><th class="px-3 py-2">Archivo nuevo</th><th class="px-3 py-2 text-center">Fallos</th><th class="px-3 py-2">Causa</th></tr>
           </thead>
           <tbody class="divide-y divide-slate-100">
-            <tr><td class="px-3 py-2"><code>test_stats_filtros.py</code></td><td class="px-3 py-2 text-center font-bold">14</td><td class="px-3 py-2">Ni siquiera loguean: usan <code>@planta.com</code> y <code>@mineranorte.cl</code></td></tr>
-            <tr><td class="px-3 py-2"><code>test_stats_granularidad.py</code></td><td class="px-3 py-2 text-center font-bold">7</td><td class="px-3 py-2">Mismo login con credenciales viejas</td></tr>
-            <tr><td class="px-3 py-2"><code>test_documents_maquina.py</code></td><td class="px-3 py-2 text-center font-bold">6</td><td class="px-3 py-2">Mismo login con credenciales viejas</td></tr>
+            <tr><td class="px-3 py-2"><code>test_stats_filtros.py</code></td><td class="px-3 py-2 text-center font-bold">14</td><td class="px-3 py-2">Ni siquiera loguean: usan <code>@planta.com</code> y <code>@mineranorte.cl</code> → <strong>HTTP 401</strong></td></tr>
+            <tr><td class="px-3 py-2"><code>test_stats_granularidad.py</code></td><td class="px-3 py-2 text-center font-bold">7</td><td class="px-3 py-2">Mismo login con credenciales viejas → <strong>HTTP 401</strong></td></tr>
+            <tr><td class="px-3 py-2"><code>test_documents_maquina.py</code></td><td class="px-3 py-2 text-center font-bold">6</td><td class="px-3 py-2">Mismo login con credenciales viejas → <strong>HTTP 401</strong></td></tr>
             <tr><td class="px-3 py-2"><code>test_chat_repository.py</code></td><td class="px-3 py-2 text-center font-bold">2</td><td class="px-3 py-2">Buscan la máquina <code>PUMP-E4</code> / <code>Pump E4</code> del catálogo viejo</td></tr>
             <tr class="bg-slate-50/60"><td class="px-3 py-2"><code>test_stats_historico.py</code></td><td class="px-3 py-2 text-center font-bold">1</td><td class="px-3 py-2">Espera <strong>422</strong> de granularidad inválida y recibe <strong>200</strong> (validación, no seed)</td></tr>
           </tbody>
@@ -250,6 +250,34 @@
       <p class="mt-1.5 text-base font-semibold text-slate-900">
         La HU-23 eliminaba <code class="rounded bg-slate-100 px-1">chat_session.machine_id</code>, que nuestro seed insertaba.
       </p>
+
+    <div class="card rounded-2xl border-l-4 border-slate-400 bg-white p-6">
+      <p class="text-xs font-bold uppercase tracking-wide text-slate-600">Verificación de entorno · por si vuelve la duda</p>
+      <p class="mt-1.5 text-base font-semibold text-slate-900">
+        La migración <code class="rounded bg-slate-100 px-1">0016</code> está aplicada. Los 30 fallos nuevos
+        no son de esquema.
+      </p>
+      <div class="mt-3 grid gap-2 text-sm sm:grid-cols-3">
+        <div class="rounded-lg bg-slate-50 px-3 py-2"><code class="text-xs">alembic current</code><br><strong>0016_chat_session_maquina (head)</strong></div>
+        <div class="rounded-lg bg-slate-50 px-3 py-2"><code class="text-xs">chat_session.maquina_id</code><br><strong>presente</strong></div>
+        <div class="rounded-lg bg-slate-50 px-3 py-2"><code class="text-xs">chat_session.machine_id</code><br><strong>eliminada</strong></div>
+      </div>
+      <p class="mt-3 text-sm text-slate-600">
+        <code class="rounded bg-slate-100 px-1 text-xs">uv run alembic upgrade head</code> no tiene nada que
+        hacer: ya está en <em>head</em>. Y los 30 fallos no son errores de base: <strong>27 de ellos son
+        HTTP 401</strong> al hacer login con usuarios que no existen en el catálogo nuevo. La prueba:
+      </p>
+      <div class="mt-2 overflow-x-auto rounded-lg bg-slate-900 p-3 text-xs text-slate-200">
+        <code>SELECT count(*) FROM usuario WHERE email LIKE '%@planta.com';      -- 0<br>
+SELECT count(*) FROM usuario WHERE email LIKE '%@mineranorte.cl'; -- 0<br>
+SELECT count(*) FROM usuario WHERE email LIKE '%@mineradelnorte.cl'; -- 10</code>
+      </div>
+      <p class="mt-2 text-xs text-slate-500">
+        Por eso un entorno con el <strong>seed viejo</strong> en la base da otro número (~28): ahí
+        <code>@planta.com</code> sí existe y esos tests loguean. La diferencia no está en la migración,
+        está en qué seed se aplicó.
+      </p>
+    </div>
       <p class="mt-2 text-sm text-slate-600">
         La migración <code class="rounded bg-slate-100 px-1 text-xs">0016</code> borra esa columna y crea
         <code class="rounded bg-slate-100 px-1 text-xs">maquina_id</code> (FK a <code class="rounded bg-slate-100 px-1 text-xs">maquina</code>).
