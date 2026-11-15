@@ -1,0 +1,557 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Auditoría forense de los tests que asumen el seed viejo</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .card { box-shadow: 0 1px 2px rgba(15,23,42,.06), 0 10px 30px -22px rgba(15,23,42,.45); }
+  table { font-variant-numeric: tabular-nums; }
+  .exp { color: #9f1239; }
+  .act { color: #065f46; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  @media print {
+    body { background: #fff; }
+    .card { break-inside: avoid; box-shadow: none; border: 1px solid #e2e8f0; }
+    .no-print { display: none !important; }
+  }
+</style>
+</head>
+<body class="bg-slate-100 text-slate-800 antialiased">
+
+<header class="relative overflow-hidden bg-slate-900 text-slate-100">
+  <div class="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-rose-500/20 blur-3xl"></div>
+  <div class="relative mx-auto max-w-6xl px-6 py-12">
+    <p class="mb-3 inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-rose-300">
+      Auditoría forense · rama refactor/limpieza-seeds · post-merge main (HU-23)
+    </p>
+    <h1 class="max-w-4xl text-3xl font-extrabold leading-tight sm:text-4xl">
+      Por qué fallan 57 tests<br class="hidden sm:block" />
+      <span class="text-rose-300">y qué hay que arreglar en cada uno</span>
+    </h1>
+    <p class="mt-3 max-w-3xl text-slate-300">
+      Análisis caso por caso: la aserción exacta, el valor esperado, el valor que devuelve la base,
+      la causa raíz y si el arreglo va en el test o en el seed. <strong class="text-white">Sin tocar
+      una línea de código</strong>: esto es diagnóstico.
+    </p>
+    <div class="mt-6 grid max-w-3xl grid-cols-2 gap-2.5 text-sm sm:grid-cols-4">
+      <div class="rounded-lg bg-white/10 px-3 py-2"><strong class="block text-xl text-white">57</strong> fallan</div>
+      <div class="rounded-lg bg-white/10 px-3 py-2"><strong class="block text-xl text-emerald-300">828</strong> pasan</div>
+      <div class="rounded-lg bg-white/10 px-3 py-2"><strong class="block text-xl text-white">43</strong> son solo nombres</div>
+      <div class="rounded-lg bg-white/10 px-3 py-2"><strong class="block text-xl text-amber-300">1</strong> es bug de seed</div>
+    </div>
+  </div>
+</header>
+
+<main class="mx-auto max-w-6xl space-y-8 px-6 py-10">
+
+  <!-- ================= RESUMEN POR CATEGORIA ================= -->
+  <section class="card rounded-2xl bg-white p-7">
+    <h2 class="flex items-center gap-3 text-2xl font-bold text-slate-900">
+      <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-100 text-sm font-extrabold text-rose-700">1</span>
+      Resumen: el problema más común es un nombre viejo
+    </h2>
+
+    <div class="mt-5 space-y-3">
+      <!-- A -->
+      <div>
+        <div class="mb-1 flex items-baseline justify-between text-sm">
+          <p><span class="mr-2 inline-flex h-5 w-5 items-center justify-center rounded bg-rose-600 text-xs font-bold text-white">A</span>
+             <strong>Nombre o código hardcodeado</strong> <span class="text-slate-500">— el test busca un string que ya no existe</span></p>
+          <p class="font-bold text-rose-700">43 · 75 %</p>
+        </div>
+        <div class="h-2.5 w-full overflow-hidden rounded-full bg-slate-100"><div class="h-full rounded-full bg-rose-600" style="width:75%"></div></div>
+      </div>
+      <!-- E -->
+      <div>
+        <div class="mb-1 flex items-baseline justify-between text-sm">
+          <p><span class="mr-2 inline-flex h-5 w-5 items-center justify-center rounded bg-slate-600 text-xs font-bold text-white">E</span>
+             <strong>Otros</strong> <span class="text-slate-500">— mock, redondeo, generador puro, aislamiento</span></p>
+          <p class="font-bold text-slate-700">7 · 12 %</p>
+        </div>
+        <div class="h-2.5 w-full overflow-hidden rounded-full bg-slate-100"><div class="h-full rounded-full bg-slate-600" style="width:12%"></div></div>
+      </div>
+      <!-- B -->
+      <div>
+        <div class="mb-1 flex items-baseline justify-between text-sm">
+          <p><span class="mr-2 inline-flex h-5 w-5 items-center justify-center rounded bg-amber-600 text-xs font-bold text-white">B</span>
+             <strong>ID hardcodeado</strong> <span class="text-slate-500">— <code>maquina_id</code>, <code>usuario_id</code> o nodo que ahora es otro</span></p>
+          <p class="font-bold text-amber-700">4 · 7 %</p>
+        </div>
+        <div class="h-2.5 w-full overflow-hidden rounded-full bg-slate-100"><div class="h-full rounded-full bg-amber-600" style="width:7%"></div></div>
+      </div>
+      <!-- D -->
+      <div>
+        <div class="mb-1 flex items-baseline justify-between text-sm">
+          <p><span class="mr-2 inline-flex h-5 w-5 items-center justify-center rounded bg-violet-600 text-xs font-bold text-white">D</span>
+             <strong>Permisos / roles</strong> <span class="text-slate-500">— el rol cambió de acceso tras la matriz nueva</span></p>
+          <p class="font-bold text-violet-700">2 · 4 %</p>
+        </div>
+        <div class="h-2.5 w-full overflow-hidden rounded-full bg-slate-100"><div class="h-full rounded-full bg-violet-600" style="width:4%"></div></div>
+      </div>
+      <!-- C -->
+      <div>
+        <div class="mb-1 flex items-baseline justify-between text-sm">
+          <p><span class="mr-2 inline-flex h-5 w-5 items-center justify-center rounded bg-emerald-600 text-xs font-bold text-white">C</span>
+             <strong>Lógica de seed</strong> <span class="text-slate-500">— el seed genera un dato que la regla prohíbe</span></p>
+          <p class="font-bold text-emerald-700">1 · 2 %</p>
+        </div>
+        <div class="h-2.5 w-full overflow-hidden rounded-full bg-slate-100"><div class="h-full rounded-full bg-emerald-600" style="width:2%"></div></div>
+      </div>
+    </div>
+
+    <div class="mt-5 grid gap-3 sm:grid-cols-3">
+      <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <p class="text-2xl font-extrabold text-slate-900">54 <span class="text-sm font-semibold text-slate-500">de 57</span></p>
+        <p class="text-xs text-slate-600">se arreglan en el <strong>test</strong></p>
+      </div>
+      <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+        <p class="text-2xl font-extrabold text-emerald-800">1 <span class="text-sm font-semibold text-emerald-600">de 57</span></p>
+        <p class="text-xs text-emerald-700">se arregla en el <strong>seed</strong></p>
+      </div>
+      <div class="rounded-xl border border-violet-200 bg-violet-50 p-4">
+        <p class="text-2xl font-extrabold text-violet-800">2 <span class="text-sm font-semibold text-violet-600">de 57</span></p>
+        <p class="text-xs text-violet-700">necesitan <strong>decisión de producto</strong> (permisos)</p>
+      </div>
+    </div>
+
+    <p class="mt-4 rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
+      <strong>Convención de categorías:</strong> «nombre o código» (A) agrupa los strings que ya no
+      existen, incluidos códigos de equipo como <code class="rounded bg-white px-1">PUMP-E4</code>.
+      «ID» (B) queda para identificadores numéricos o compuestos (<code class="rounded bg-white px-1">maquina_id=1</code>,
+      <code class="rounded bg-white px-1">usuario_id=14</code>, nodo <code class="rounded bg-white px-1">d_13</code>).
+      Añadí la categoría <strong>E</strong> porque seis fallos no encajan en A–D y forzarlos habría
+      escondido su causa real.
+    </p>
+  </section>
+
+  <!-- ================= HALLAZGOS ================= -->
+  <section class="space-y-3">
+    <div class="card rounded-2xl bg-white p-7">
+      <h2 class="flex items-center gap-3 text-2xl font-bold text-slate-900">
+        <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 text-sm font-extrabold text-amber-700">2</span>
+        Tres hallazgos que cambian el plan
+      </h2>
+    </div>
+
+    <div class="card rounded-2xl border-l-4 border-amber-500 bg-white p-6">
+      <p class="text-xs font-bold uppercase tracking-wide text-amber-700">Hallazgo 1 · error mío, no del seed</p>
+      <p class="mt-1.5 text-base font-semibold text-slate-900">
+        Cinco tests quedaron con una equivalencia equivocada: se les asignó una máquina de
+        <em>otra</em> empresa.
+      </p>
+      <p class="mt-2 text-sm text-slate-600">
+        El reemplazo masivo tradujo «Compressor A1» y «Compressor Neumático N2» a equipos de
+        <strong>Planta de Alimentos</strong>, pero esos tests corren con <code class="rounded bg-slate-100 px-1 text-xs">empresa_id=1</code>
+        (Minera del Norte). Por eso la respuesta es «No encontré ninguna máquina que coincida con
+        «Compresor de Amoníaco»»: el equipo existe, pero en otra empresa. Afecta a
+        <code class="rounded bg-slate-100 px-1 text-xs">test_crear_ot</code> (2),
+        <code class="rounded bg-slate-100 px-1 text-xs">test_multiempresa</code> (3).
+      </p>
+    </div>
+
+    <div class="card rounded-2xl border-l-4 border-emerald-500 bg-white p-6">
+      <p class="text-xs font-bold uppercase tracking-wide text-emerald-700">Hallazgo 2 · el único bug real de datos</p>
+      <p class="mt-1.5 text-base font-semibold text-slate-900">
+        El seed asigna inactividad a las inspecciones: 118 de 132 inspecciones completadas tienen
+        <code class="rounded bg-slate-100 px-1">downtime_minutes ≠ 0</code>.
+      </p>
+      <p class="mt-2 text-sm text-slate-600">
+        Una inspección que no encuentra falla no detiene la planta. El generador viejo respetaba esa
+        regla; el seed nuevo la rompió al dar inactividad a todas las OTs cerradas. Los otros 26
+        fallos son tests desactualizados: <strong>este es el único que hay que arreglar en el
+        seed</strong>.
+      </p>
+    </div>
+
+    <div class="card rounded-2xl border-l-4 border-amber-500 bg-white p-6">
+      <p class="text-xs font-bold uppercase tracking-wide text-amber-700">Hallazgo 3 · el número no es estable (25 → 27 → 28)</p>
+      <p class="mt-1.5 text-base font-semibold text-slate-900">
+        Hay tests que dejan residuos y otros que dependen del orden.
+      </p>
+      <p class="mt-2 text-sm text-slate-600">
+        La base tiene 4 empresas <code class="rounded bg-slate-100 px-1 text-xs">Empresa Test xxxxxx</code> que
+        sobrevivieron a corridas anteriores, y <code class="rounded bg-slate-100 px-1 text-xs">test_super_crea_edita_suspende…</code>
+        falla con <strong>409 Conflict</strong> justo al intentar borrar una empresa con dependencias.
+        Además <code class="rounded bg-slate-100 px-1 text-xs">test_actualizar_parametros_maquina_respeta_empresa</code>
+        aparece y desaparece según el orden. <strong>Antes de arreglar nada hay que limpiar esos
+        residuos</strong>, o el conteo no será confiable.
+      </p>
+    </div>
+  </section>
+
+  <!-- ================= QUE CAMBIO CON EL MERGE ================= -->
+  <section class="space-y-3">
+    <div class="card rounded-2xl bg-white p-7">
+      <h2 class="flex items-center gap-3 text-2xl font-bold text-slate-900">
+        <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-100 text-sm font-extrabold text-indigo-700">3</span>
+        Qué cambió el merge de main (HU-23 + PR #67)
+      </h2>
+      <p class="mt-2 text-slate-600">
+        El merge trajo <strong>23 commits</strong>: la HU-23 (chat multimodal con máquina vinculada y
+        documentos ligados a máquinas), el PR #67 (filtros y granularidad del dashboard) y la migración
+        <code class="rounded bg-slate-100 px-1">0016_chat_session_maquina</code>. Entraron 68 tests
+        nuevos, y 30 de ellos fallan.
+      </p>
+      <div class="mt-4 overflow-hidden rounded-xl border border-slate-200">
+        <table class="w-full text-sm">
+          <thead class="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+            <tr><th class="px-4 py-2">Antes del merge</th><th class="px-4 py-2">Después del merge</th><th class="px-4 py-2">Diferencia</th></tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            <tr><td class="px-4 py-2">790 pasan</td><td class="px-4 py-2 font-semibold text-emerald-700">828 pasan</td><td class="px-4 py-2 text-slate-500">+38</td></tr>
+            <tr><td class="px-4 py-2">27 fallan</td><td class="px-4 py-2 font-semibold text-rose-700">57 fallan</td><td class="px-4 py-2 text-slate-500">+30</td></tr>
+            <tr><td class="px-4 py-2">817 total</td><td class="px-4 py-2 font-semibold">885 total</td><td class="px-4 py-2 text-slate-500">+68 tests nuevos</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card rounded-2xl border-l-4 border-rose-500 bg-white p-6">
+      <p class="text-xs font-bold uppercase tracking-wide text-rose-700">Lo tranquilizador</p>
+      <p class="mt-1.5 text-base font-semibold text-slate-900">
+        Los 27 fallos anteriores siguen fallando exactamente por lo mismo. Ninguna causa raíz cambió.
+      </p>
+      <p class="mt-2 text-sm text-slate-600">
+        Ni <code class="rounded bg-slate-100 px-1 text-xs">test_chat_multimedia</code> (el mock de
+        <code class="rounded bg-slate-100 px-1 text-xs">load_messages</code>) ni
+        <code class="rounded bg-slate-100 px-1 text-xs">test_seed_history</code> (generador puro y las
+        118 inspecciones) se vieron afectados por la HU-23: se comparó la lista completa y el conjunto es
+        idéntico.
+      </p>
+    </div>
+
+    <div class="card rounded-2xl border-l-4 border-amber-500 bg-white p-6">
+      <p class="text-xs font-bold uppercase tracking-wide text-amber-700">Lo que suma trabajo</p>
+      <p class="mt-1.5 text-base font-semibold text-slate-900">
+        Los tests nuevos que entraron con main también asumen el catálogo viejo: 29 de los 30 son el
+        mismo problema de siempre.
+      </p>
+      <div class="mt-3 overflow-x-auto rounded-xl border border-slate-200">
+        <table class="w-full text-xs">
+          <thead class="bg-slate-50 text-left uppercase tracking-wide text-slate-500">
+            <tr><th class="px-3 py-2">Archivo nuevo</th><th class="px-3 py-2 text-center">Fallos</th><th class="px-3 py-2">Causa</th></tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            <tr><td class="px-3 py-2"><code>test_stats_filtros.py</code></td><td class="px-3 py-2 text-center font-bold">14</td><td class="px-3 py-2">Ni siquiera loguean: usan <code>@planta.com</code> y <code>@mineranorte.cl</code></td></tr>
+            <tr><td class="px-3 py-2"><code>test_stats_granularidad.py</code></td><td class="px-3 py-2 text-center font-bold">7</td><td class="px-3 py-2">Mismo login con credenciales viejas</td></tr>
+            <tr><td class="px-3 py-2"><code>test_documents_maquina.py</code></td><td class="px-3 py-2 text-center font-bold">6</td><td class="px-3 py-2">Mismo login con credenciales viejas</td></tr>
+            <tr><td class="px-3 py-2"><code>test_chat_repository.py</code></td><td class="px-3 py-2 text-center font-bold">2</td><td class="px-3 py-2">Buscan la máquina <code>PUMP-E4</code> / <code>Pump E4</code> del catálogo viejo</td></tr>
+            <tr class="bg-slate-50/60"><td class="px-3 py-2"><code>test_stats_historico.py</code></td><td class="px-3 py-2 text-center font-bold">1</td><td class="px-3 py-2">Espera <strong>422</strong> de granularidad inválida y recibe <strong>200</strong> (validación, no seed)</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card rounded-2xl border-l-4 border-emerald-500 bg-white p-6">
+      <p class="text-xs font-bold uppercase tracking-wide text-emerald-700">Y un choque real que ya está resuelto</p>
+      <p class="mt-1.5 text-base font-semibold text-slate-900">
+        La HU-23 eliminaba <code class="rounded bg-slate-100 px-1">chat_session.machine_id</code>, que nuestro seed insertaba.
+      </p>
+      <p class="mt-2 text-sm text-slate-600">
+        La migración <code class="rounded bg-slate-100 px-1 text-xs">0016</code> borra esa columna y crea
+        <code class="rounded bg-slate-100 px-1 text-xs">maquina_id</code> (FK a <code class="rounded bg-slate-100 px-1 text-xs">maquina</code>).
+        El seed se adaptó: ahora los 9 chats del historial quedan <strong>vinculados a su máquina real</strong>
+        (CHA-001, CAL-001, ROB-001…), verificado sobre la base.
+      </p>
+    </div>
+  </section>
+
+  <!-- ================= TABLA FORENSE ================= -->
+  <section class="card rounded-2xl bg-white p-7">
+    <h2 class="flex items-center gap-3 text-2xl font-bold text-slate-900">
+      <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-100 text-sm font-extrabold text-sky-700">4</span>
+      Los 27 fallos originales, uno por uno
+    </h2>
+    <p class="mt-2 text-sm text-slate-600">
+      <span class="exp font-semibold">Rojo = esperado por el test</span> ·
+      <span class="act font-semibold">Verde = lo que devuelve la base</span> ·
+      «Test» = arreglar la aserción · «Seed» = arreglar los datos.
+    </p>
+
+    <div class="mt-4 overflow-x-auto rounded-xl border border-slate-200">
+      <table class="w-full min-w-[68rem] text-xs">
+        <thead class="bg-slate-50 text-left uppercase tracking-wide text-slate-500">
+          <tr>
+            <th class="px-3 py-2.5">Archivo · test</th>
+            <th class="px-3 py-2.5">Esperado vs. real</th>
+            <th class="px-3 py-2.5 text-center">Cat.</th>
+            <th class="px-3 py-2.5">Solución</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100 align-top">
+
+          <!-- A1 -->
+          <tr>
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_chat_graph.py</code><br><span class="font-medium">test_identificar_maquina_exige_mencion_exacta</span></td>
+            <td class="px-3 py-2.5"><span class="exp">codigo == "PUMP-E4" · disciplina == "Hidráulica"</span><br><span class="act">None (ninguna máquina coincide)</span></td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-rose-100 px-1.5 py-0.5 font-bold text-rose-700">A</span></td>
+            <td class="px-3 py-2.5"><strong class="text-sky-700">Test</strong><br><span class="text-slate-500">Usar <code>BOM-001</code> y disciplina <code>Mecánica</code></span></td>
+          </tr>
+          <!-- A2 -->
+          <tr class="bg-slate-50/50">
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_chat_graph.py</code><br><span class="font-medium">test_la_tool_sugiere_alternativas_cuando_no_encuentra</span></td>
+            <td class="px-3 py-2.5"><span class="exp">"Chancador de cono Sandvik H8800 (COMP-A1)"</span><br><span class="act">"Chancador de cono Sandvik H8800 (CHA-001)"</span></td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-rose-100 px-1.5 py-0.5 font-bold text-rose-700">A</span></td>
+            <td class="px-3 py-2.5"><strong class="text-sky-700">Test</strong><br><span class="text-slate-500">Nombre reemplazado, código sin reemplazar</span></td>
+          </tr>
+          <!-- E1 -->
+          <tr>
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_chat_multimedia.py</code><br><span class="font-medium">test_stream_sesion_existente_recupera_historial</span></td>
+            <td class="px-3 py-2.5"><span class="exp">load_messages(id, 1)</span><br><span class="act">load_messages(id, 1, limite=10)</span></td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-slate-200 px-1.5 py-0.5 font-bold text-slate-700">E</span></td>
+            <td class="px-3 py-2.5"><strong class="text-sky-700">Test</strong><br><span class="text-slate-500">Mock con la firma actual (no es el seed)</span></td>
+          </tr>
+          <!-- A3 -->
+          <tr class="bg-slate-50/50">
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_chat_repository.py</code><br><span class="font-medium">test_create_session_guarda_equipo_y_titulo_segmentado</span></td>
+            <td class="px-3 py-2.5"><span class="exp">"PUMP-E4 · vibrando demasiado"</span><br><span class="act">"La bomba PUMP-E4 está vibrando demasiado y qué…"</span></td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-rose-100 px-1.5 py-0.5 font-bold text-rose-700">A</span></td>
+            <td class="px-3 py-2.5"><strong class="text-sky-700">Test</strong><br><span class="text-slate-500">Sin máquina identificada no hay título segmentado</span></td>
+          </tr>
+          <!-- A4 -->
+          <tr>
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_crear_ot.py</code><br><span class="font-medium">test_crear_ot_crea_una_ot_real_y_coherente</span></td>
+            <td class="px-3 py-2.5"><span class="exp">OT creada con «Compresor de Amoníaco» (empresa 1)</span><br><span class="act">"No encontré ninguna máquina…" — ese equipo es de Alimentos</span></td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-rose-100 px-1.5 py-0.5 font-bold text-rose-700">A</span></td>
+            <td class="px-3 py-2.5"><strong class="text-amber-700">Test (equivalencia)</strong><br><span class="text-slate-500">Usar una máquina de Minera</span></td>
+          </tr>
+          <!-- A5 -->
+          <tr class="bg-slate-50/50">
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_crear_ot.py</code><br><span class="font-medium">test_crear_ot_no_duplica_la_misma_orden</span></td>
+            <td class="px-3 py-2.5"><span class="exp">"ya estaba creada"</span><br><span class="act">"No encontré ninguna máquina que coincida con «Compresor de Amoníaco»"</span></td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-rose-100 px-1.5 py-0.5 font-bold text-rose-700">A</span></td>
+            <td class="px-3 py-2.5"><strong class="text-amber-700">Test (equivalencia)</strong></td>
+          </tr>
+          <!-- D1 -->
+          <tr>
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_maquinas_edicion.py</code><br><span class="font-medium">test_no_edita_una_maquina_de_otra_empresa</span></td>
+            <td class="px-3 py-2.5"><span class="exp">404 (no existe en mi empresa)</span><br><span class="act">403 «El rol 'tecnico' no tiene acceso a 'plantas'»</span></td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-violet-100 px-1.5 py-0.5 font-bold text-violet-700">D</span></td>
+            <td class="px-3 py-2.5"><strong class="text-sky-700">Test</strong><br><span class="text-slate-500">Entrar con un rol que acceda a plantas</span></td>
+          </tr>
+          <!-- A6 -->
+          <tr class="bg-slate-50/50">
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_multiempresa.py</code><br><span class="font-medium">test_catalogos_filtrados_por_empresa</span></td>
+            <td class="px-3 py-2.5"><span class="exp">{Molienda SAG, Chancado Primario} · 7 máquinas</span><br><span class="act">{Planta de Vapor, Túnel de Frío} · 3 máquinas</span></td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-rose-100 px-1.5 py-0.5 font-bold text-rose-700">A</span></td>
+            <td class="px-3 py-2.5"><strong class="text-amber-700">Test (equivalencia)</strong><br><span class="text-slate-500">Se le asignaron plantas de Minera a un test de Alimentos</span></td>
+          </tr>
+          <!-- A7 -->
+          <tr>
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_multiempresa.py</code><br><span class="font-medium">test_stats_y_topologia_solo_de_la_empresa</span></td>
+            <td class="px-3 py-2.5"><span class="exp">⊆ {máquinas de Minera}</span><br><span class="act">{Caldera Parker WH395L, Compresor de Amoníaco, Bomba Grundfos}</span></td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-rose-100 px-1.5 py-0.5 font-bold text-rose-700">A</span></td>
+            <td class="px-3 py-2.5"><strong class="text-amber-700">Test (equivalencia)</strong><br><span class="text-slate-500">El test entra como gerente de Alimentos</span></td>
+          </tr>
+          <!-- E2 -->
+          <tr class="bg-slate-50/50">
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_multiempresa.py</code><br><span class="font-medium">test_super_crea_edita_suspende_y_elimina_empresa…</span></td>
+            <td class="px-3 py-2.5"><span class="exp">204 (borrado OK)</span><br><span class="act">409 Conflict</span></td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-slate-200 px-1.5 py-0.5 font-bold text-slate-700">E</span></td>
+            <td class="px-3 py-2.5"><strong class="text-sky-700">Test</strong><br><span class="text-slate-500">Quedan 4 «Empresa Test …» de corridas previas</span></td>
+          </tr>
+          <!-- A8 -->
+          <tr>
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_multiempresa.py</code><br><span class="font-medium">test_cada_empresa_solo_ve_sus_documentos</span></td>
+            <td class="px-3 py-2.5"><span class="exp">manual Sandvik en la lista de Alimentos</span><br><span class="act">Sandvik es de Minera; Alimentos tiene Parker, Grundfos y amoníaco</span></td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-rose-100 px-1.5 py-0.5 font-bold text-rose-700">A</span></td>
+            <td class="px-3 py-2.5"><strong class="text-amber-700">Test (equivalencia)</strong></td>
+          </tr>
+          <!-- A9 -->
+          <tr class="bg-slate-50/50">
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_multiempresa.py</code><br><span class="font-medium">test_busqueda_rag_con_datos_semilla_respeta_empresa_y_estado</span></td>
+            <td class="px-3 py-2.5"><span class="exp">"Procedimiento Prensa Hidráulica B3" (documento viejo)</span><br><span class="act">"Manual de operación y ajuste — Chancador de cono Sandvik H8800"</span></td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-rose-100 px-1.5 py-0.5 font-bold text-rose-700">A</span></td>
+            <td class="px-3 py-2.5"><strong class="text-sky-700">Test</strong><br><span class="text-slate-500">Título del manual que sí existe</span></td>
+          </tr>
+          <!-- E3 -->
+          <tr>
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_seed_history.py</code><br><span class="font-medium">test_genera_el_volumen_esperado</span></td>
+            <td class="px-3 py-2.5"><span class="exp">380 ≤ filas</span><br><span class="act">379 filas</span></td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-slate-200 px-1.5 py-0.5 font-bold text-slate-700">E</span></td>
+            <td class="px-3 py-2.5"><strong class="text-sky-700">Test</strong><br><span class="text-slate-500">Generador puro, cuenta según la fecha: umbral al límite</span></td>
+          </tr>
+          <!-- E4 -->
+          <tr class="bg-slate-50/50">
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_seed_history.py</code><br><span class="font-medium">test_hay_estacionalidad</span></td>
+            <td class="px-3 py-2.5"><span class="exp">invierno &gt; valle</span><br><span class="act">invierno=32.0, valle=44.0</span></td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-slate-200 px-1.5 py-0.5 font-bold text-slate-700">E</span></td>
+            <td class="px-3 py-2.5"><strong class="text-sky-700">Test</strong><br><span class="text-slate-500">Depende del mes en que se corre</span></td>
+          </tr>
+          <!-- C1 -->
+          <tr class="bg-emerald-50/60">
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_seed_history.py</code><br><span class="font-medium">test_coherencia_por_muestreo_en_la_bd</span></td>
+            <td class="px-3 py-2.5"><span class="exp">0 inspecciones completadas con inactividad</span><br><span class="act">118 de 132 (87 %)</span></td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-emerald-100 px-1.5 py-0.5 font-bold text-emerald-700">C</span></td>
+            <td class="px-3 py-2.5"><strong class="text-emerald-700">Seed</strong><br><span class="text-slate-500">Una inspección sin hallazgo no detiene la planta</span></td>
+          </tr>
+          <!-- A10 -->
+          <tr>
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_skill_avisos.py</code><br><span class="font-medium">test_la_tool_propone_sin_registrar</span></td>
+            <td class="px-3 py-2.5"><span class="exp">"codigo=PUMP-E4"</span><br><span class="act">"Bomba de pulpa KSB [BOM-001]"</span></td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-rose-100 px-1.5 py-0.5 font-bold text-rose-700">A</span></td>
+            <td class="px-3 py-2.5"><strong class="text-sky-700">Test</strong></td>
+          </tr>
+          <!-- A11 -->
+          <tr class="bg-slate-50/50">
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_skill_avisos.py</code><br><span class="font-medium">test_el_grafo_registra_aviso_con_confirmacion</span></td>
+            <td class="px-3 py-2.5"><span class="exp">aviso "AV-…" registrado</span><br><span class="act">"No encontré la máquina con código «PUMP-E4»…"</span></td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-rose-100 px-1.5 py-0.5 font-bold text-rose-700">A</span></td>
+            <td class="px-3 py-2.5"><strong class="text-sky-700">Test</strong></td>
+          </tr>
+          <!-- A12 -->
+          <tr>
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_skills_topologia.py</code><br><span class="font-medium">test_actualizar_parametros_aprobada_revalida_y_no_adivina</span></td>
+            <td class="px-3 py-2.5"><span class="exp">SLA sin cambios (fila existe)</span><br><span class="act">TypeError: NoneType — <code>WHERE codigo='PUMP-E4'</code> no devuelve fila</span></td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-rose-100 px-1.5 py-0.5 font-bold text-rose-700">A</span></td>
+            <td class="px-3 py-2.5"><strong class="text-sky-700">Test</strong><br><span class="text-slate-500">Código de equipo inexistente</span></td>
+          </tr>
+          <!-- A13 -->
+          <tr class="bg-slate-50/50">
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_skills_topologia.py</code><br><span class="font-medium">test_el_grafo_no_cambia_parametros_sin_confirmacion</span></td>
+            <td class="px-3 py-2.5"><span class="exp">SLA intacto</span><br><span class="act">TypeError: NoneType (misma causa)</span></td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-rose-100 px-1.5 py-0.5 font-bold text-rose-700">A</span></td>
+            <td class="px-3 py-2.5"><strong class="text-sky-700">Test</strong></td>
+          </tr>
+          <!-- A14 -->
+          <tr>
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_skills_topologia.py</code><br><span class="font-medium">test_el_grafo_cambia_parametros_con_confirmacion</span></td>
+            <td class="px-3 py-2.5"><span class="exp">"Actualicé «Bomba de pulpa KSB»"</span><br><span class="act">"No encontré la máquina con código «PUMP-E4»…"</span></td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-rose-100 px-1.5 py-0.5 font-bold text-rose-700">A</span></td>
+            <td class="px-3 py-2.5"><strong class="text-sky-700">Test</strong></td>
+          </tr>
+          <!-- E5 -->
+          <tr class="bg-slate-50/50">
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_stats_contrato.py</code><br><span class="font-medium">test_el_ahorro_proyectado_es_positivo_con_el_dataset_ampliado</span></td>
+            <td class="px-3 py-2.5"><span class="exp">10733760.21 (diferencia de dos subtotales)</span><br><span class="act">10733760.22 (total del backend)</span></td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-slate-200 px-1.5 py-0.5 font-bold text-slate-700">E</span></td>
+            <td class="px-3 py-2.5"><strong class="text-sky-700">Test</strong><br><span class="text-slate-500">Comparar con tolerancia de 1 centavo</span></td>
+          </tr>
+          <!-- E6 -->
+          <tr>
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_stats_impacto.py</code><br><span class="font-medium">test_impacto_caso_normal_con_datos_reales</span></td>
+            <td class="px-3 py-2.5"><span class="exp">10733760.21</span><br><span class="act">10733760.22</span></td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-slate-200 px-1.5 py-0.5 font-bold text-slate-700">E</span></td>
+            <td class="px-3 py-2.5"><strong class="text-sky-700">Test</strong><br><span class="text-slate-500">Mismo redondeo, mismo arreglo</span></td>
+          </tr>
+          <!-- B1 -->
+          <tr class="bg-slate-50/50">
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_topology_nodo.py</code><br><span class="font-medium">test_disciplina_devuelve_hijos_maquina</span></td>
+            <td class="px-3 py-2.5"><span class="exp">200 con el nodo de disciplina de Alimentos</span><br><span class="act">404 «Nodo de topología no encontrado»</span></td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-amber-100 px-1.5 py-0.5 font-bold text-amber-700">B</span></td>
+            <td class="px-3 py-2.5"><strong class="text-sky-700">Test</strong><br><span class="text-slate-500">Resolver el nodo por API, no por id fijo</span></td>
+          </tr>
+          <!-- B2 -->
+          <tr>
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_topology_nodo.py</code><br><span class="font-medium">test_empresa_ve_sus_propios_nodos</span></td>
+            <td class="px-3 py-2.5"><span class="exp">nodo <code>d_13</code> visible desde empresa 2</span><br><span class="act">404 — el nodo 13 ahora es una máquina de Minera</span></td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-amber-100 px-1.5 py-0.5 font-bold text-amber-700">B</span></td>
+            <td class="px-3 py-2.5"><strong class="text-sky-700">Test</strong><br><span class="text-slate-500">Los ids de nodo cambiaron de dueño</span></td>
+          </tr>
+          <!-- B3 -->
+          <tr class="bg-slate-50/50">
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_topology_nodo.py</code><br><span class="font-medium">test_las_ordenes_no_cruzan_empresas</span></td>
+            <td class="px-3 py-2.5"><span class="exp">respuesta con <code>hijos</code></span><br><span class="act">KeyError: 'hijos' (el 404 no trae cuerpo de nodo)</span></td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-amber-100 px-1.5 py-0.5 font-bold text-amber-700">B</span></td>
+            <td class="px-3 py-2.5"><strong class="text-sky-700">Test</strong><br><span class="text-slate-500">Consecuencia directa del anterior</span></td>
+          </tr>
+          <!-- D2 -->
+          <tr>
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_transacciones_empresa.py</code><br><span class="font-medium">test_solo_el_gerente_accede</span></td>
+            <td class="px-3 py-2.5"><span class="exp">403 para super_usuario</span><br><span class="act">200 (super sí accede)</span></td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-violet-100 px-1.5 py-0.5 font-bold text-violet-700">D</span></td>
+            <td class="px-3 py-2.5"><strong class="text-violet-700">Decisión</strong><br><span class="text-slate-500">¿El super debe ver la vista del gerente? Confirmar con JP</span></td>
+          </tr>
+          <!-- B4 -->
+          <tr class="bg-slate-50/50">
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_transacciones_empresa.py</code><br><span class="font-medium">test_solo_ve_los_usuarios_de_su_empresa</span></td>
+            <td class="px-3 py-2.5"><span class="exp">usuario 14 = super · 17 = gerente de la empresa 2</span><br><span class="act">14 = gerente2@alimentos.cl · 17 = tecnico3@alimentos.cl</span></td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-amber-100 px-1.5 py-0.5 font-bold text-amber-700">B</span></td>
+            <td class="px-3 py-2.5"><strong class="text-sky-700">Test</strong><br><span class="text-slate-500">Resolver ids por email</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="mt-3 text-xs text-slate-500">
+      Estos 27 son los fallos anteriores al merge (siguen todos vigentes). Los 30 nuevos están en la sección 3 (<strong>790 pasan</strong>).
+      Las filas con fondo verde o violeta son las que no se arreglan cambiando un string.
+    </p>
+  </section>
+
+  <!-- ================= PLAN ================= -->
+  <section class="card rounded-2xl bg-slate-900 p-7 text-slate-200">
+    <h2 class="text-2xl font-bold text-white">5 · Qué haría, en este orden</h2>
+
+    <ol class="mt-4 space-y-3">
+      <li class="rounded-xl bg-white/5 p-4">
+        <p class="text-sm font-bold text-amber-300">Paso 0 · limpiar antes de medir (30 min)</p>
+        <p class="mt-1 text-sm text-slate-300">
+          Borrar las 4 empresas <code class="rounded bg-white/10 px-1 text-xs">Empresa Test …</code> y las OTs
+          huérfanas que dejan los tests. Sin esto el conteo oscila entre 25 y 28 y cualquier arreglo se
+          valida contra un número inestable.
+        </p>
+      </li>
+      <li class="rounded-xl bg-white/5 p-4">
+        <p class="text-sm font-bold text-emerald-300">Paso 1 · el bug de seed (15 min)</p>
+        <p class="mt-1 text-sm text-slate-300">
+          <code class="rounded bg-white/10 px-1 text-xs">downtime_minutes = 0</code> en las OTs
+          <code class="rounded bg-white/10 px-1 text-xs">tipo='inspection'</code>. Arregla 1 test y, más
+          importante, corrige un dato que hoy es irreal.
+        </p>
+      </li>
+      <li class="rounded-xl bg-white/5 p-4">
+        <p class="text-sm font-bold text-sky-300">Paso 2 · nombres y códigos (2 h)</p>
+        <p class="mt-1 text-sm text-slate-300">
+          Los 14 de categoría A. Cinco necesitan además revisar la <strong>empresa</strong> del equipo
+          (son los del Hallazgo 1): ahí no alcanza con reemplazar el nombre, hay que elegir un equipo de
+          la empresa correcta.
+        </p>
+      </li>
+      <li class="rounded-xl bg-white/5 p-4">
+        <p class="text-sm font-bold text-sky-300">Paso 3 · ids y nodos a consultas dinámicas (1,5 h)</p>
+        <p class="mt-1 text-sm text-slate-300">
+          Los 4 de categoría B: resolver <code class="rounded bg-white/10 px-1 text-xs">usuario_id</code> por
+          email y los nodos por la API en lugar de por id fijo. Esto es lo que evita que se vuelvan a
+          romper en el próximo cambio de catálogo.
+        </p>
+      </li>
+      <li class="rounded-xl bg-white/5 p-4">
+        <p class="text-sm font-bold text-violet-300">Paso 4 · los dos de permisos, con JP</p>
+        <p class="mt-1 text-sm text-slate-300">
+          <strong>No son arreglables a ciegas:</strong> hay que decidir si <code class="rounded bg-white/10 px-1 text-xs">super_usuario</code>
+          debe ver la vista de transacciones del gerente y si un técnico debe poder tocar el mantenedor
+          de plantas. Si la respuesta es «no», el test está bien y el bug es de producto.
+        </p>
+      </li>
+      <li class="rounded-xl bg-white/5 p-4">
+        <p class="text-sm font-bold text-slate-300">Paso 5 · los 6 de categoría E (1 h)</p>
+        <p class="mt-1 text-sm text-slate-300">
+          Redondeo con tolerancia (2), firma del mock (1), umbrales del generador que dependen de la
+          fecha (2) y el 409 por residuos (1, se resuelve con el Paso 0).
+        </p>
+      </li>
+    </ol>
+
+    <div class="mt-5 rounded-xl border border-emerald-400/30 bg-emerald-400/10 p-4">
+      <p class="text-sm font-bold text-emerald-200">Lo importante</p>
+      <p class="mt-1 text-sm text-emerald-100/90">
+        <strong>56 de 57 fallos son de los tests, no del seed.</strong> La consolidación de datos está
+        bien hecha: lo que quedó desactualizado es el código que la verifica. Solo hay un caso en que el
+        seed está mal, y está identificado con nombre y cifra: 118 inspecciones con inactividad. El merge de main no aportó ningún fallo nuevo de datos: los 30 que suman son tests que todavía leen el catálogo viejo.
+      </p>
+    </div>
+  </section>
+
+  <footer class="pb-8 text-center text-xs text-slate-500">
+    <p>
+      Fuente: corrida completa de <code class="rounded bg-slate-200 px-1">pytest</code> sobre la base
+      reconstruida (790 pasan / 27 fallan) + consultas directas a PostgreSQL para los valores reales.
+    </p>
+    <p class="mt-1">Diagnóstico sin cambios de código ni de datos. Actualizado tras el merge de main (HU-23 + PR #67).</p>
+  </footer>
+</main>
+</body>
+</html>

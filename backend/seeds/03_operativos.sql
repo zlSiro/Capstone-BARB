@@ -650,12 +650,14 @@ WHERE NOT EXISTS (
 -- 11. Historial de conversaciones del chat (3 por empresa)
 -- -----------------------------------------------------------------------------
 -- RESCATADO de seed_data.sql: la pantalla de historial del chat arrancaba vacía.
+-- Ajustado a HU-23: chat_session.machine_id (varchar) se reemplazó por maquina_id (FK a
+-- maquina), así que la conversación queda vinculada a la máquina real del catálogo.
 
 INSERT INTO chat_session (empresa_id, titulo, saved_by, usuario_id, discipline,
-                          plant_id, plant_name, machine_id, machine_name,
+                          plant_id, plant_name, maquina_id, machine_name,
                           active_manual, messages, metadata, saved_at)
 SELECT e.empresa_id, v.titulo, tec.nombre, tec.usuario_id, v.disciplina,
-       p.planta_id::text, p.nombre, m.maquina_id::text, m.nombre,
+       p.planta_id::text, p.nombre, m.maquina_id, m.nombre,
        v.manual,
        jsonb_build_array(
            jsonb_build_object('role', 'user', 'content', v.pregunta, 'timestamp', 1760000000000),

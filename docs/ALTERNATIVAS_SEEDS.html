@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Consolidación de Seeds: Opciones para resolver los 25 tests pendientes</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .card { box-shadow: 0 1px 2px rgba(15,23,42,.06), 0 10px 30px -22px rgba(15,23,42,.45); }
+  table { font-variant-numeric: tabular-nums; }
+  @media print {
+    .no-print { display: none !important; }
+    body { background: #fff; }
+    .card { break-inside: avoid; box-shadow: none; border: 1px solid #e2e8f0; }
+  }
+</style>
+</head>
+<body class="bg-slate-100 text-slate-800 antialiased">
+
+<!-- ============================== PORTADA ============================== -->
+<header class="relative overflow-hidden bg-slate-900 text-slate-100">
+  <div class="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-amber-500/20 blur-3xl"></div>
+  <div class="pointer-events-none absolute -bottom-32 left-1/4 h-72 w-72 rounded-full bg-sky-500/10 blur-3xl"></div>
+  <div class="relative mx-auto max-w-5xl px-6 py-14">
+    <p class="mb-4 inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-amber-300">
+      Informe para el equipo · JP · Javier · Samuel
+    </p>
+    <h1 class="max-w-3xl text-3xl font-extrabold leading-tight sm:text-4xl">
+      Consolidación de Seeds:<br class="hidden sm:block" />
+      <span class="text-amber-300">Opciones para resolver los 25 tests pendientes</span>
+    </h1>
+    <p class="mt-4 max-w-3xl text-slate-300">
+      El rediseño de datos está terminado y verificado. Lo que falta no es producto: es adaptar
+      aserciones que todavía esperan el catálogo viejo. Este informe compara tres caminos para
+      decidirlo en equipo, no para decidirlo solo.
+    </p>
+    <div class="mt-7 flex flex-wrap gap-2.5 text-sm">
+      <span class="rounded-lg bg-white/10 px-3 py-1.5"><strong class="text-white">792</strong> tests en verde</span>
+      <span class="rounded-lg bg-white/10 px-3 py-1.5"><strong class="text-amber-300">25</strong> pendientes</span>
+      <span class="rounded-lg bg-white/10 px-3 py-1.5"><strong class="text-white">0</strong> errores</span>
+      <span class="rounded-lg bg-white/10 px-3 py-1.5">PR <strong class="text-white">#69</strong> cerrado</span>
+    </div>
+  </div>
+</header>
+
+<main class="mx-auto max-w-5xl space-y-8 px-6 py-10">
+
+  <!-- ============================== CONTEXTO ============================== -->
+  <section class="card rounded-2xl bg-white p-7">
+    <h2 class="flex items-center gap-3 text-2xl font-bold text-slate-900">
+      <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-100 text-sm font-extrabold text-sky-700">1</span>
+      Qué pasó y por qué se cerró el PR
+    </h2>
+
+    <div class="mt-4 grid gap-4 md:grid-cols-2">
+      <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+        <p class="text-xs font-bold uppercase tracking-wide text-emerald-700">Lo que salió bien</p>
+        <ul class="mt-2 space-y-1.5 text-sm text-emerald-900">
+          <li>· Los tres archivos nuevos son la <strong>única fuente de verdad</strong> de datos.</li>
+          <li>· Se eliminaron los seeds genéricos y 734 líneas de datos ficticios.</li>
+          <li>· Base reconstruida desde cero: <strong>3 empresas · 11 máquinas · 528 OTs</strong> en 24 meses.</li>
+          <li>· <strong>0 errores</strong> de base: el esquema quedó en la migración <code class="rounded bg-white px-1">0015</code>.</li>
+          <li>· Se rescataron las 11 tablas que solo cubrían los seeds viejos (topología, lecturas de sensores, bitácora, diagnóstico, chat).</li>
+        </ul>
+      </div>
+      <div class="rounded-xl border border-amber-200 bg-amber-50 p-4">
+        <p class="text-xs font-bold uppercase tracking-wide text-amber-700">Lo que impide el merge</p>
+        <p class="mt-2 text-sm text-amber-900">
+          25 tests siguen afirmando cosas del catálogo anterior. No es un problema de producto:
+          es código de prueba que asume datos que ya no existen.
+        </p>
+        <ul class="mt-2 space-y-1 text-sm text-amber-900">
+          <li>· Buscan equipos como <strong>«Pump E4»</strong> o <strong>«Compressor A1»</strong>.</li>
+          <li>· Esperan el prefijo <strong><code class="rounded bg-white px-1">SYN-HIST-</code></strong> del generador antiguo (hoy son <code class="rounded bg-white px-1">REAL-*</code>).</li>
+          <li>· Usan ids de nodo de topología que cambiaron (<code class="rounded bg-white px-1">d_13</code>, <code class="rounded bg-white px-1">p_N</code>).</li>
+          <li>· Asumen permisos por rol anteriores al rediseño HU-12/502.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="mt-4 overflow-hidden rounded-xl border border-slate-200">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+          <tr><th class="px-4 py-2">Métrica</th><th class="px-4 py-2">Antes (seed viejo)</th><th class="px-4 py-2">Ahora</th></tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          <tr><td class="px-4 py-2 font-medium">Tests en verde</td><td class="px-4 py-2">694</td><td class="px-4 py-2 font-bold text-emerald-700">792</td></tr>
+          <tr><td class="px-4 py-2 font-medium">Tests en rojo</td><td class="px-4 py-2">89</td><td class="px-4 py-2 font-bold text-amber-700">25</td></tr>
+          <tr><td class="px-4 py-2 font-medium">Errores</td><td class="px-4 py-2">97</td><td class="px-4 py-2 font-bold text-emerald-700">0</td></tr>
+          <tr><td class="px-4 py-2 font-medium">Filas de ruido en auditoría</td><td class="px-4 py-2">7.644 + 5.914</td><td class="px-4 py-2 font-bold text-emerald-700">0 + 0</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="mt-4 rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
+      <strong>Distribución de los 25:</strong> multiempresa 5 · historial sintético 3 · topología 3 ·
+      nodos de topología 3 · grafo del chat 2 · propuesta de OT 2 · grafo de avisos 2 ·
+      transacciones por empresa 2 · sueltos 3.
+    </p>
+  </section>
+
+  <!-- ============================== ALTERNATIVAS ============================== -->
+  <section id="alternativas" class="space-y-5">
+    <div class="card rounded-2xl bg-white p-7">
+      <h2 class="flex items-center gap-3 text-2xl font-bold text-slate-900">
+        <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-100 text-sm font-extrabold text-violet-700">2</span>
+        Las tres alternativas
+      </h2>
+      <p class="mt-2 text-slate-600">
+        Las tres llegan al mismo lugar —el PR mergeado con la suite en verde— pero con distinto
+        costo, distinto riesgo para la entrega y distinta vida útil.
+      </p>
+    </div>
+
+    <!-- Opción A -->
+    <article class="card overflow-hidden rounded-2xl bg-white">
+      <div class="flex flex-wrap items-center gap-3 border-l-4 border-emerald-500 bg-gradient-to-r from-emerald-50 to-white px-7 py-4">
+        <span class="rounded-full bg-emerald-600 px-3 py-1 text-xs font-bold uppercase tracking-wide text-white">Opción A</span>
+        <h3 class="text-xl font-bold text-slate-900">Tests dinámicos</h3>
+        <span class="ml-auto rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-800">Recomendada a mediano plazo</span>
+      </div>
+      <div class="px-7 py-5">
+        <p class="text-sm text-slate-700">
+          Refactorizar los 25 tests para que <strong>consulten el dato real</strong> en vez de buscar
+          un string fijo: resolver la máquina por código (<code class="rounded bg-slate-100 px-1 text-xs">CHA-001</code>),
+          el nodo por nombre, el usuario por email y el prefijo por constante compartida.
+        </p>
+        <pre class="mt-3 overflow-x-auto rounded-lg bg-slate-900 p-3 text-xs text-slate-200"><code># antes: frágil
+maquina = await fetch_one("SELECT ... WHERE nombre = 'Pump E4'")
+
+# después: robusto
+maquina = await fetch_one(
+    "SELECT ... WHERE codigo = 'BOM-001' AND empresa_id = %(e)s", {"e": self.empresa}
+)</code></pre>
+        <div class="mt-3 grid gap-2 sm:grid-cols-2">
+          <div class="rounded-lg border border-emerald-200 bg-emerald-50/60 p-3 text-sm text-emerald-900">
+            <p class="font-semibold">Pros</p>
+            <p class="mt-1">Robustez total: los tests dejan de depender del catálogo. Nunca vuelven a romperse si el seed cambia.</p>
+          </div>
+          <div class="rounded-lg border border-rose-200 bg-rose-50/60 p-3 text-sm text-rose-900">
+            <p class="font-semibold">Contras</p>
+            <p class="mt-1">Requiere <strong>~1 día</strong> de trabajo dedicado, con revisión test por test.</p>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <!-- Opción B -->
+    <article class="card overflow-hidden rounded-2xl bg-white">
+      <div class="flex flex-wrap items-center gap-3 border-l-4 border-sky-500 bg-gradient-to-r from-sky-50 to-white px-7 py-4">
+        <span class="rounded-full bg-sky-600 px-3 py-1 text-xs font-bold uppercase tracking-wide text-white">Opción B</span>
+        <h3 class="text-xl font-bold text-slate-900">Reemplazo de strings</h3>
+        <span class="ml-auto rounded-full bg-sky-100 px-2.5 py-1 text-xs font-bold text-sky-800">Complementaria</span>
+      </div>
+      <div class="px-7 py-5">
+        <p class="text-sm text-slate-700">
+          Un «find & replace» de los nombres viejos por los nuevos en los 25 tests. Es lo que ya se
+          aplicó a 14 archivos con 82 reemplazos: resolvió <strong>más de la mitad</strong> de los
+          fallos originales (de 48 a 25).
+        </p>
+        <div class="mt-3 overflow-x-auto rounded-xl border border-slate-200">
+          <table class="w-full text-xs">
+            <thead class="bg-slate-50 text-left uppercase tracking-wide text-slate-500">
+              <tr><th class="px-3 py-2">Antes</th><th class="px-3 py-2">Ahora</th></tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              <tr><td class="px-3 py-1.5 font-mono">Pump E4</td><td class="px-3 py-1.5 font-mono">Bomba de pulpa KSB</td></tr>
+              <tr><td class="px-3 py-1.5 font-mono">Compressor A1</td><td class="px-3 py-1.5 font-mono">Chancador de cono Sandvik H8800</td></tr>
+              <tr><td class="px-3 py-1.5 font-mono">Faena Chancado Norte</td><td class="px-3 py-1.5 font-mono">Chancado Primario</td></tr>
+              <tr><td class="px-3 py-1.5 font-mono">Planta Concentradora Calama</td><td class="px-3 py-1.5 font-mono">Molienda SAG</td></tr>
+              <tr><td class="px-3 py-1.5 font-mono">Planta Central San Bernardo</td><td class="px-3 py-1.5 font-mono">Planta de Vapor</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="mt-3 grid gap-2 sm:grid-cols-2">
+          <div class="rounded-lg border border-emerald-200 bg-emerald-50/60 p-3 text-sm text-emerald-900">
+            <p class="font-semibold">Pros</p>
+            <p class="mt-1">Rápido: <strong>~2 horas</strong>. Resuelve los casos donde el único problema es el nombre del dato.</p>
+          </div>
+          <div class="rounded-lg border border-rose-200 bg-rose-50/60 p-3 text-sm text-rose-900">
+            <p class="font-semibold">Contras</p>
+            <p class="mt-1">Frágil: si el seed cambia otra vez, los tests vuelven a romperse. No sirve para los que dependen de ids o de forma de la respuesta.</p>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <!-- Opción C -->
+    <article class="card overflow-hidden rounded-2xl bg-white">
+      <div class="flex flex-wrap items-center gap-3 border-l-4 border-amber-500 bg-gradient-to-r from-amber-50 to-white px-7 py-4">
+        <span class="rounded-full bg-amber-600 px-3 py-1 text-xs font-bold uppercase tracking-wide text-white">Opción C</span>
+        <h3 class="text-xl font-bold text-slate-900">Skip temporal</h3>
+        <span class="ml-auto rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-800">Desbloquea la demo</span>
+      </div>
+      <div class="px-7 py-5">
+        <p class="text-sm text-slate-700">
+          Marcar los 25 con <code class="rounded bg-slate-100 px-1 text-xs">@pytest.mark.skip(reason=...)</code>,
+          mergear el PR y abrir un ticket en Jira para adaptarlos después.
+        </p>
+        <pre class="mt-3 overflow-x-auto rounded-lg bg-slate-900 p-3 text-xs text-slate-200"><code>@pytest.mark.skip(
+    reason="Catálogo viejo: se adapta en CGBIDA-XXX (seed realista)"
+)
+async def test_ots_solo_de_la_propia_empresa(client):</code></pre>
+        <div class="mt-3 grid gap-2 sm:grid-cols-2">
+          <div class="rounded-lg border border-emerald-200 bg-emerald-50/60 p-3 text-sm text-emerald-900">
+            <p class="font-semibold">Pros</p>
+            <p class="mt-1">Desbloquea el merge <strong>inmediatamente</strong> (0 horas) y la suite queda en verde de forma legítima: un skip explícito no es un test roto.</p>
+          </div>
+          <div class="rounded-lg border border-rose-200 bg-rose-50/60 p-3 text-sm text-rose-900">
+            <p class="font-semibold">Contras</p>
+            <p class="mt-1">Se pierde cobertura de esos 25 escenarios justo para la entrega, y el skip puede quedarse «para siempre» si nadie lo reclama.</p>
+          </div>
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <!-- ============================== MATRIZ ============================== -->
+  <section class="card rounded-2xl bg-white p-7">
+    <h2 class="flex items-center gap-3 text-2xl font-bold text-slate-900">
+      <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-100 text-sm font-extrabold text-indigo-700">3</span>
+      Matriz de decisión
+    </h2>
+
+    <div class="mt-4 overflow-x-auto rounded-xl border border-slate-200">
+      <table class="w-full min-w-[46rem] text-sm">
+        <thead class="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+          <tr>
+            <th class="px-4 py-3">Opción</th>
+            <th class="px-4 py-3">Esfuerzo</th>
+            <th class="px-4 py-3">Riesgo para la presentación</th>
+            <th class="px-4 py-3">Cobertura que se conserva</th>
+            <th class="px-4 py-3">Recomendación DSH</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100 align-top">
+          <tr class="bg-emerald-50/40">
+            <td class="px-4 py-3 font-semibold">A · Tests dinámicos</td>
+            <td class="px-4 py-3"><span class="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-800">Alto</span><div class="text-xs text-slate-500">~1 día</div></td>
+            <td class="px-4 py-3"><span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-800">Bajo</span></td>
+            <td class="px-4 py-3 text-emerald-800 font-semibold">100 %</td>
+            <td class="px-4 py-3 text-slate-700">Sí, pero <strong>después</strong> de la demo. Es la solución definitiva.</td>
+          </tr>
+          <tr class="bg-sky-50/40">
+            <td class="px-4 py-3 font-semibold">B · Reemplazo de strings</td>
+            <td class="px-4 py-3"><span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-800">Bajo</span><div class="text-xs text-slate-500">~2 horas</div></td>
+            <td class="px-4 py-3"><span class="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-800">Medio</span></td>
+            <td class="px-4 py-3 text-slate-700">Parcial</td>
+            <td class="px-4 py-3 text-slate-700">Sí, <strong>solo para los casos de nombre</strong>. Ya se aplicó y bajó de 48 a 25.</td>
+          </tr>
+          <tr class="bg-amber-50/40">
+            <td class="px-4 py-3 font-semibold">C · Skip temporal</td>
+            <td class="px-4 py-3"><span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-800">Nulo</span><div class="text-xs text-slate-500">0 horas</div></td>
+            <td class="px-4 py-3"><span class="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-bold text-rose-800">Alto</span></td>
+            <td class="px-4 py-3 text-rose-800 font-semibold">25 tests menos</td>
+            <td class="px-4 py-3 text-slate-700">Sí, <strong>como puente</strong> y con ticket y fecha de vencimiento.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="mt-3 text-xs text-slate-500">
+      El «riesgo para la presentación» mide la probabilidad de que aparezca un rojo visible
+      durante la demo. Un skip es honesto (dice que falta) y no rompe la demo; un find &amp; replace
+      a medias sí puede dejar un test fallando en vivo.
+    </p>
+  </section>
+
+  <!-- ============================== CONCLUSIÓN ============================== -->
+  <section class="card rounded-2xl bg-slate-900 p-7 text-slate-200">
+    <h2 class="text-2xl font-bold text-white">4 · Conclusión y próximos pasos</h2>
+
+    <div class="mt-4 rounded-xl bg-white/5 p-5">
+      <p class="text-sm font-bold uppercase tracking-wide text-amber-300">Recomendación de DSH</p>
+      <p class="mt-2 text-lg font-semibold text-white">
+        Ir por la Opción C ahora para la demo, y agendar la Opción A para la semana siguiente.
+      </p>
+      <p class="mt-2 text-sm text-slate-300">
+        El trabajo de datos ya está hecho y verificado: no tiene sentido frenar la entrega por 25
+        aserciones. Pero tampoco corresponde dejar esos escenarios sin cubrir para siempre, así que
+        el skip va con ticket, responsable y fecha.
+      </p>
+    </div>
+
+    <div class="mt-4 grid gap-3 sm:grid-cols-2">
+      <div class="rounded-xl bg-white/5 p-4">
+        <p class="text-xs font-bold uppercase tracking-wide text-sky-300">Hoy (desbloquea el merge)</p>
+        <ul class="mt-2 space-y-1 text-sm text-slate-300">
+          <li>1. Aplicar <code class="rounded bg-white/10 px-1">skip</code> a los 25 con motivo y ticket.</li>
+          <li>2. Reabrir el PR #69 y mergear con la suite en verde.</li>
+          <li>3. Presentar la demo con las 3 empresas reales.</li>
+        </ul>
+      </div>
+      <div class="rounded-xl bg-white/5 p-4">
+        <p class="text-xs font-bold uppercase tracking-wide text-emerald-300">Próxima semana (paga la deuda)</p>
+        <ul class="mt-2 space-y-1 text-sm text-slate-300">
+          <li>1. Adaptar los 25 a tests dinámicos (Opción A).</li>
+          <li>2. Quitar los <code class="rounded bg-white/10 px-1">skip</code> a medida que pasa cada uno.</li>
+          <li>3. Dejar la suite en verde <em>sin</em> tests silenciados.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="mt-4 rounded-xl border border-amber-400/40 bg-amber-400/10 p-5">
+      <p class="text-base font-bold text-amber-200">¿Qué opción elegimos en equipo?</p>
+      <p class="mt-1 text-sm text-amber-100/90">
+        Tres caminos, una decisión. Cualquiera es defendible; lo que no es defendible es elegirla sin
+        decirlo. Digan su preferencia y la ejecuto en la próxima sesión.
+      </p>
+      <div class="mt-3 flex flex-wrap gap-2 text-sm">
+        <span class="rounded-lg bg-white/10 px-3 py-1.5">A · Tests dinámicos (~1 día, robusto)</span>
+        <span class="rounded-lg bg-white/10 px-3 py-1.5">B · Find &amp; replace (~2 h, frágil)</span>
+        <span class="rounded-lg bg-white/10 px-3 py-1.5">C · Skip temporal (0 h, con ticket)</span>
+        <span class="rounded-lg bg-emerald-500/20 px-3 py-1.5 font-semibold text-emerald-200">C ahora + A después ← DSH</span>
+      </div>
+    </div>
+  </section>
+
+  <footer class="pb-8 text-center text-xs text-slate-500">
+    <p>
+      Cifras tomadas de la última corrida de la suite sobre la base reconstruida y del PR #69
+      (rama <code class="rounded bg-slate-200 px-1">refactor/limpieza-seeds</code>, 8 commits).
+    </p>
+    <p class="mt-1">Documento sin efectos sobre la base de datos ni sobre el código de la aplicación.</p>
+  </footer>
+</main>
+</body>
+</html>
