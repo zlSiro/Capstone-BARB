@@ -19,6 +19,7 @@ from barb.services.ai_tools import (
     _UMBRAL_PARECIDO,
     _buscar_maquinas,
     _puntaje,
+    _sin_duplicados,
     crear_tools,
     identificar_maquina,
 )
@@ -435,6 +436,43 @@ async def test_la_tool_sugiere_alternativas_cuando_no_encuentra(db_pool):
     assert "Estas son las disponibles" in salida
     # Las sugerencias son equipos reales de la empresa, con su código.
     assert "Compressor A1 (COMP-A1)" in salida
+
+
+@pytest.mark.asyncio
+async def test_las_sugerencias_priorizan_las_maquinas_mencionadas(db_pool):
+    """
+    «Tengo un problema con el compresor» debe ofrecer los compresores primero.
+
+    El listado de respaldo era alfabético: a quien preguntaba por un compresor se le
+    ofrecían antes un analizador de gases, un brazo robótico o una cinta transportadora.
+    """
+    tools = crear_tools(empresa_id=1)
+    salida = await tools[0].ainvoke({"nombre_maquina": "Tengo un problema con el compresor"})
+
+    assert "No encontré" in salida
+    assert "Estas son las disponibles" in salida
+    pos_compresor = salida.find("Compressor A1 (COMP-A1)")
+    pos_ajena = salida.find("Analizador de Gases")
+    assert pos_compresor != -1, salida[:300]
+    assert pos_ajena == -1 or pos_compresor < pos_ajena
+
+
+def test_las_alternativas_no_repiten_la_misma_maquina():
+    """
+    La unicidad es (planta_id, codigo): el mismo equipo puede estar en dos plantas.
+
+    Mostrarlo dos veces en la lista de opciones confunde («duplicado en la lista») y
+    convierte una elección trivial en una ambigüedad.
+    """
+    filas = [
+        {"maquina_id": 1, "nombre": "Compressor A1", "codigo": "COMP-A1"},
+        {"maquina_id": 9, "nombre": "Compressor A1", "codigo": "COMP-A1"},
+        {"maquina_id": 2, "nombre": "Compresor Neumático N2", "codigo": "COMP-N2"},
+    ]
+
+    unicas = _sin_duplicados(filas)
+
+    assert [f["maquina_id"] for f in unicas] == [1, 2]
 
 
 @pytest.mark.asyncio

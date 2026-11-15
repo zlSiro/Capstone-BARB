@@ -184,6 +184,46 @@ def _puntaje(consulta: str, nombre: str, codigo: str) -> float:
     return max(completo, por_palabra)
 
 
+def _sin_duplicados(filas: list[dict]) -> list[dict]:
+    """Una fila por nombre+código: la misma máquina puede repetirse en plantas distintas.
+
+    La unicidad de `maquina` es `(planta_id, codigo)`, así que dos plantas de la empresa
+    pueden tener el mismo equipo con el mismo código. Para elegir por nombre/código da
+    igual cuál de las dos: mostrarlas dos veces solo confunde («duplicado en la lista»).
+    """
+    vistos: set[tuple[str, str]] = set()
+    unicas: list[dict] = []
+    for fila in filas:
+        clave = (_normalizar(fila.get("nombre") or ""), _normalizar(fila.get("codigo") or ""))
+        if clave in vistos:
+            continue
+        vistos.add(clave)
+        unicas.append(fila)
+    return unicas
+
+
+def _priorizar_por_mencion(filas: list[dict], consulta: str) -> list[dict]:
+    """Máquinas que comparten alguna palabra con la consulta, primero.
+
+    Se compara palabra por palabra con la misma tolerancia ortográfica que la búsqueda
+    («compresor» ↔ «compressor»). El resto conserva el orden alfabético para que el
+    listado de respaldo siga siendo predecible. Sin esto, a quien preguntaba por «el
+    compresor» se le ofrecían primero equipos sin relación (analizador, brazo, cinta).
+    """
+    palabras = _normalizar(consulta).split()
+    if not palabras:
+        return filas
+    relevantes: list[dict] = []
+    resto: list[dict] = []
+    for fila in filas:
+        nombre = _normalizar(fila.get("nombre") or "")
+        if _cobertura(palabras, nombre.split()) > 0:
+            relevantes.append(fila)
+        else:
+            resto.append(fila)
+    return relevantes + resto
+
+
 async def _buscar_maquinas(empresa_id: int, consulta: str) -> list[dict]:
     """
     Candidatas ordenadas por parecido, solo de la empresa indicada.
@@ -204,6 +244,7 @@ async def _buscar_maquinas(empresa_id: int, consulta: str) -> list[dict]:
         """,
         {"empresa": empresa_id, "limite": _MAX_CANDIDATAS},
     )
+    filas = _sin_duplicados(filas)
 
     candidatas = [_Candidata(fila, _puntaje(consulta, fila["nombre"], fila["codigo"])) for fila in filas]
     buenas = [c for c in candidatas if c.puntaje >= _UMBRAL_PARECIDO]
@@ -316,35 +357,43 @@ async def _resumen_maquina(empresa_id: int, maquina: dict) -> str:
     return " ".join(lineas)
 
 
-async def _listar_maquinas(empresa_id: int, limite: int = 8) -> tuple[list[str], int]:
+async def _listar_maquinas(
+    empresa_id: int, limite: int = 8, consulta: str | None = None
+) -> tuple[list[str], int]:
     """
     Nombres de las máquinas de la empresa, para sugerir cuando no hay coincidencia.
 
-    Devuelve (primeras `limite`, total). Sin esto, un «no encontré» deja al usuario en un
-    callejón sin salida: en una conversación real insistió cuatro veces con un código
-    inventado («S1») porque no sabía qué equipos existen.
+    Con `consulta`, las máquinas que comparten alguna palabra con lo que escribió la
+    persona van primero (los compresores ante «tengo un problema con el compresor») y
+    después el resto en orden alfabético. Devuelve (primeras `limite`, total). Sin esto,
+    un «no encontré» deja al usuario en un callejón sin salida: en una conversación real
+    insistió cuatro veces con un código inventado («S1») porque no sabía qué equipos
+    existen.
     """
     filas = await fetch_all(
         """
-        SELECT m.nombre, m.codigo
+        SELECT m.maquina_id, m.nombre, m.codigo
           FROM maquina m
           JOIN planta  p ON p.planta_id = m.planta_id
          WHERE p.empresa_id = %(empresa)s
          ORDER BY m.nombre
          LIMIT %(limite)s
         """,
-        {"empresa": empresa_id, "limite": limite},
+        {"empresa": empresa_id, "limite": _MAX_CANDIDATAS},
     )
     total = await fetch_all(
         """
-        SELECT COUNT(*) AS n
+        SELECT COUNT(DISTINCT (m.nombre, m.codigo)) AS n
           FROM maquina m
           JOIN planta  p ON p.planta_id = m.planta_id
          WHERE p.empresa_id = %(empresa)s
         """,
         {"empresa": empresa_id},
     )
-    return [f"{f['nombre']} ({f['codigo']})" for f in filas], int(total[0]["n"]) if total else 0
+    filas = _sin_duplicados(filas)
+    if consulta:
+        filas = _priorizar_por_mencion(filas, consulta)
+    return [f"{f['nombre']} ({f['codigo']})" for f in filas[:limite]], int(total[0]["n"]) if total else 0
 
 
 async def _resolver_maquina(empresa_id: int, consulta: str, accion: str) -> tuple[dict | None, str | None]:
@@ -368,7 +417,7 @@ async def _resolver_maquina(empresa_id: int, consulta: str, accion: str) -> tupl
 
     if not maquinas:
         try:
-            nombres, total = await _listar_maquinas(empresa_id)
+            nombres, total = await _listar_maquinas(empresa_id, consulta=consulta)
         except Exception:  # noqa: BLE001 — la sugerencia es un extra, no el dato pedido
             logger.warning("Tool: no se pudo listar alternativas (empresa %s)", empresa_id, exc_info=True)
             nombres, total = [], 0
