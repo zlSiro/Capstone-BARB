@@ -210,7 +210,7 @@ def _sin_retrieval(monkeypatch):
 async def test_el_grafo_no_crea_ot_con_un_tecnico(db_pool):
     """Un técnico que confirma una propuesta no crea nada: el gate también valida."""
     propuesta = _texto_propuesta(
-        {"nombre": "Chancador de cono Sandvik H8800", "codigo": "COMP-A1", "planta": "Planta Norte"},
+        {"nombre": "Chancador de cono Sandvik H8800", "codigo": "CHA-001", "planta": "Planta Norte"},
         PROBLEMA,
         "high",
     )

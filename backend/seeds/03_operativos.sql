@@ -189,7 +189,12 @@ SELECT
     -- vencimiento = creación + SLA del equipo (lo usa el cálculo de cumplimiento)
     c.creacion + (c.sla_horas * INTERVAL '1 hour'),
     CASE WHEN c.estado_final = 'completed' THEN c.mttr END,
-    CASE WHEN c.estado_final = 'completed' THEN round(c.mttr * 0.6)::int END,
+    -- Una inspección que no encuentra falla NO detiene la planta: su inactividad es 0.
+    -- (El generador viejo respetaba esa regla; el seed realista la había roto y asignaba
+    -- inactividad a todas las OTs cerradas, incluidas las inspecciones.)
+    CASE WHEN c.estado_final = 'completed' AND c.tipo_final = 'inspection' THEN 0::int
+         WHEN c.estado_final = 'completed' THEN round(c.mttr * 0.6)::int
+    END,
     CASE WHEN c.estado_final = 'completed'
          THEN round(c.mttr * c.costo_inactividad_minuto * 0.6, 2)
     END,
@@ -480,6 +485,14 @@ WHERE NOT EXISTS (
      WHERE ch.documento_id = d.documento_id AND ch.orden = c.orden
 );
 
+-- Las inspecciones cerradas no generan inactividad. Corrige las filas que ya estuvieran
+-- cargadas con la regla anterior, para que el seed siga siendo idempotente de punta a punta.
+UPDATE orden_trabajo
+   SET downtime_minutes = 0
+ WHERE numero_ot LIKE 'REAL-%'
+   AND tipo = 'inspection'
+   AND estado = 'completed'
+   AND COALESCE(downtime_minutes, 0) <> 0;
 -- Un 8% de las OTs cerradas incumple el SLA (1 de cada 12). Sin esto el cumplimiento
 -- queda plano en 100% y el KPI del dashboard no dice nada: una planta real tiene
 -- incumplimientos, y el semáforo de salud necesita esa señal para no pintar siempre verde.

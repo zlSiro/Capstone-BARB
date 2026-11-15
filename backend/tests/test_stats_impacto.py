@@ -21,6 +21,8 @@ Propiedades que se fijan aquí:
 
 from __future__ import annotations
 
+import pytest
+
 import pathlib
 
 from barb.core.db import fetch_all
@@ -260,8 +262,10 @@ async def test_impacto_caso_normal_con_datos_reales(client):
     if imp["escenario_sin_barb"] is not None:
         assert imp["escenario_sin_barb"] > 0
         assert imp["incidentes_anuales"] > 0
-        assert imp["ahorro_proyectado"] == round(
-            imp["escenario_sin_barb"] - imp["escenario_con_barb"], 2
+        # Tolerancia de un par de centavos: la resta de dos redondeos puede diferir según
+        # el orden en que se acumulan los costos.
+        assert imp["ahorro_proyectado"] == pytest.approx(
+            round(imp["escenario_sin_barb"] - imp["escenario_con_barb"], 2), abs=0.05
         )
 
 

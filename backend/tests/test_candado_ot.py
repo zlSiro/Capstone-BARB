@@ -41,7 +41,7 @@ class _LLMFalso:
 
 
 def _propuesta() -> str:
-    maquina = {"nombre": "Chancador de cono Sandvik H8800", "codigo": "COMP-A1", "planta": "Planta Norte"}
+    maquina = {"nombre": "Chancador de cono Sandvik H8800", "codigo": "CHA-001", "planta": "Planta Norte"}
     return _texto_propuesta(maquina, "Ruido metálico al arrancar", "high")
 
 
@@ -70,7 +70,7 @@ def _maquina_conocida(monkeypatch):
     """proponer_ot resuelve la máquina sin tocar la base."""
 
     async def resolver(empresa_id, consulta, accion):
-        return ({"nombre": "Chancador de cono Sandvik H8800", "codigo": "COMP-A1", "planta": "Planta Norte"}, None)
+        return ({"nombre": "Chancador de cono Sandvik H8800", "codigo": "CHA-001", "planta": "Planta Norte"}, None)
 
     monkeypatch.setattr(ai_tools, "_resolver_maquina", resolver)
 

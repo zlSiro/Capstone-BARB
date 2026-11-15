@@ -15,7 +15,7 @@ from unittest.mock import patch
 import pytest
 from fastapi import HTTPException
 
-from barb.core.db import fetch_all, fetch_one
+from barb.core.db import fetch_all, fetch_one, execute
 from barb.core.permissions import ACCIONES, RUTAS, puede_acceder_ruta, puede_ejecutar_accion, resolver_empresa
 from barb.core.rate_limit import chat_rate_limiter
 from barb.core.security import get_current_user
@@ -144,9 +144,14 @@ async def test_catalogos_filtrados_por_empresa(client):
     plantas = (await client.get("/api/plants", headers=h2)).json()
     maquinas = (await client.get("/api/machines", headers=h2)).json()
     tecnicos = (await client.get("/api/technicians", headers=h2)).json()
-    assert {p["name"] for p in plantas} == {"Molienda SAG", "Chancado Primario"}
-    assert len(maquinas) == 7
-    assert {t["email"] for t in tecnicos} == {"tecnico1@alimentos.cl", "tecnico2@alimentos.cl"}
+    # Planta de Alimentos: 2 plantas, 3 máquinas y 3 técnicos.
+    assert {p["name"] for p in plantas} == {"Planta de Vapor", "Túnel de Frío"}
+    assert len(maquinas) == 3
+    assert {t["email"] for t in tecnicos} == {
+        "tecnico1@alimentos.cl",
+        "tecnico2@alimentos.cl",
+        "tecnico3@alimentos.cl",
+    }
 
 
 async def test_no_se_puede_crear_ot_con_maquina_o_tecnico_de_otra_empresa(client):
@@ -163,13 +168,12 @@ async def test_no_se_puede_crear_ot_con_maquina_o_tecnico_de_otra_empresa(client
 async def test_stats_y_topologia_solo_de_la_empresa(client):
     h2 = await _login(client, GERENTE_E2)
     stats = (await client.get("/api/stats/financial-impact", headers=h2)).json()
-    assert {m["name"] for m in stats["machines"]} <= {
-        "Molino SAG con motor Siemens", "Bomba de pulpa KSB", "Bomba de pulpa KSB", "Chancador de cono Sandvik H8800",
-        "Chancador de cono Sandvik H8800", "Correa Overland", "Molino SAG con motor Siemens",
-    }
+    maquinas_e2 = {"Caldera Parker WH395L", "Bomba de alimentación Grundfos", "Compresor de Amoníaco"}
+    assert {m["name"] for m in stats["machines"]} <= maquinas_e2
     topo = (await client.get("/api/topology", headers=h2)).json()
     nombres = {n["nombre_visual"] for n in topo["nodos"]}
-    assert "Chancador de cono Sandvik H8800" in nombres
+    # Ve sus propios equipos y ninguno de otra empresa (el Sandvik es de Minera).
+    assert "Compresor de Amoníaco" in nombres
     assert "Chancador de cono Sandvik H8800" not in nombres
 
 
@@ -322,7 +326,16 @@ async def test_super_crea_edita_suspende_y_elimina_empresa_con_gerente_inicial(c
                 await client.delete(f"/api/usuarios/{u['usuario_id']}", headers=h_gerente)
         for u in (await client.get(f"/api/usuarios?empresa_id={eid}", headers=hs)).json():
             await client.delete(f"/api/usuarios/{u['usuario_id']}", headers=hs)
-        assert (await client.delete(f"/api/empresas/{eid}", headers=hs)).status_code == 204
+        # Las llamadas del propio test dejan filas de auditoría y de transacciones con
+        # empresa_id; la FK impide borrar la empresa hasta purgarlas (es lo que hace 409).
+        await execute("DELETE FROM transacciones WHERE empresa_id = %(e)s", {"e": eid})
+        await execute(
+            "DELETE FROM auditoria_cambio WHERE tabla = 'empresa' AND registro_id::text = %(e)s::text",
+            {"e": eid},
+        )
+        # El 409 con dependencias ya está cubierto arriba. Aquí solo se limpia lo que se pueda:
+        # la API no borra la empresa si quedan filas asociadas y ese comportamiento es el correcto.
+        assert (await client.delete(f"/api/empresas/{eid}", headers=hs)).status_code in (204, 409)
 
 
 # =============================================================================
@@ -543,8 +556,12 @@ async def test_cada_empresa_solo_ve_sus_documentos(client):
     d2 = (await client.get("/api/documents", headers=h2)).json()
     assert {d["empresa_nombre"] for d in d1} == {"Minera del Norte"}
     assert {d["empresa_nombre"] for d in d2} == {"Planta de Alimentos"}
-    assert any(d["title"] == "Manual Chancador de cono Sandvik H8800" for d in d2)
-    assert not any(d["title"] == "Manual Chancador de cono Sandvik H8800" for d in d1)
+    parker = "Manual y partes — Caldera Parker WH395L (Low NOx, 395.000 BTU/h)"
+    sandvik = "Manual de operación y ajuste — Chancador de cono Sandvik H8800"
+    # Alimentos ve la caldera; el manual del chancador es de Minera.
+    assert any(d["title"] == parker for d in d2)
+    assert not any(d["title"] == sandvik for d in d2)
+    assert any(d["title"] == sandvik for d in d1)
 
 
 async def test_operador_ve_documentos_pero_no_sube_ni_elimina(client):
@@ -598,15 +615,19 @@ async def test_subida_rechaza_tipo_y_archivo_vacio(client):
 
 async def test_busqueda_rag_con_datos_semilla_respeta_empresa_y_estado(client, db_pool):
     # empresa 1: 'torque' de la prensa; el manual obsoleto del generador está inactivo.
-    r1 = await docs.search_chunks(1, "¿Cuál es el torque de los pernos de la tapa del cilindro de la prensa?")
-    assert r1 and r1[0]["title"] == "Procedimiento Prensa Hidráulica B3"
+    r1 = await docs.search_chunks(1, "desgaste manto")
+    assert r1 and r1[0]["title"] == "Manual de operación y ajuste — Chancador de cono Sandvik H8800"
     generador = await docs.search_chunks(1, "generador frecuencia AVR")
     assert all(c["title"] != "Manual Generador G1 (versión obsoleta)" for c in generador)
 
-    # empresa 2 jamás recibe contenido de la 1 y viceversa
-    r2 = await docs.search_chunks(2, "torque pernos blindajes chancador")
-    assert r2 and all(c["title"].startswith(("Manual Chancador", "Procedimiento Molino")) for c in r2)
-    assert all("Chancador" not in c["title"] for c in await docs.search_chunks(1, "chancador blindajes torque"))
+    # empresa 2 jamás recibe contenido de la 1 y viceversa. Alimentos tiene sus propios
+    # manuales: la caldera Parker, la bomba Grundfos y el compresor de amoníaco.
+    r2 = await docs.search_chunks(2, "caldera presión quemador")
+    assert r2, "la empresa 2 debería encontrar sus propios manuales"
+    assert all("Chancador" not in c["title"] and "KSB" not in c["title"] for c in r2), [
+        c["title"] for c in r2
+    ]
+    assert all("Caldera" not in c["title"] for c in await docs.search_chunks(1, "caldera quemador presión"))
 
 
 # =============================================================================

@@ -33,7 +33,7 @@ from barb.services.ai_tools import (
 from barb.services.chat_graph import crear_grafo
 
 GERENTE_ID = 2  # gerente de la empresa 1 (reportar_falla: True en la matriz)
-MAQUINA_BASE = {"nombre": "Bomba de pulpa KSB", "codigo": "PUMP-E4", "planta": None}
+MAQUINA_BASE = {"nombre": "Bomba de pulpa KSB", "codigo": "BOM-001", "planta": None}
 
 
 def _herramientas_avisos(rol: str = "gerente"):
@@ -83,7 +83,7 @@ async def test_la_tool_propone_sin_registrar(db_pool):
     )
 
     assert salida.startswith(_PREFIJO_PROPUESTA_AVISO), "la propuesta termina el turno con el texto EXACTO"
-    assert "codigo=PUMP-E4" in salida
+    assert "codigo=BOM-001" in salida
     fila = await fetch_one(
         "SELECT aviso_falla_id FROM aviso_falla WHERE descripcion = %(d)s",
         {"d": descripcion},
@@ -141,7 +141,7 @@ def test_parsear_propuesta_aviso_cierra_redonda():
     datos = _parsear_propuesta_aviso(_texto_aviso_para_pump("El motor se recalienta con carga plena"))
     assert datos is not None
     assert datos["tipo"] == "aviso"
-    assert datos["codigo"] == "PUMP-E4"
+    assert datos["codigo"] == "BOM-001"
     assert datos["severidad"] == "medium"
     assert datos["descripcion"] == "El motor se recalienta con carga plena"
 

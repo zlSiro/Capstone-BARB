@@ -23,7 +23,7 @@ SESION = "99999999-9999-9999-9999-999999999999"
 FICHA = {
     "maquina_id": 5,
     "nombre": "Compressor A1",
-    "codigo": "COMP-A1",
+    "codigo": "CHA-001",
     "planta": "Planta Central",
     "disciplina": "Neumática",
 }
@@ -194,7 +194,7 @@ async def test_la_ficha_del_equipo_va_en_el_system_prompt(busquedas):
     await grafo.ainvoke(_estado(["torque"]))
 
     sistema = llm.llamadas[0][0].content
-    assert "EQUIPO SELECCIONADO: Compressor A1 (COMP-A1) — planta Planta Central, disciplina Neumática" in sistema
+    assert "EQUIPO SELECCIONADO: Compressor A1 (CHA-001) — planta Planta Central, disciplina Neumática" in sistema
     assert "Manual A1" in sistema  # el contexto sigue inyectado
     assert "{context}" not in sistema
 

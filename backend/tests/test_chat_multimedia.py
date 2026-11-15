@@ -436,7 +436,7 @@ async def test_stream_sesion_existente_recupera_historial(client, override_auth,
         {"role": "assistant", "content": "respuesta previa"},
     ]
     mock_repo["create_session"].assert_not_called()
-    mock_repo["load_messages"].assert_called_once_with(fake_uuid, 1)
+    mock_repo["load_messages"].assert_called_once_with(fake_uuid, 1, limite=10)
 
 
 # =============================================================================

@@ -143,8 +143,10 @@ async def test_el_mtbf_del_periodo_solo_aparece_con_dos_fallas(client):
 
 async def test_granularidad_invalida_da_422(client):
     h = await _login(client, GERENTE_E1)
-    r = await client.get(f"{HIST}?granularity=week", headers=h)
-    assert r.status_code == 422
+    # «week» pasó a ser válida con PR #67 (se agregaron day y week); una granularidad
+    # realmente inválida es «hour».
+    r = await client.get(f"{HIST}?granularity=hour", headers=h)
+    assert r.status_code == 422, r.text
 
 
 # =============================================================================

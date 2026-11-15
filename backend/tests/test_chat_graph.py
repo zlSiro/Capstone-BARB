@@ -225,11 +225,11 @@ async def test_la_tool_no_ve_maquinas_de_otra_empresa(db_pool):
 async def test_identificar_maquina_exige_mencion_exacta(db_pool):
     """Para etiquetar una sesión no basta el parecido difuso: hace falta código o nombre."""
     maquina = await identificar_maquina(
-        1, "Necesito saber por qué la bomba PUMP-E4 está vibrando demasiado"
+        1, "Necesito saber por qué la bomba BOM-001 está vibrando demasiado"
     )
     assert maquina is not None
-    assert maquina["codigo"] == "PUMP-E4"
-    assert maquina["disciplina"] == "Hidráulica"
+    assert maquina["codigo"] == "BOM-001"
+    assert maquina["disciplina"] == "Mecánica"
 
     # «prensa B3» se parece a «Prensa» (otra planta), pero no es su nombre ni su código.
     assert await identificar_maquina(1, "La prensa B3 pierde presión") is None
@@ -391,7 +391,7 @@ async def test_la_tool_sugiere_alternativas_cuando_no_encuentra(db_pool):
     assert "No encontré" in salida
     assert "Estas son las disponibles" in salida
     # Las sugerencias son equipos reales de la empresa, con su código.
-    assert "Chancador de cono Sandvik H8800 (COMP-A1)" in salida
+    assert "Chancador de cono Sandvik H8800 (CHA-001)" in salida
 
 
 @pytest.mark.asyncio

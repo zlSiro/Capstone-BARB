@@ -30,7 +30,21 @@ SUPER = ("super@barb.com", "super123")
 MAQUINA_CON_OTS = "m_1"
 PLANTA_E1 = "p_1"
 PLANTA_E2 = "p_4"
-DISCIPLINA_E2 = "d_13"
+# El id del nodo de disciplina se resuelve por consulta: con el catálogo real las
+# disciplinas son otras y un id fijo termina apuntando a otro equipo.
+async def _disciplina_e2() -> str:
+    fila = await fetch_one(
+        """
+        SELECT d.disciplina_id
+          FROM maquina m
+          JOIN planta p ON p.planta_id = m.planta_id
+          JOIN disciplina d ON d.disciplina_id = m.disciplina_id
+         WHERE p.empresa_id = 2
+         ORDER BY d.disciplina_id
+         LIMIT 1
+        """
+    )
+    return f"d_{int(fila['disciplina_id'])}"
 
 # Maquina temporal para la prueba de "sin ordenes". El nombre lleva un prefijo propio
 # para poder identificarla sin ambiguedad.
@@ -157,13 +171,13 @@ async def test_planta_devuelve_hijos_y_sin_ordenes(client):
 async def test_disciplina_devuelve_hijos_maquina(client):
     """Una disciplina contiene máquinas."""
     h = await _login(client, ADMIN_E2)
-    r = await _nodo(client, h, DISCIPLINA_E2)
+    r = await _nodo(client, h, await _disciplina_e2())
 
     assert r.status_code == 200, r.text
     cuerpo = r.json()
     assert cuerpo["nodo"]["tipo"] == "Disciplina"
     assert cuerpo["ordenes"] == []
-    assert cuerpo["hijos"], "d_13 tiene máquinas en el seed"
+    assert cuerpo["hijos"], "la disciplina elegida tiene máquinas en el seed"
     assert {x["tipo"] for x in cuerpo["hijos"]} == {"Máquina"}
     assert all(isinstance(x["maquina_id"], int) for x in cuerpo["hijos"])
 
@@ -207,7 +221,7 @@ async def test_empresa_no_ve_nodos_de_otra_empresa(client, nodo_ajeno):
 async def test_empresa_ve_sus_propios_nodos(client):
     """Contraprueba del test anterior: los nodos propios sí responden."""
     h = await _login(client, ADMIN_E2)
-    for nodo_id in (PLANTA_E2, DISCIPLINA_E2):
+    for nodo_id in (PLANTA_E2, await _disciplina_e2()):
         r = await _nodo(client, h, nodo_id)
         assert r.status_code == 200, f"{nodo_id} debería ser visible desde la empresa 2: {r.text}"
 
@@ -217,7 +231,7 @@ async def test_las_ordenes_no_cruzan_empresas(client):
     h = await _login(client, ADMIN_E2)
     cuerpo = (await _nodo(client, h, PLANTA_E2)).json()
     # Se recorren todas las máquinas de la planta y se piden sus órdenes.
-    for hijo in (await _nodo(client, h, DISCIPLINA_E2)).json()["hijos"]:
+    for hijo in (await _nodo(client, h, await _disciplina_e2())).json()["hijos"]:
         detalle = (await _nodo(client, h, hijo["nodo_id"])).json()
         for ot in detalle["ordenes"]:
             assert ot["machine_id"] == hijo["maquina_id"], "una OT apunta a otra máquina"
