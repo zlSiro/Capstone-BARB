@@ -657,15 +657,24 @@ async def test_el_grafo_cambia_parametros_con_confirmacion(db_pool, monkeypatch)
     modelo = _LLMFalso()
     grafo = crear_grafo(empresa_id=1, llm=modelo, usuario_id=ADMIN_ID, rol="admin")
 
+    # El «antes» se lee de la base: el seed/backfill define el SLA inicial y hardcodearlo
+    # acoplaba el test a una base local concreta (6 h) en vez de al comportamiento.
+    antes = await fetch_one("SELECT sla_horas FROM maquina WHERE codigo = 'PUMP-E4'")
+    sla_antes = antes["sla_horas"]
+
     try:
         estado = await grafo.ainvoke(_entrada([AIMessage(content=_propuesta_parametros()), HumanMessage(content="sí")]))
 
         final = estado["messages"][-1]
-        assert "Actualicé «Pump E4»" in final.content and "6 h → 8 h" in final.content
+        assert "Actualicé «Pump E4»" in final.content
+        assert f"{float(sla_antes):g} h → 8 h" in final.content
         fila = await fetch_one("SELECT sla_horas FROM maquina WHERE codigo = 'PUMP-E4'")
         assert float(fila["sla_horas"]) == 8
     finally:
-        await execute("UPDATE maquina SET sla_horas = 6 WHERE codigo = 'PUMP-E4'")
+        await execute(
+            "UPDATE maquina SET sla_horas = %(sla)s WHERE codigo = 'PUMP-E4'",
+            {"sla": sla_antes},
+        )
 
 
 # =============================================================================
