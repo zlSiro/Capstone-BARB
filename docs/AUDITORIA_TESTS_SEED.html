@@ -28,7 +28,7 @@
       Auditoría forense · rama refactor/limpieza-seeds · post-merge main (HU-23)
     </p>
     <h1 class="max-w-4xl text-3xl font-extrabold leading-tight sm:text-4xl">
-      Por qué fallan 57 tests<br class="hidden sm:block" />
+      Por qué fallan 27 tests<br class="hidden sm:block" />
       <span class="text-rose-300">y qué hay que arreglar en cada uno</span>
     </h1>
     <p class="mt-3 max-w-3xl text-slate-300">
@@ -37,9 +37,9 @@
       una línea de código</strong>: esto es diagnóstico.
     </p>
     <div class="mt-6 grid max-w-3xl grid-cols-2 gap-2.5 text-sm sm:grid-cols-4">
-      <div class="rounded-lg bg-white/10 px-3 py-2"><strong class="block text-xl text-white">57</strong> fallan</div>
-      <div class="rounded-lg bg-white/10 px-3 py-2"><strong class="block text-xl text-emerald-300">828</strong> pasan</div>
-      <div class="rounded-lg bg-white/10 px-3 py-2"><strong class="block text-xl text-white">43</strong> son solo nombres</div>
+      <div class="rounded-lg bg-white/10 px-3 py-2"><strong class="block text-xl text-white">27</strong> fallan</div>
+      <div class="rounded-lg bg-white/10 px-3 py-2"><strong class="block text-xl text-emerald-300">858</strong> pasan</div>
+      <div class="rounded-lg bg-white/10 px-3 py-2"><strong class="block text-xl text-white">13</strong> son solo nombres</div>
       <div class="rounded-lg bg-white/10 px-3 py-2"><strong class="block text-xl text-amber-300">1</strong> es bug de seed</div>
     </div>
   </div>
@@ -60,27 +60,27 @@
         <div class="mb-1 flex items-baseline justify-between text-sm">
           <p><span class="mr-2 inline-flex h-5 w-5 items-center justify-center rounded bg-rose-600 text-xs font-bold text-white">A</span>
              <strong>Nombre o código hardcodeado</strong> <span class="text-slate-500">— el test busca un string que ya no existe</span></p>
-          <p class="font-bold text-rose-700">43 · 75 %</p>
+          <p class="font-bold text-rose-700">13 · 48 %</p>
         </div>
-        <div class="h-2.5 w-full overflow-hidden rounded-full bg-slate-100"><div class="h-full rounded-full bg-rose-600" style="width:75%"></div></div>
+        <div class="h-2.5 w-full overflow-hidden rounded-full bg-slate-100"><div class="h-full rounded-full bg-rose-600" style="width:48%"></div></div>
       </div>
       <!-- E -->
       <div>
         <div class="mb-1 flex items-baseline justify-between text-sm">
           <p><span class="mr-2 inline-flex h-5 w-5 items-center justify-center rounded bg-slate-600 text-xs font-bold text-white">E</span>
              <strong>Otros</strong> <span class="text-slate-500">— mock, redondeo, generador puro, aislamiento</span></p>
-          <p class="font-bold text-slate-700">7 · 12 %</p>
+          <p class="font-bold text-slate-700">7 · 26 %</p>
         </div>
-        <div class="h-2.5 w-full overflow-hidden rounded-full bg-slate-100"><div class="h-full rounded-full bg-slate-600" style="width:12%"></div></div>
+        <div class="h-2.5 w-full overflow-hidden rounded-full bg-slate-100"><div class="h-full rounded-full bg-slate-600" style="width:26%"></div></div>
       </div>
       <!-- B -->
       <div>
         <div class="mb-1 flex items-baseline justify-between text-sm">
           <p><span class="mr-2 inline-flex h-5 w-5 items-center justify-center rounded bg-amber-600 text-xs font-bold text-white">B</span>
              <strong>ID hardcodeado</strong> <span class="text-slate-500">— <code>maquina_id</code>, <code>usuario_id</code> o nodo que ahora es otro</span></p>
-          <p class="font-bold text-amber-700">4 · 7 %</p>
+          <p class="font-bold text-amber-700">4 · 15 %</p>
         </div>
-        <div class="h-2.5 w-full overflow-hidden rounded-full bg-slate-100"><div class="h-full rounded-full bg-amber-600" style="width:7%"></div></div>
+        <div class="h-2.5 w-full overflow-hidden rounded-full bg-slate-100"><div class="h-full rounded-full bg-amber-600" style="width:15%"></div></div>
       </div>
       <!-- D -->
       <div>
@@ -104,15 +104,15 @@
 
     <div class="mt-5 grid gap-3 sm:grid-cols-3">
       <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
-        <p class="text-2xl font-extrabold text-slate-900">54 <span class="text-sm font-semibold text-slate-500">de 57</span></p>
+        <p class="text-2xl font-extrabold text-slate-900">24 <span class="text-sm font-semibold text-slate-500">de 27</span></p>
         <p class="text-xs text-slate-600">se arreglan en el <strong>test</strong></p>
       </div>
       <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-        <p class="text-2xl font-extrabold text-emerald-800">1 <span class="text-sm font-semibold text-emerald-600">de 57</span></p>
+        <p class="text-2xl font-extrabold text-emerald-800">1 <span class="text-sm font-semibold text-emerald-600">de 27</span></p>
         <p class="text-xs text-emerald-700">se arregla en el <strong>seed</strong></p>
       </div>
       <div class="rounded-xl border border-violet-200 bg-violet-50 p-4">
-        <p class="text-2xl font-extrabold text-violet-800">2 <span class="text-sm font-semibold text-violet-600">de 57</span></p>
+        <p class="text-2xl font-extrabold text-violet-800">2 <span class="text-sm font-semibold text-violet-600">de 27</span></p>
         <p class="text-xs text-violet-700">necesitan <strong>decisión de producto</strong> (permisos)</p>
       </div>
     </div>
@@ -224,10 +224,18 @@
     </div>
 
     <div class="card rounded-2xl border-l-4 border-amber-500 bg-white p-6">
-      <p class="text-xs font-bold uppercase tracking-wide text-amber-700">Lo que suma trabajo</p>
+      <p class="text-xs font-bold uppercase tracking-wide text-emerald-700">Resuelto · las credenciales de los tests de main</p>
       <p class="mt-1.5 text-base font-semibold text-slate-900">
-        Los tests nuevos que entraron con main también asumen el catálogo viejo: 29 de los 30 son el
-        mismo problema de siempre.
+        Los 30 fallos que trajo main (HU-23) fueron resueltos al adaptar sus credenciales al nuevo catálogo.
+      </p>
+      <p class="mt-2 text-sm text-slate-600">
+        Se ajustaron los correos por rol y empresa (<code class="rounded bg-slate-100 px-1 text-xs">gerente@mineradelnorte.cl</code>,
+        <code class="rounded bg-slate-100 px-1 text-xs">gerente@alimentos.cl</code>,
+        <code class="rounded bg-slate-100 px-1 text-xs">admin@alimentos.cl</code>,
+        <code class="rounded bg-slate-100 px-1 text-xs">engineer@mineradelnorte.cl</code>) y el equipo que
+        usaba <code class="rounded bg-slate-100 px-1 text-xs">PUMP-E4</code> pasó a
+        <code class="rounded bg-slate-100 px-1 text-xs">BOM-001</code>. De los 30, 29 quedaron verdes;
+        el que sigue abierto es una validación de granularidad, no una credencial.
       </p>
       <div class="mt-3 overflow-x-auto rounded-xl border border-slate-200">
         <table class="w-full text-xs">
@@ -291,7 +299,7 @@ SELECT count(*) FROM usuario WHERE email LIKE '%@mineradelnorte.cl'; -- 10</code
   <section class="card rounded-2xl bg-white p-7">
     <h2 class="flex items-center gap-3 text-2xl font-bold text-slate-900">
       <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-100 text-sm font-extrabold text-sky-700">4</span>
-      Los 27 fallos originales, uno por uno
+      Los fallos originales, uno por uno
     </h2>
     <p class="mt-2 text-sm text-slate-600">
       <span class="exp font-semibold">Rojo = esperado por el test</span> ·
@@ -334,10 +342,10 @@ SELECT count(*) FROM usuario WHERE email LIKE '%@mineradelnorte.cl'; -- 10</code
           </tr>
           <!-- A3 -->
           <tr class="bg-slate-50/50">
-            <td class="px-3 py-2.5"><code class="text-slate-500">test_chat_repository.py</code><br><span class="font-medium">test_create_session_guarda_equipo_y_titulo_segmentado</span></td>
-            <td class="px-3 py-2.5"><span class="exp">"PUMP-E4 · vibrando demasiado"</span><br><span class="act">"La bomba PUMP-E4 está vibrando demasiado y qué…"</span></td>
-            <td class="px-3 py-2.5 text-center"><span class="rounded bg-rose-100 px-1.5 py-0.5 font-bold text-rose-700">A</span></td>
-            <td class="px-3 py-2.5"><strong class="text-sky-700">Test</strong><br><span class="text-slate-500">Sin máquina identificada no hay título segmentado</span></td>
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_chat_repository.py</code><br><s class="font-medium text-slate-400">test_create_session_guarda_equipo_y_titulo_segmentado</s></td>
+            <td class="px-3 py-2.5"><span class="exp">"PUMP-E4 · vibrando demasiado"</span><br><span class="act">resuelto: equipo BOM-001, planta Molienda SAG y disciplina Mecánica</span></td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-emerald-100 px-1.5 py-0.5 font-bold text-emerald-700">✓</span></td>
+            <td class="px-3 py-2.5"><strong class="text-emerald-700">Resuelto</strong></td>
           </tr>
           <!-- A4 -->
           <tr>
@@ -503,8 +511,24 @@ SELECT count(*) FROM usuario WHERE email LIKE '%@mineradelnorte.cl'; -- 10</code
         </tbody>
       </table>
     </div>
+    <div class="mt-4 overflow-x-auto rounded-xl border border-slate-200">
+      <table class="w-full text-xs">
+        <thead class="bg-slate-50 text-left uppercase tracking-wide text-slate-500">
+          <tr><th class="px-3 py-2">Fallo que sigue abierto (llegó con el merge)</th><th class="px-3 py-2">Esperado vs. real</th><th class="px-3 py-2 text-center">Cat.</th><th class="px-3 py-2">Solución</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="px-3 py-2"><code class="text-slate-500">test_stats_historico.py</code><br><span class="font-medium">test_granularidad_invalida_da_422</span></td>
+            <td class="px-3 py-2"><span class="exp">422 (granularidad inválida rechazada)</span><br><span class="act">200 (la acepta y devuelve datos)</span></td>
+            <td class="px-3 py-2 text-center"><span class="rounded bg-slate-200 px-1.5 py-0.5 font-bold text-slate-700">E</span></td>
+            <td class="px-3 py-2"><strong class="text-violet-700">Decisión</strong><br><span class="text-slate-500">Revisar si la API debe validar el parámetro</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
     <p class="mt-3 text-xs text-slate-500">
-      Estos 27 son los fallos anteriores al merge (siguen todos vigentes). Los 30 nuevos están en la sección 3 (<strong>790 pasan</strong>).
+      Esta es la lista forense original. Uno de estos ya está resuelto (marcado) y al final se agrega el único fallo que llegó con el merge y sigue vigente. (<strong>790 pasan</strong>).
       Las filas con fondo verde o violeta son las que no se arreglan cambiando un string.
     </p>
   </section>
@@ -566,7 +590,7 @@ SELECT count(*) FROM usuario WHERE email LIKE '%@mineradelnorte.cl'; -- 10</code
     <div class="mt-5 rounded-xl border border-emerald-400/30 bg-emerald-400/10 p-4">
       <p class="text-sm font-bold text-emerald-200">Lo importante</p>
       <p class="mt-1 text-sm text-emerald-100/90">
-        <strong>56 de 57 fallos son de los tests, no del seed.</strong> La consolidación de datos está
+        <strong>26 de 27 fallos son de los tests, no del seed.</strong> La consolidación de datos está
         bien hecha: lo que quedó desactualizado es el código que la verifica. Solo hay un caso en que el
         seed está mal, y está identificado con nombre y cifra: 118 inspecciones con inactividad. El merge de main no aportó ningún fallo nuevo de datos: los 30 que suman son tests que todavía leen el catálogo viejo.
       </p>
