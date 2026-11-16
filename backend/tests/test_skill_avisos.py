@@ -33,7 +33,7 @@ from barb.services.ai_tools import (
 from barb.services.chat_graph import crear_grafo
 
 GERENTE_ID = 2  # gerente de la empresa 1 (reportar_falla: True en la matriz)
-MAQUINA_BASE = {"nombre": "Bomba de pulpa KSB", "codigo": "BOM-001", "planta": None}
+MAQUINA_BASE = {"nombre": "Pump E4", "codigo": "PUMP-E4", "planta": None}
 
 
 def _herramientas_avisos(rol: str = "gerente", habla_del_usuario: list[str] | None = None):
@@ -50,7 +50,7 @@ def _herramientas_avisos(rol: str = "gerente", habla_del_usuario: list[str] | No
 
 def _texto_aviso_para_pump(descripcion: str) -> str:
     return _texto_propuesta_aviso(
-        {**MAQUINA_BASE, "planta": "Planta de Vapor"},
+        {**MAQUINA_BASE, "planta": "Planta Central San Bernardo"},
         descripcion,
         "medium",
     )
@@ -87,19 +87,11 @@ async def test_la_tool_propone_sin_registrar(db_pool):
     descripcion = f"Vibración anormal en el cojinete, desde la mañana ({uuid.uuid4().hex[:6]})"
 
     salida = await _herramientas_avisos()["proponer_aviso_falla"].ainvoke(
-<<<<<<< HEAD
         {"nombre_maquina": "BOM-001", "descripcion": descripcion, "severidad": "alta"}
     )
 
     assert salida.startswith(_PREFIJO_PROPUESTA_AVISO), "la propuesta termina el turno con el texto EXACTO"
     assert "- **codigo:** BOM-001" in salida
-=======
-        {"nombre_maquina": "Bomba de pulpa KSB", "descripcion": descripcion, "severidad": "alta"}
-    )
-
-    assert salida.startswith(_PREFIJO_PROPUESTA_AVISO), "la propuesta termina el turno con el texto EXACTO"
-    assert "codigo=BOM-001" in salida
->>>>>>> main
     fila = await fetch_one(
         "SELECT aviso_falla_id FROM aviso_falla WHERE descripcion = %(d)s",
         {"d": descripcion},
@@ -111,7 +103,7 @@ async def test_la_tool_propone_sin_registrar(db_pool):
 async def test_la_tool_pide_descripcion_util(db_pool):
     """«falla» sola no le sirve al supervisor: la tool exige descripción concreta."""
     salida = await _herramientas_avisos()["proponer_aviso_falla"].ainvoke(
-        {"nombre_maquina": "Bomba de pulpa KSB", "descripcion": "falla", "severidad": "media"}
+        {"nombre_maquina": "Pump E4", "descripcion": "falla", "severidad": "media"}
     )
     assert "descripción" in salida
     assert not salida.startswith(_PREFIJO_PROPUESTA_AVISO)
@@ -174,7 +166,7 @@ async def test_la_tool_acepta_una_descripcion_armada_entre_varios_mensajes(db_po
 @pytest.mark.asyncio
 async def test_la_tool_rechaza_severidad_invalida(db_pool):
     salida = await _herramientas_avisos()["proponer_aviso_falla"].ainvoke(
-        {"nombre_maquina": "Bomba de pulpa KSB", "descripcion": "Fuga de aceite importante", "severidad": "catastrófica"}
+        {"nombre_maquina": "Pump E4", "descripcion": "Fuga de aceite importante", "severidad": "catastrófica"}
     )
     assert "severidad" in salida.lower()
     assert not salida.startswith(_PREFIJO_PROPUESTA_AVISO)
@@ -249,7 +241,7 @@ async def test_la_tool_avisa_si_los_permisos_no_alcanzan(db_pool):
     unificado de permisos (CGBIDA-513), no el texto de otra acción."""
     herramientas = _herramientas_avisos(rol="admin")
     salida = await herramientas["proponer_aviso_falla"].ainvoke(
-        {"nombre_maquina": "Bomba de pulpa KSB", "descripcion": "Fuga de aceite importante", "severidad": "media"}
+        {"nombre_maquina": "Pump E4", "descripcion": "Fuga de aceite importante", "severidad": "media"}
     )
     assert "No te está permitido" in salida
     assert "avisos de falla" in salida
@@ -274,7 +266,7 @@ def test_parsear_propuesta_aviso_cierra_redonda():
     datos = _parsear_propuesta_aviso(_texto_aviso_para_pump("El motor se recalienta con carga plena"))
     assert datos is not None
     assert datos["tipo"] == "aviso"
-    assert datos["codigo"] == "BOM-001"
+    assert datos["codigo"] == "PUMP-E4"
     assert datos["severidad"] == "medium"
     assert datos["descripcion"] == "El motor se recalienta con carga plena"
 
