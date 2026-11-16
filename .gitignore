@@ -15,3 +15,8 @@ CLAUDE.md
 
 # Angular
 .angular/
+# Credenciales demo en texto plano: solo local
+docs/CREDENCIALES_DEMO.md
+
+# Backups de BD (datos reales)
+*.dump
