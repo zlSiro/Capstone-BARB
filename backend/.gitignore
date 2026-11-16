@@ -15,6 +15,9 @@ wheels/
 # Runtime data
 uploads/
 
+# Sesión de la verificación manual de la HU-22 (scripts/verificar_contexto_persistente.py)
+.hu22_session
+
 # Test cache
 .pytest_cache/
 .ruff_cache/
