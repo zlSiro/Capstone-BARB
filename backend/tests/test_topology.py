@@ -23,7 +23,7 @@ from psycopg_pool import PoolTimeout
 import barb.routers.topology as topology
 from barb.core.db import fetch_all
 
-# Credenciales del seed (seeds/seed_data.sql) — empresa 1
+# Credenciales del seed (seeds/02_maestros.sql) — empresa 1
 ADMIN_E1 = ("admin@mineradelnorte.cl", "mineria123")
 # La empresa 2 es la única del seed con disciplina repartida en 2 plantas (d_13 y d_14),
 # así que es la que permite ejercitar A-3.
