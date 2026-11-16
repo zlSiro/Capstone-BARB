@@ -347,7 +347,7 @@ grep 'topologia_zona|topologia_nodo|topologia_conexion|zona_nodo' en backend/src
 
 Solo aparecen en:
 - `backend/migrations/versions/0001_initial_schema.py:162-208` — donde se **crean**
-- `backend/seeds/seed_data.sql:97,110,125` — donde se **pueblan**
+- `backend/seeds/02_maestros.sql` (sección de topología, desde la línea ~430) — donde se **pueblan**
 
 Es decir: se crean, se llenan una vez y nadie las consulta.
 
