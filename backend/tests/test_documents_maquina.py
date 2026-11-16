@@ -7,8 +7,8 @@ import uuid
 
 from barb.core.db import fetch_one
 
-ENGINEER_E1 = ("engineer1@planta.com", "engineer123")
-ADMIN_E2 = ("admin@mineranorte.cl", "minera123")
+ENGINEER_E1 = ("engineer@mineradelnorte.cl", "mineria123")
+ADMIN_E2 = ("admin@alimentos.cl", "alimentos123")
 
 
 async def _login(client, creds) -> dict:

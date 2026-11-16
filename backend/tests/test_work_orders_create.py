@@ -5,12 +5,12 @@ import pytest
 
 from barb.core.db import execute, fetch_one
 
-ADMIN = {"email": "admin@barb.com", "password": "admin123"}
-SUPERVISOR = {"email": "supervisor1@planta.com", "password": "super123"}
-ENGINEER = {"email": "engineer1@planta.com", "password": "engineer123"}
-GERENTE = {"email": "gerente1@planta.com", "password": "gerente123"}
-TECNICO = {"email": "carlos@planta.com", "password": "tecnico123"}
-OPERADOR = {"email": "operador1@planta.com", "password": "operador123"}
+ADMIN = {"email": "admin@mineradelnorte.cl", "password": "mineria123"}
+SUPERVISOR = {"email": "supervisor@mineradelnorte.cl", "password": "mineria123"}
+ENGINEER = {"email": "engineer@mineradelnorte.cl", "password": "mineria123"}
+GERENTE = {"email": "gerente@mineradelnorte.cl", "password": "mineria123"}
+TECNICO = {"email": "tecnico1@mineradelnorte.cl", "password": "mineria123"}
+OPERADOR = {"email": "operador@mineradelnorte.cl", "password": "mineria123"}
 
 
 async def _auth(client, creds: dict) -> dict:
@@ -122,7 +122,7 @@ async def test_tecnico_inexistente_422(client, payload):
 
 
 async def test_tecnico_sin_rol_tecnico_422(client, payload):
-    admin_id = (await fetch_one("SELECT usuario_id FROM usuario WHERE email = 'admin@barb.com'"))["usuario_id"]
+    admin_id = (await fetch_one("SELECT usuario_id FROM usuario WHERE email = 'admin@mineradelnorte.cl'"))["usuario_id"]
     headers = await _auth(client, SUPERVISOR)
     resp = await client.post("/api/work-orders", json={**payload, "tecnico_id": admin_id}, headers=headers)
     assert resp.status_code == 422

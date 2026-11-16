@@ -79,19 +79,19 @@ async def test_el_grafo_ejecuta_la_tool_y_vuelve_a_generar(monkeypatch):
         tool_calls=[
             {
                 "name": "consultar_ots_maquina",
-                "args": {"nombre_maquina": "Compressor A1"},
+                "args": {"nombre_maquina": "Chancador de cono Sandvik H8800"},
                 "id": "call_1",
                 "type": "tool_call",
             }
         ],
     )
-    final = AIMessage(content="El Compressor A1 tiene 7 OTs abiertas.")
+    final = AIMessage(content="El Chancador de cono Sandvik H8800 tiene 7 OTs abiertas.")
     llm = _LLMFalso([pedido, final])
 
     grafo = crear_grafo(empresa_id=1, llm=llm)
     resultado = await grafo.ainvoke(
         {
-            "messages": [HumanMessage(content="¿Cuántas OTs abiertas tiene el Compressor A1?")],
+            "messages": [HumanMessage(content="¿Cuántas OTs abiertas tiene el Chancador de cono Sandvik H8800?")],
             "empresa_id": 1,
             "pistas": [],
             "contexto": "",
@@ -109,7 +109,7 @@ async def test_el_grafo_ejecuta_la_tool_y_vuelve_a_generar(monkeypatch):
     assert "7" in tool_messages[0].content
     assert tool_messages[0].tool_call_id == "call_1"
 
-    assert resultado["messages"][-1].content == "El Compressor A1 tiene 7 OTs abiertas."
+    assert resultado["messages"][-1].content == "El Chancador de cono Sandvik H8800 tiene 7 OTs abiertas."
 
 
 @pytest.mark.asyncio
@@ -204,20 +204,20 @@ async def test_la_tool_encuentra_una_maquina_real_y_cuenta_sus_ots(db_pool):
     ]
 
     consultar = next(t for t in tools if t.name == "consultar_ots_maquina")
-    salida = await consultar.ainvoke({"nombre_maquina": "Compressor A1"})
+    salida = await consultar.ainvoke({"nombre_maquina": "Chancador de cono Sandvik H8800"})
 
-    assert "Compressor A1" in salida
+    assert "Chancador de cono Sandvik H8800" in salida
     assert "Órdenes de trabajo abiertas:" in salida
 
 
 @pytest.mark.asyncio
 async def test_la_tool_no_ve_maquinas_de_otra_empresa(db_pool):
     """El aislamiento no depende de lo que escriba el modelo: va en la clausura."""
-    maquinas_e1 = await _buscar_maquinas(1, "Compressor A1")
-    assert maquinas_e1, "el seed debería tener el Compressor A1 en la empresa 1"
+    maquinas_e1 = await _buscar_maquinas(1, "Chancador de cono Sandvik H8800")
+    assert maquinas_e1, "el seed debería tener el Chancador de cono Sandvik H8800 en la empresa 1"
 
     # La misma búsqueda desde otra empresa no debe encontrarla.
-    maquinas_ajenas = await _buscar_maquinas(999, "Compressor A1")
+    maquinas_ajenas = await _buscar_maquinas(999, "Chancador de cono Sandvik H8800")
     assert maquinas_ajenas == []
 
 
@@ -225,11 +225,11 @@ async def test_la_tool_no_ve_maquinas_de_otra_empresa(db_pool):
 async def test_identificar_maquina_exige_mencion_exacta(db_pool):
     """Para etiquetar una sesión no basta el parecido difuso: hace falta código o nombre."""
     maquina = await identificar_maquina(
-        1, "Necesito saber por qué la bomba PUMP-E4 está vibrando demasiado"
+        1, "Necesito saber por qué la bomba BOM-001 está vibrando demasiado"
     )
     assert maquina is not None
-    assert maquina["codigo"] == "PUMP-E4"
-    assert maquina["disciplina"] == "Hidráulica"
+    assert maquina["codigo"] == "BOM-001"
+    assert maquina["disciplina"] == "Mecánica"
 
     # «prensa B3» se parece a «Prensa» (otra planta), pero no es su nombre ni su código.
     assert await identificar_maquina(1, "La prensa B3 pierde presión") is None
@@ -391,7 +391,7 @@ async def test_la_tool_sugiere_alternativas_cuando_no_encuentra(db_pool):
     assert "No encontré" in salida
     assert "Estas son las disponibles" in salida
     # Las sugerencias son equipos reales de la empresa, con su código.
-    assert "Compressor A1 (COMP-A1)" in salida
+    assert "Chancador de cono Sandvik H8800 (CHA-001)" in salida
 
 
 @pytest.mark.asyncio

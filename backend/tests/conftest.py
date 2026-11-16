@@ -62,12 +62,12 @@ async def client(db_pool) -> AsyncIterator[AsyncClient]:
 
 @pytest_asyncio.fixture
 def usuario_admin() -> dict:
-    return {"email": "admin@barb.com", "password": "admin123"}
+    return {"email": "admin@mineradelnorte.cl", "password": "mineria123"}
 
 
 @pytest_asyncio.fixture
 def usuario_tecnico() -> dict:
-    return {"email": "carlos@planta.com", "password": "tecnico123"}
+    return {"email": "tecnico1@mineradelnorte.cl", "password": "mineria123"}
 
 
 @pytest_asyncio.fixture

@@ -243,7 +243,7 @@ async def test_segunda_pasada_con_umbral_laxo_cuando_el_estricto_no_devuelve_nad
     instrucción del compresor» puntuaba 0.229 contra un umbral de 0.25).
     """
     llamadas: list[float | None] = []
-    laxo = [{"chunk_id": None, "documento_id": 4, "title": "Manual Compresor A1", "contenido": "x", "rank": 0.2}]
+    laxo = [{"chunk_id": None, "documento_id": 4, "title": "Manual Compresor de Amoníaco", "contenido": "x", "rank": 0.2}]
 
     async def semantico(_empresa, *_a, limit=4, min_similarity=None, **_k):
         llamadas.append(min_similarity)

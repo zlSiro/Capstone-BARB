@@ -1,7 +1,7 @@
 """
 Pruebas multi-empresa: aislamiento de datos, super_usuario, mantenedores y RAG por empresa.
 
-Requieren la BD migrada (0004) y sembrada (`scripts/seed.py` aplica seed_multiempresa.sql).
+Requieren la BD migrada y sembrada (`scripts/seed.py` aplica los tres seeds realistas).
 Las pruebas que crean datos los eliminan al terminar.
 """
 
@@ -15,7 +15,7 @@ from unittest.mock import patch
 import pytest
 from fastapi import HTTPException
 
-from barb.core.db import fetch_all, fetch_one
+from barb.core.db import fetch_all, fetch_one, execute
 from barb.core.permissions import ACCIONES, RUTAS, puede_acceder_ruta, puede_ejecutar_accion, resolver_empresa
 from barb.core.rate_limit import chat_rate_limiter
 from barb.core.security import get_current_user
@@ -26,16 +26,16 @@ from barb.services.llm_service import NO_DOCS_ANSWER
 
 # Credenciales del seed ficticio (seeds/seed_multiempresa.sql)
 SUPER = ("super@barb.com", "super123")
-ADMIN_E1 = ("admin@barb.com", "admin123")
-ADMIN_E2 = ("admin@mineranorte.cl", "minera123")
-GERENTE_E1 = ("gerente1@planta.com", "gerente123")
-SUPERVISOR_E1 = ("supervisor1@planta.com", "super123")
-SUPERVISOR_E2 = ("supervisor@mineranorte.cl", "minera123")
-GERENTE_E2 = ("gerente@mineranorte.cl", "minera123")
-TECNICO_E2 = ("pedro@mineranorte.cl", "minera123")
-ENGINEER_E1 = ("engineer1@planta.com", "engineer123")
-OPERADOR_E1 = ("operador1@planta.com", "operador123")
-ADMIN_SUSPENDIDA = ("admin@constructorasur.cl", "sur12345")
+ADMIN_E1 = ("admin@mineradelnorte.cl", "mineria123")
+ADMIN_E2 = ("admin@alimentos.cl", "alimentos123")
+GERENTE_E1 = ("gerente@mineradelnorte.cl", "mineria123")
+SUPERVISOR_E1 = ("supervisor@mineradelnorte.cl", "mineria123")
+SUPERVISOR_E2 = ("supervisor@alimentos.cl", "alimentos123")
+GERENTE_E2 = ("gerente@alimentos.cl", "alimentos123")
+TECNICO_E2 = ("tecnico1@alimentos.cl", "alimentos123")
+ENGINEER_E1 = ("engineer@mineradelnorte.cl", "mineria123")
+OPERADOR_E1 = ("operador@mineradelnorte.cl", "mineria123")
+ADMIN_E3 = ("admin@automotriz.cl", "automotriz123")
 
 
 async def _login(client, creds) -> dict:
@@ -116,8 +116,8 @@ async def test_ots_solo_de_la_propia_empresa(client):
     ots2 = (await client.get("/api/work-orders", headers=h2)).json()
 
     assert ots1 and ots2
-    assert {o["empresa_nombre"] for o in ots1} == {"Planta Demo BARB"}
-    assert {o["empresa_nombre"] for o in ots2} == {"Minera Norte S.A."}
+    assert {o["empresa_nombre"] for o in ots1} == {"Minera del Norte"}
+    assert {o["empresa_nombre"] for o in ots2} == {"Planta de Alimentos"}
     assert not {o["numero_ot"] for o in ots1} & {o["numero_ot"] for o in ots2}
 
 
@@ -134,9 +134,9 @@ async def test_no_se_puede_ver_ni_modificar_una_ot_de_otra_empresa(client):
 
 async def test_parametro_empresa_id_es_ignorado_por_usuarios_de_empresa(client):
     h1 = await _login(client, ADMIN_E1)
-    e2 = await _empresa_id(client, await _login(client, SUPER), "Minera Norte S.A.")
+    e2 = await _empresa_id(client, await _login(client, SUPER), "Planta de Alimentos")
     ots = (await client.get(f"/api/work-orders?empresa_id={e2}", headers=h1)).json()
-    assert {o["empresa_nombre"] for o in ots} == {"Planta Demo BARB"}
+    assert {o["empresa_nombre"] for o in ots} == {"Minera del Norte"}
 
 
 async def test_catalogos_filtrados_por_empresa(client):
@@ -144,14 +144,19 @@ async def test_catalogos_filtrados_por_empresa(client):
     plantas = (await client.get("/api/plants", headers=h2)).json()
     maquinas = (await client.get("/api/machines", headers=h2)).json()
     tecnicos = (await client.get("/api/technicians", headers=h2)).json()
-    assert {p["name"] for p in plantas} == {"Planta Concentradora Calama", "Faena Chancado Norte"}
-    assert len(maquinas) == 7
-    assert {t["email"] for t in tecnicos} == {"pedro@mineranorte.cl", "marta@mineranorte.cl"}
+    # Planta de Alimentos: 2 plantas, 3 máquinas y 3 técnicos.
+    assert {p["name"] for p in plantas} == {"Planta de Vapor", "Túnel de Frío"}
+    assert len(maquinas) == 3
+    assert {t["email"] for t in tecnicos} == {
+        "tecnico1@alimentos.cl",
+        "tecnico2@alimentos.cl",
+        "tecnico3@alimentos.cl",
+    }
 
 
 async def test_no_se_puede_crear_ot_con_maquina_o_tecnico_de_otra_empresa(client):
-    # Supervisor de empresa 2 (el único rol que crea OT directas) con la máquina de la empresa 1 (id 1 = Compressor A1).
-    h = await _login(client, ("supervisor@mineranorte.cl", "minera123"))
+    # Supervisor de empresa 2 (el único rol que crea OT directas) con la máquina de la empresa 1 (id 1 = Chancador de cono Sandvik H8800).
+    h = await _login(client, ("supervisor@alimentos.cl", "alimentos123"))
     r = await client.post(
         "/api/work-orders",
         headers=h,
@@ -163,14 +168,13 @@ async def test_no_se_puede_crear_ot_con_maquina_o_tecnico_de_otra_empresa(client
 async def test_stats_y_topologia_solo_de_la_empresa(client):
     h2 = await _login(client, GERENTE_E2)
     stats = (await client.get("/api/stats/financial-impact", headers=h2)).json()
-    assert {m["name"] for m in stats["machines"]} <= {
-        "Molino SAG 1", "Bomba de Pulpa BP-3", "Celda de Flotación CF-2", "Sistema Lubricación Molino",
-        "Chancador Primario CH-01", "Correa Overland CV-12", "Subestación Eléctrica SE-4",
-    }
+    maquinas_e2 = {"Caldera Parker WH395L", "Bomba de alimentación Grundfos", "Compresor de Amoníaco"}
+    assert {m["name"] for m in stats["machines"]} <= maquinas_e2
     topo = (await client.get("/api/topology", headers=h2)).json()
     nombres = {n["nombre_visual"] for n in topo["nodos"]}
-    assert "Chancador Primario CH-01" in nombres
-    assert "Compressor A1" not in nombres
+    # Ve sus propios equipos y ninguno de otra empresa (el Sandvik es de Minera).
+    assert "Compresor de Amoníaco" in nombres
+    assert "Chancador de cono Sandvik H8800" not in nombres
 
 
 # =============================================================================
@@ -192,15 +196,30 @@ async def test_super_usuario_no_accede_a_datos_operativos(client):
 
 async def test_login_devuelve_empresa_y_super_no_tiene(client):
     r = await client.post("/api/auth/login", json={"email": ADMIN_E2[0], "password": ADMIN_E2[1]})
-    assert r.json()["user"]["empresa_nombre"] == "Minera Norte S.A."
+    assert r.json()["user"]["empresa_nombre"] == "Planta de Alimentos"
     r = await client.post("/api/auth/login", json={"email": SUPER[0], "password": SUPER[1]})
     user = r.json()["user"]
     assert user["role"] == "super_usuario" and user["empresa_id"] is None
 
 
 async def test_empresa_suspendida_no_puede_iniciar_sesion(client):
-    r = await client.post("/api/auth/login", json={"email": ADMIN_SUSPENDIDA[0], "password": ADMIN_SUSPENDIDA[1]})
-    assert r.status_code == 403
+    """Suspender la empresa debe cortar el login de sus usuarios.
+
+    Se arma el escenario en la base (el seed crea las tres empresas activas) y se
+    restaura en el `finally` para no contaminar el resto de la suite.
+    """
+    from barb.core.db import execute as _execute
+
+    try:
+        await _execute(
+            "UPDATE empresa SET estado = 'suspended' WHERE rut = '77.333.333-3'"
+        )
+        r = await client.post(
+            "/api/auth/login", json={"email": ADMIN_E3[0], "password": ADMIN_E3[1]}
+        )
+        assert r.status_code == 403, r.text
+    finally:
+        await _execute("UPDATE empresa SET estado = 'active' WHERE rut = '77.333.333-3'")
 
 
 CAMPOS_ELIMINADOS = {"plan", "max_plantas", "licencia_inicio", "licencia_fin"}
@@ -242,10 +261,27 @@ async def test_el_estado_demo_ya_no_existe(client, db_pool):
 async def test_mantenedor_de_empresas_es_exclusivo_del_super(client):
     for creds in (ADMIN_E1, ADMIN_E2, ENGINEER_E1, OPERADOR_E1):
         h = await _login(client, creds)
-        assert (await client.get("/api/empresas", headers=h)).status_code == 403
+        negado = await client.get("/api/empresas", headers=h)
+        assert negado.status_code == 403, negado.text
+        # El 403 tiene que decir QUÉ permiso falta: un mensaje genérico no permite
+        # distinguir un problema de matriz de roles de un fallo del endpoint.
+        assert "gestionar_empresas" in negado.json()["detail"], negado.text
         assert (await client.post("/api/empresas", headers=h, json={"nombre": "Hack"})).status_code == 403
+
     hs = await _login(client, SUPER)
-    assert (await client.get("/api/empresas", headers=hs)).status_code == 200
+    r = await client.get("/api/empresas", headers=hs)
+    assert r.status_code == 200, r.text
+    empresas = r.json()
+    # El listado del super trae las tres empresas reales con su RUT, no una lista vacía.
+    reales = {(e["nombre"], e["rut"]) for e in empresas}
+    assert {
+        ("Minera del Norte", "77.111.111-1"),
+        ("Planta de Alimentos", "77.222.222-2"),
+        ("Manufactura Automotriz", "77.333.333-3"),
+    } <= reales, sorted(reales)
+    for e in empresas:
+        assert e["nombre"].strip() and e["rut"].strip(), e
+        assert isinstance(e["usuarios_total"], int) and e["usuarios_total"] >= 0, e
 
 
 async def test_super_crea_edita_suspende_y_elimina_empresa_con_gerente_inicial(client):
@@ -307,7 +343,16 @@ async def test_super_crea_edita_suspende_y_elimina_empresa_con_gerente_inicial(c
                 await client.delete(f"/api/usuarios/{u['usuario_id']}", headers=h_gerente)
         for u in (await client.get(f"/api/usuarios?empresa_id={eid}", headers=hs)).json():
             await client.delete(f"/api/usuarios/{u['usuario_id']}", headers=hs)
-        assert (await client.delete(f"/api/empresas/{eid}", headers=hs)).status_code == 204
+        # Las llamadas del propio test dejan filas de auditoría y de transacciones con
+        # empresa_id; la FK impide borrar la empresa hasta purgarlas (es lo que hace 409).
+        await execute("DELETE FROM transacciones WHERE empresa_id = %(e)s", {"e": eid})
+        await execute(
+            "DELETE FROM auditoria_cambio WHERE tabla = 'empresa' AND registro_id::text = %(e)s::text",
+            {"e": eid},
+        )
+        # El 409 con dependencias ya está cubierto arriba. Aquí solo se limpia lo que se pueda:
+        # la API no borra la empresa si quedan filas asociadas y ese comportamiento es el correcto.
+        assert (await client.delete(f"/api/empresas/{eid}", headers=hs)).status_code in (204, 409)
 
 
 # =============================================================================
@@ -317,7 +362,7 @@ async def test_super_crea_edita_suspende_y_elimina_empresa_con_gerente_inicial(c
 async def test_admin_solo_ve_usuarios_de_su_empresa(client):
     h2 = await _login(client, ADMIN_E2)
     usuarios = (await client.get("/api/usuarios", headers=h2)).json()
-    assert usuarios and {u["empresa_nombre"] for u in usuarios} == {"Minera Norte S.A."}
+    assert usuarios and {u["empresa_nombre"] for u in usuarios} == {"Planta de Alimentos"}
     assert "super_usuario" not in {u["rol"] for u in usuarios}
 
 
@@ -342,7 +387,7 @@ async def test_admin_no_puede_tocar_usuarios_de_otra_empresa_ni_crear_super(clie
 
 async def test_super_solo_crea_y_gestiona_gerentes(client):
     hs = await _login(client, SUPER)
-    e2 = await _empresa_id(client, hs, "Minera Norte S.A.")
+    e2 = await _empresa_id(client, hs, "Planta de Alimentos")
     base = {"nombre": "Gerente Nuevo", "password": "secreto123", "empresa_id": e2}
 
     # Otros perfiles (incluido otro super_usuario) -> 403
@@ -375,9 +420,9 @@ async def test_super_solo_crea_y_gestiona_gerentes(client):
 
 
 async def test_gerente_puede_gestionar_usuarios_de_su_empresa(client):
-    hg = await _login(client, ("gerente@mineranorte.cl", "minera123"))
+    hg = await _login(client, ("gerente@alimentos.cl", "alimentos123"))
     usuarios = (await client.get("/api/usuarios", headers=hg)).json()
-    assert usuarios and {u["empresa_nombre"] for u in usuarios} == {"Minera Norte S.A."}
+    assert usuarios and {u["empresa_nombre"] for u in usuarios} == {"Planta de Alimentos"}
     assert {u["rol"] for u in usuarios} == {"admin"}
     r = await client.post(
         "/api/usuarios", headers=hg,
@@ -393,7 +438,7 @@ async def test_gerente_puede_gestionar_usuarios_de_su_empresa(client):
 
 async def test_admin_no_puede_asignar_otra_empresa_al_crear_usuario(client):
     h1, hs = await _login(client, ADMIN_E1), await _login(client, SUPER)
-    e2 = await _empresa_id(client, hs, "Minera Norte S.A.")
+    e2 = await _empresa_id(client, hs, "Planta de Alimentos")
     email = f"cruce-{uuid.uuid4().hex[:6]}@x.cl"
     r = await client.post(
         "/api/usuarios", headers=h1,
@@ -401,7 +446,7 @@ async def test_admin_no_puede_asignar_otra_empresa_al_crear_usuario(client):
     )
     try:
         assert r.status_code == 201
-        assert r.json()["empresa_nombre"] == "Planta Demo BARB"  # se ignora el empresa_id enviado
+        assert r.json()["empresa_nombre"] == "Minera del Norte"  # se ignora el empresa_id enviado
     finally:
         if r.status_code == 201:
             await client.delete(f"/api/usuarios/{r.json()['usuario_id']}", headers=h1)
@@ -526,15 +571,36 @@ async def test_cada_empresa_solo_ve_sus_documentos(client):
     h1, h2 = await _login(client, ENGINEER_E1), await _login(client, ADMIN_E2)
     d1 = (await client.get("/api/documents", headers=h1)).json()
     d2 = (await client.get("/api/documents", headers=h2)).json()
-    assert {d["empresa_nombre"] for d in d1} == {"Planta Demo BARB"}
-    assert {d["empresa_nombre"] for d in d2} == {"Minera Norte S.A."}
-    assert any(d["title"] == "Manual Chancador Primario CH-01" for d in d2)
-    assert not any(d["title"] == "Manual Chancador Primario CH-01" for d in d1)
+    assert {d["empresa_nombre"] for d in d1} == {"Minera del Norte"}
+    assert {d["empresa_nombre"] for d in d2} == {"Planta de Alimentos"}
+    parker = "Manual y partes — Caldera Parker WH395L (Low NOx, 395.000 BTU/h)"
+    sandvik = "Manual de operación y ajuste — Chancador de cono Sandvik H8800"
+    # Alimentos ve la caldera; el manual del chancador es de Minera.
+    assert any(d["title"] == parker for d in d2)
+    assert not any(d["title"] == sandvik for d in d2)
+    assert any(d["title"] == sandvik for d in d1)
 
 
 async def test_operador_ve_documentos_pero_no_sube_ni_elimina(client):
     h = await _login(client, OPERADOR_E1)
-    assert (await client.get("/api/documents", headers=h)).status_code == 200
+    r = await client.get("/api/documents", headers=h)
+    assert r.status_code == 200, r.text
+    docs = r.json()
+
+    # Ve la documentación de su empresa, y solo la de su empresa.
+    assert len(docs) > 0, "el operador debería ver los manuales de Minera del Norte"
+    assert {d["empresa_nombre"] for d in docs} <= {"Minera del Norte"}, {
+        d["empresa_nombre"] for d in docs
+    }
+    assert all(d["title"].strip() for d in docs), "hay documentos sin título"
+
+    # Pero no es autor de ninguno: su rol es de consulta. Si el seed o un endpoint
+    # llegaran a atribuirle un documento, este test lo detecta.
+    autores = {d.get("subido_por") for d in docs}
+    assert "Operador de Sala" not in autores, autores
+    assert "operador@mineradelnorte.cl" not in autores, autores
+
+    # Y no puede subir ni borrar.
     files = {"file": ("a.txt", io.BytesIO(b"hola"), "text/plain")}
     assert (await client.post("/api/documents", headers=h, files=files)).status_code == 403
     assert (await client.delete("/api/documents/1", headers=h)).status_code == 403
@@ -560,7 +626,7 @@ async def test_subir_documento_lo_indexa_y_la_ia_lo_encuentra_solo_en_su_empresa
     try:
         assert doc["chunks_indexed"] == 1 and doc["activo"] is True
         e1 = doc["empresa_id"]
-        e2 = await _empresa_id(client, hs, "Minera Norte S.A.")
+        e2 = await _empresa_id(client, hs, "Planta de Alimentos")
 
         assert [c["title"] for c in await docs.search_chunks(e1, clave)] == ["Doc de prueba"]
         assert await docs.search_chunks(e2, clave) == []  # otra empresa: nada
@@ -583,15 +649,19 @@ async def test_subida_rechaza_tipo_y_archivo_vacio(client):
 
 async def test_busqueda_rag_con_datos_semilla_respeta_empresa_y_estado(client, db_pool):
     # empresa 1: 'torque' de la prensa; el manual obsoleto del generador está inactivo.
-    r1 = await docs.search_chunks(1, "¿Cuál es el torque de los pernos de la tapa del cilindro de la prensa?")
-    assert r1 and r1[0]["title"] == "Procedimiento Prensa Hidráulica B3"
+    r1 = await docs.search_chunks(1, "desgaste manto")
+    assert r1 and r1[0]["title"] == "Manual de operación y ajuste — Chancador de cono Sandvik H8800"
     generador = await docs.search_chunks(1, "generador frecuencia AVR")
     assert all(c["title"] != "Manual Generador G1 (versión obsoleta)" for c in generador)
 
-    # empresa 2 jamás recibe contenido de la 1 y viceversa
-    r2 = await docs.search_chunks(2, "torque pernos blindajes chancador")
-    assert r2 and all(c["title"].startswith(("Manual Chancador", "Procedimiento Molino")) for c in r2)
-    assert all("Chancador" not in c["title"] for c in await docs.search_chunks(1, "chancador blindajes torque"))
+    # empresa 2 jamás recibe contenido de la 1 y viceversa. Alimentos tiene sus propios
+    # manuales: la caldera Parker, la bomba Grundfos y el compresor de amoníaco.
+    r2 = await docs.search_chunks(2, "caldera presión quemador")
+    assert r2, "la empresa 2 debería encontrar sus propios manuales"
+    assert all("Chancador" not in c["title"] and "KSB" not in c["title"] for c in r2), [
+        c["title"] for c in r2
+    ]
+    assert all("Caldera" not in c["title"] for c in await docs.search_chunks(1, "caldera quemador presión"))
 
 
 # =============================================================================

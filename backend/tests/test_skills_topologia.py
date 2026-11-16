@@ -74,7 +74,7 @@ async def _planta_con_dos_maquinas(client, ctx) -> int:
             "nombre": f"Planta Skill {ctx['marca']}",
             "maquinas": [
                 {
-                    "nombre": f"Compresor {ctx['marca']}",
+                    "nombre": f"Torno {ctx['marca']}",
                     "codigo": "COMP",
                     "disciplina": "Mecánica",
                     "sla_horas": 6,
@@ -130,7 +130,7 @@ async def test_listar_maquinas_planta_muestra_sla_y_costo(client, ctx):
 
     salida = await HERRAMIENTAS["listar_maquinas_planta"].ainvoke({"planta": f"Planta Skill {ctx['marca']}"})
 
-    assert f"Compresor {ctx['marca']}" in salida and "PRE" in salida
+    assert f"Torno {ctx['marca']}" in salida and "PRE" in salida
     assert "6 h" in salida and "| 50 |" in salida, "los valores cargados se muestran (tabla)"
     assert "| Máquina |" in salida, "el listado viene en tabla"
     assert salida.count("el general") == 2, "SLA y costo de la máquina sin valores: dos «el general»"
@@ -149,7 +149,7 @@ async def test_actualizar_parametros_maquina_respeta_empresa(client, ctx):
     ajenas = {t.name: t for t in crear_tools(empresa_id=2, usuario_id=OTRA_EMPRESA_ID, rol="admin")}
 
     salida = await ajenas["actualizar_parametros_maquina"].ainvoke(
-        {"nombre_maquina": f"Compresor {ctx['marca']}", "sla_horas": 1}
+        {"nombre_maquina": f"Torno {ctx['marca']}", "sla_horas": 1}
     )
 
     assert "No encontré" in salida
@@ -165,7 +165,7 @@ async def test_actualizar_parametros_maquina_requiere_permiso(client, ctx):
     tecnicas = {t.name: t for t in crear_tools(empresa_id=1, usuario_id=4, rol="tecnico")}
 
     salida = await tecnicas["actualizar_parametros_maquina"].ainvoke(
-        {"nombre_maquina": f"Compresor {ctx['marca']}", "sla_horas": 9}
+        {"nombre_maquina": f"Torno {ctx['marca']}", "sla_horas": 9}
     )
 
     assert salida == PERMISO_DENEGADO
@@ -180,7 +180,7 @@ async def test_actualizar_parametros_maquina_cambia_sla_y_costo(client, ctx):
     _, maquina_id = await _planta_con_dos_maquinas(client, ctx)
 
     propuesta = await HERRAMIENTAS["actualizar_parametros_maquina"].ainvoke(
-        {"nombre_maquina": f"Compresor {ctx['marca']}", "sla_horas": 8, "costo_inactividad_minuto": 120}
+        {"nombre_maquina": f"Torno {ctx['marca']}", "sla_horas": 8, "costo_inactividad_minuto": 120}
     )
 
     # 1) La tool solo redacta: propuesta parseable y la base SIN cambios.
@@ -205,7 +205,7 @@ async def test_actualizar_parametros_maquina_cambia_sla_y_costo(client, ctx):
         rol="admin",
     )
 
-    assert f"Actualicé «Compresor {ctx['marca']}»" in salida
+    assert f"Actualicé «Torno {ctx['marca']}»" in salida
     assert "6 h → 8 h" in salida, "antes → después del SLA"
     assert "50 /min → 120 /min" in salida, "antes → después del costo"
     fila = await fetch_one(
@@ -231,11 +231,11 @@ async def test_actualizar_parametros_aprobada_revalida_y_no_adivina(db_pool):
     """El write del gate revalida TODO: propuesta sin valores nuevos se descarta; la
     máquina se re-resuelve por CÓDIGO exacto y el permiso se vuelve a chequear."""
     # Sin valores: no hay nada que escribir.
-    salida = await actualizar_parametros_aprobada("PUMP-E4", None, None, empresa_id=1, usuario_id=ADMIN_ID, rol="admin")
+    salida = await actualizar_parametros_aprobada("BOM-001", None, None, empresa_id=1, usuario_id=ADMIN_ID, rol="admin")
     assert "no indicaba ningún valor" in salida
 
     # Fuera de rango: no escribe aunque llegue con «sí».
-    salida = await actualizar_parametros_aprobada("PUMP-E4", 99999.0, None, empresa_id=1, usuario_id=ADMIN_ID, rol="admin")
+    salida = await actualizar_parametros_aprobada("BOM-001", 99999.0, None, empresa_id=1, usuario_id=ADMIN_ID, rol="admin")
     assert "fuera de rango" in salida
 
     # Código que NO existe: no adivina, no escribe.
@@ -243,10 +243,10 @@ async def test_actualizar_parametros_aprobada_revalida_y_no_adivina(db_pool):
     assert "No encontré la máquina" in salida
 
     # Sin permiso: el gate vuelve a chequear el rol, no confía en el turno anterior.
-    salida = await actualizar_parametros_aprobada("PUMP-E4", 8.0, None, empresa_id=1, usuario_id=4, rol="tecnico")
+    salida = await actualizar_parametros_aprobada("BOM-001", 8.0, None, empresa_id=1, usuario_id=4, rol="tecnico")
     assert salida == PERMISO_DENEGADO
-    fila_antes = await fetch_one("SELECT sla_horas FROM maquina WHERE codigo = %(c)s", {"c": "PUMP-E4"})
-    fila = await fetch_one("SELECT sla_horas FROM maquina WHERE codigo = %(c)s", {"c": "PUMP-E4"})
+    fila_antes = await fetch_one("SELECT sla_horas FROM maquina WHERE codigo = %(c)s", {"c": "BOM-001"})
+    fila = await fetch_one("SELECT sla_horas FROM maquina WHERE codigo = %(c)s", {"c": "BOM-001"})
     assert float(fila["sla_horas"] or -1) == float(fila_antes["sla_horas"] or -1), "sin permiso ni con «sí» no cambia nada"
 
 
@@ -254,7 +254,7 @@ def test_la_propuesta_de_parametros_parsea_redonda():
     """Round-trip del texto: lo que redacta la tool es EXACTO lo que parsea el gate
     (con el SLA intacto y el campo no tocado vacío)."""
     texto = _texto_propuesta_parametros(
-        {"nombre": "Pump E4", "codigo": "PUMP-E4", "planta": "Planta Central San Bernardo"},
+        {"nombre": "Bomba de pulpa KSB", "codigo": "BOM-001", "planta": "Planta de Vapor"},
         {"sla_horas": 6, "costo_inactividad_minuto": None},
         {"sla_horas": 8.0},
     )
@@ -262,7 +262,7 @@ def test_la_propuesta_de_parametros_parsea_redonda():
     assert texto.startswith(_PREFIJO_PROPUESTA_PARAMETROS)
     datos = _parsear_propuesta_parametros(texto)
     assert datos["tipo"] == "parametros"
-    assert datos["codigo"] == "PUMP-E4" and datos["nombre"] == "Pump E4"
+    assert datos["codigo"] == "BOM-001" and datos["nombre"] == "Bomba de pulpa KSB"
     assert datos["sla_horas"] == 8.0
     assert datos["costo_inactividad_minuto"] is None, "costo no tocado = sin cambio"
 
@@ -579,7 +579,7 @@ async def test_el_grafo_crea_planta_con_confirmacion(db_pool, monkeypatch):
 
 def _propuesta_parametros() -> str:
     return _texto_propuesta_parametros(
-        {"nombre": "Pump E4", "codigo": "PUMP-E4", "planta": "Planta Candado SLA"},
+        {"nombre": "Bomba de pulpa KSB", "codigo": "BOM-001", "planta": "Planta Candado SLA"},
         {"sla_horas": 6, "costo_inactividad_minuto": 1000},
         {"sla_horas": 8.0},
     )
@@ -593,14 +593,14 @@ async def test_el_grafo_no_cambia_parametros_sin_confirmacion(db_pool, monkeypat
     modelo = _LLMFalso()
     grafo = crear_grafo(empresa_id=1, llm=modelo, usuario_id=ADMIN_ID, rol="admin")
 
-    fila_antes = await fetch_one("SELECT sla_horas FROM maquina WHERE codigo = 'PUMP-E4'")
+    fila_antes = await fetch_one("SELECT sla_horas FROM maquina WHERE codigo = 'BOM-001'")
     estado = await grafo.ainvoke(
         _entrada([AIMessage(content=_propuesta_parametros()), HumanMessage(content="mmm, déjame pensarlo")])
     )
 
     final = estado["messages"][-1]
     assert final.content == _propuesta_parametros(), "la propuesta se re-emite byte a byte"
-    fila = await fetch_one("SELECT sla_horas FROM maquina WHERE codigo = 'PUMP-E4'")
+    fila = await fetch_one("SELECT sla_horas FROM maquina WHERE codigo = 'BOM-001'")
     assert fila["sla_horas"] == fila_antes["sla_horas"], "sin el «sí» del usuario no se escribe nada"
 
 
@@ -615,11 +615,11 @@ async def test_el_grafo_cambia_parametros_con_confirmacion(db_pool, monkeypatch)
         estado = await grafo.ainvoke(_entrada([AIMessage(content=_propuesta_parametros()), HumanMessage(content="sí")]))
 
         final = estado["messages"][-1]
-        assert "Actualicé «Pump E4»" in final.content and "6 h → 8 h" in final.content
-        fila = await fetch_one("SELECT sla_horas FROM maquina WHERE codigo = 'PUMP-E4'")
+        assert "Actualicé «Bomba de pulpa KSB»" in final.content and "6 h → 8 h" in final.content
+        fila = await fetch_one("SELECT sla_horas FROM maquina WHERE codigo = 'BOM-001'")
         assert float(fila["sla_horas"]) == 8
     finally:
-        await execute("UPDATE maquina SET sla_horas = 6 WHERE codigo = 'PUMP-E4'")
+        await execute("UPDATE maquina SET sla_horas = 6 WHERE codigo = 'BOM-001'")
 
 
 # =============================================================================

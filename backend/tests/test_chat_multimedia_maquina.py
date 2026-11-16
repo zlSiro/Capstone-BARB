@@ -21,7 +21,7 @@ SESION = "99999999-9999-9999-9999-999999999999"
 FICHA = {
     "maquina_id": 5,
     "nombre": "Compressor A1",
-    "codigo": "COMP-A1",
+    "codigo": "CHA-001",
     "planta": "Planta Central",
     "disciplina": "Neumática",
 }
@@ -153,7 +153,7 @@ def _system(**payload) -> str:
 def test_prompt_con_maquina_incluye_ficha_y_regla_de_discrepancia():
     system = _system(maquina=FICHA, context="[Documento: Manual A1]\nTorque 85 Nm.")
 
-    assert "EQUIPO SELECCIONADO: Compressor A1 (COMP-A1) — planta Planta Central, disciplina Neumática" in system
+    assert "EQUIPO SELECCIONADO: Compressor A1 (CHA-001) — planta Planta Central, disciplina Neumática" in system
     assert "DISCREPANCIA IMAGEN-EQUIPO" in system
     assert "otro equipo" in system and "continúa el análisis con el equipo seleccionado" in system
     assert "DOCUMENTACIÓN DE LA EMPRESA:\n[Documento: Manual A1]" in system

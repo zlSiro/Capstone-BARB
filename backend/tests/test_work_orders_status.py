@@ -5,14 +5,14 @@ import pytest
 
 from barb.core.db import execute, fetch_all, fetch_one
 
-ADMIN = {"email": "admin@barb.com", "password": "admin123"}
-SUPERVISOR = {"email": "supervisor1@planta.com", "password": "super123"}
-ENGINEER = {"email": "engineer1@planta.com", "password": "engineer123"}
-TECNICO = {"email": "carlos@planta.com", "password": "tecnico123"}
-OPERADOR = {"email": "operador1@planta.com", "password": "operador123"}
-GERENTE = {"email": "gerente1@planta.com", "password": "gerente123"}
-TECNICO_AJENO = {"email": "ana@planta.com", "password": "tecnico123"}
-OTRA_EMPRESA = {"email": "supervisor@mineranorte.cl", "password": "minera123"}
+ADMIN = {"email": "admin@mineradelnorte.cl", "password": "mineria123"}
+SUPERVISOR = {"email": "supervisor@mineradelnorte.cl", "password": "mineria123"}
+ENGINEER = {"email": "engineer@mineradelnorte.cl", "password": "mineria123"}
+TECNICO = {"email": "tecnico1@mineradelnorte.cl", "password": "mineria123"}
+OPERADOR = {"email": "operador@mineradelnorte.cl", "password": "mineria123"}
+GERENTE = {"email": "gerente@mineradelnorte.cl", "password": "mineria123"}
+TECNICO_AJENO = {"email": "tecnico2@mineradelnorte.cl", "password": "mineria123"}
+OTRA_EMPRESA = {"email": "supervisor@alimentos.cl", "password": "alimentos123"}
 
 MARCA = "Test HU-09"
 
@@ -84,7 +84,7 @@ async def test_cambio_queda_auditado_con_usuario_y_timestamp(client, ot):
     primero = history[1]
     assert primero["from_status"] == "pending"
     assert primero["comment"] == "Se inicia el trabajo"
-    assert primero["user_name"] == "Supervisor Turno A"
+    assert primero["user_name"] == "Javiera Soto"
     assert primero["user_role"] == "supervisor"
     assert primero["changed_at"].endswith("Z")
 

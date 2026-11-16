@@ -11,7 +11,7 @@ import pytest
 
 from barb.core.db import fetch_one
 
-GERENTE_E2 = ("gerente@mineranorte.cl", "minera123")
+GERENTE_E2 = ("gerente@alimentos.cl", "alimentos123")
 
 
 async def _login(client, creds) -> dict:

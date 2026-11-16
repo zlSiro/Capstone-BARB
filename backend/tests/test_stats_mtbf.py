@@ -23,7 +23,7 @@ from __future__ import annotations
 from barb.core.db import fetch_all
 from barb.routers import stats
 
-GERENTE_E1 = ("gerente1@planta.com", "gerente123")
+GERENTE_E1 = ("gerente@mineradelnorte.cl", "mineria123")
 
 # --- Identificación de consultas por ALIAS de columna ------------------------
 # NO usar substrings como "corrective": esa palabra aparece en la consulta de MTBF y

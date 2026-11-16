@@ -1,165 +1,87 @@
-"""Seed inicial de la base de datos BARB.
+"""Seed oficial de BARB: datos reales de las tres empresas industriales.
 
-Idempotente: si la tabla `usuario` ya tiene filas, no hace nada. Pensado
-para correr después de `alembic upgrade head`:
+Aplica, en orden, los tres archivos de `backend/seeds/`:
 
+    01_estructura.sql   precondiciones (extensión `vector` + chequeo del esquema)
+    02_maestros.sql     empresas, usuarios, plantas, disciplinas, máquinas, sensores y topología
+    03_operativos.sql   OTs de 24 meses, repuestos, mantenimiento, documentos y chat
+
+Por qué son tres y no uno: la estructura la gobierna Alembic, el catálogo cambia poco y la
+operación se regenera seguido. Separarlos permite re-aplicar solo la capa que hace falta.
+
+Los seeds son **idempotentes**: se apoyan en claves naturales (RUT, email, código de
+máquina/sensor, `numero_ot`), así que correr esto dos veces no duplica nada.
+
+Requisito: la base migrada.
+
+    docker compose up -d db
+    cd backend
+    uv run alembic upgrade head
     uv run python scripts/seed.py
 
-Reemplaza la seed que el backend anterior hacía en el startup de
-FastAPI (`backend/main.py`) ejecutando `initScripts/01_tablas.sql` completo
-cada vez que faltaba la tabla `usuario`.
+Historial: antes este script aplicaba `seed_data.sql`, `seed_multiempresa.sql` y el
+historial sintético de `seed_history.py`. Los tres quedaron obsoletos cuando el seed
+realista reemplazó el catálogo genérico por equipos reales con manuales verificables.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-# Historial sintético de 24 meses (CGBIDA-408). Se importa aquí para que el seed
-# completo lo incluya; también se puede ejecutar solo con `scripts/seed_history.py`.
-from seed_history import poblar_historial  # noqa: E402
-
 from barb.core.db import close_pool, open_pool, pool  # noqa: E402
-from barb.core.security import hash_password  # noqa: E402
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("barb.seed")
 
-# El historial sintético se puede omitir con esta variable, para sembrar solo el
-# catálogo y las OTs originales (por ejemplo en un entorno de pruebas).
-SKIP_HISTORY_ENV = "BARB_SKIP_SYNTHETIC_HISTORY"
+SEEDS_DIR = Path(__file__).resolve().parent.parent / "seeds"
 
-SEED_SQL_PATH = Path(__file__).resolve().parent.parent / "seeds" / "seed_data.sql"
-# Datos ficticios multi-empresa (super_usuario, más empresas, OTs y documentación por empresa).
-SEED_MULTIEMPRESA_PATH = Path(__file__).resolve().parent.parent / "seeds" / "seed_multiempresa.sql"
-SUPER_EMAIL = "super@barb.com"
-
-DEFAULT_ADMIN_EMAIL = "admin@barb.com"
-DEFAULT_ADMIN_PASSWORD = "admin123"
-DEFAULT_ADMIN_NOMBRE = "Admin BARB"
+# El orden importa: 02 necesita el esquema que verifica 01, y 03 necesita el catálogo de 02.
+ARCHIVOS = (
+    "01_estructura.sql",
+    "02_maestros.sql",
+    "03_operativos.sql",
+)
 
 
-async def _usuario_count(conn) -> int:
+async def _aplicar(conn, nombre: str) -> None:
+    """Ejecuta un archivo completo, tal como lo haría `psql -f`.
+
+    Los archivos traen su propio `BEGIN; ... COMMIT;` y cientos de sentencias, así que
+    la conexión va en **autocommit**: sin eso se abriría una transacción implícita y el
+    `COMMIT` del archivo cerraría la nuestra, dejando el `DISABLE TRIGGER` sin control.
+    """
+    ruta = SEEDS_DIR / nombre
+    if not ruta.exists():
+        raise FileNotFoundError(f"Falta el seed {ruta}")
+
+    sql = ruta.read_text(encoding="utf-8")
     async with conn.cursor() as cur:
-        await cur.execute("SELECT COUNT(*) AS total FROM usuario")
-        row = await cur.fetchone()
-        return int(row["total"])
-
-
-async def _run_seed_sql(conn) -> None:
-    sql_script = SEED_SQL_PATH.read_text(encoding="utf-8")
-    async with conn.cursor() as cur:
-        await cur.execute(sql_script)
-    logger.info("Datos semilla insertados desde %s", SEED_SQL_PATH.name)
-
-
-async def _ensure_multiempresa_seed(conn) -> None:
-    """Aplica seed_multiempresa.sql una sola vez (se detecta por la existencia del super_usuario)."""
-    async with conn.cursor() as cur:
-        await cur.execute("SELECT 1 FROM usuario WHERE lower(email) = %(email)s", {"email": SUPER_EMAIL})
-        if await cur.fetchone():
-            return
-        await cur.execute(SEED_MULTIEMPRESA_PATH.read_text(encoding="utf-8"))
-    logger.info("Datos multi-empresa insertados desde %s", SEED_MULTIEMPRESA_PATH.name)
-
-
-async def _ensure_default_admin(conn) -> None:
-    async with conn.cursor() as cur:
-        await cur.execute(
-            "SELECT usuario_id FROM usuario WHERE lower(email) = lower(%(email)s) LIMIT 1",
-            {"email": DEFAULT_ADMIN_EMAIL},
-        )
-        existing = await cur.fetchone()
-        if existing:
-            return
-
-        await cur.execute("SELECT empresa_id FROM empresa ORDER BY empresa_id LIMIT 1")
-        empresa = await cur.fetchone()
-        empresa_id = empresa["empresa_id"] if empresa else None
-        if empresa_id is None:
-            await cur.execute(
-                "INSERT INTO empresa (nombre) VALUES (%(nombre)s) RETURNING empresa_id",
-                {"nombre": "Planta Demo BARB"},
-            )
-            empresa_id = (await cur.fetchone())["empresa_id"]
-
-        await cur.execute(
-            """
-            INSERT INTO usuario (empresa_id, nombre, email, password_hash, rol)
-            VALUES (%(empresa_id)s, %(nombre)s, %(email)s, %(password_hash)s, 'admin')
-            """,
-            {
-                "empresa_id": empresa_id,
-                "nombre": DEFAULT_ADMIN_NOMBRE,
-                "email": DEFAULT_ADMIN_EMAIL,
-                "password_hash": hash_password(DEFAULT_ADMIN_PASSWORD),
-            },
-        )
-    logger.info("Usuario administrador por defecto creado (%s).", DEFAULT_ADMIN_EMAIL)
-
-
-async def _ensure_passwords_hashed(conn) -> int:
-    async with conn.cursor() as cur:
-        await cur.execute("SELECT usuario_id, password_hash FROM usuario")
-        usuarios = await cur.fetchall()
-        actualizados = 0
-        for u in usuarios:
-            stored = (u.get("password_hash") or "")
-            if not stored.strip().startswith("$2"):
-                hashed = hash_password(stored)
-                await cur.execute(
-                    "UPDATE usuario SET password_hash = %(hashed)s WHERE usuario_id = %(uid)s",
-                    {"hashed": hashed, "uid": u["usuario_id"]},
-                )
-                actualizados += 1
-    return actualizados
+        # Sin parámetros, psycopg usa el protocolo simple, que acepta varios comandos
+        # en una sola llamada: es lo que permite enviar el archivo entero.
+        await cur.execute(sql)
+    logger.info("Aplicado %s", nombre)
 
 
 async def main() -> None:
     await open_pool()
     try:
         async with pool.connection() as conn:
-            count = await _usuario_count(conn)
-            if count == 0:
-                if not SEED_SQL_PATH.exists():
-                    logger.warning("No se encontró %s; solo se creará el admin por defecto.", SEED_SQL_PATH)
-                else:
-                    async with conn.transaction():
-                        await _run_seed_sql(conn)
-
-            async with conn.transaction():
-                await _ensure_default_admin(conn)
-
-            async with conn.transaction():
-                await _ensure_multiempresa_seed(conn)
-
-            # Historial sintético de 24 meses (CGBIDA-408). Idempotente: si ya hay filas
-            # con el prefijo SYN-, no inserta nada.
-            #
-            # Para borrarlo por completo:
-            #     DELETE FROM orden_trabajo WHERE numero_ot LIKE 'SYN-%';
-            if os.getenv(SKIP_HISTORY_ENV):
-                logger.info("Historial sintético omitido por %s.", SKIP_HISTORY_ENV)
-            else:
-                async with conn.transaction():
-                    await poblar_historial(conn)
-
-            async with conn.transaction():
-                actualizados = await _ensure_passwords_hashed(conn)
-                if actualizados:
-                    logger.info("%s contraseña(s) hasheadas.", actualizados)
-
-        logger.info("Seed completo.")
+            # En conexiones async el atributo es de solo lectura: se cambia con el setter.
+            await conn.set_autocommit(True)
+            for nombre in ARCHIVOS:
+                await _aplicar(conn, nombre)
+        logger.info("Seed completo: 3 empresas industriales, 11 máquinas, 528 OTs.")
     finally:
         await close_pool()
 
 
 if __name__ == "__main__":
     if sys.platform == "win32":
+        # psycopg async no funciona sobre el ProactorEventLoop de Windows.
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     asyncio.run(main())
