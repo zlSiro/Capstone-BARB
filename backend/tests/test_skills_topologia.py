@@ -231,11 +231,11 @@ async def test_actualizar_parametros_aprobada_revalida_y_no_adivina(db_pool):
     """El write del gate revalida TODO: propuesta sin valores nuevos se descarta; la
     máquina se re-resuelve por CÓDIGO exacto y el permiso se vuelve a chequear."""
     # Sin valores: no hay nada que escribir.
-    salida = await actualizar_parametros_aprobada("PUMP-E4", None, None, empresa_id=1, usuario_id=ADMIN_ID, rol="admin")
+    salida = await actualizar_parametros_aprobada("BOM-001", None, None, empresa_id=1, usuario_id=ADMIN_ID, rol="admin")
     assert "no indicaba ningún valor" in salida
 
     # Fuera de rango: no escribe aunque llegue con «sí».
-    salida = await actualizar_parametros_aprobada("PUMP-E4", 99999.0, None, empresa_id=1, usuario_id=ADMIN_ID, rol="admin")
+    salida = await actualizar_parametros_aprobada("BOM-001", 99999.0, None, empresa_id=1, usuario_id=ADMIN_ID, rol="admin")
     assert "fuera de rango" in salida
 
     # Código que NO existe: no adivina, no escribe.
@@ -243,10 +243,10 @@ async def test_actualizar_parametros_aprobada_revalida_y_no_adivina(db_pool):
     assert "No encontré la máquina" in salida
 
     # Sin permiso: el gate vuelve a chequear el rol, no confía en el turno anterior.
-    salida = await actualizar_parametros_aprobada("PUMP-E4", 8.0, None, empresa_id=1, usuario_id=4, rol="tecnico")
+    salida = await actualizar_parametros_aprobada("BOM-001", 8.0, None, empresa_id=1, usuario_id=4, rol="tecnico")
     assert salida == PERMISO_DENEGADO
-    fila_antes = await fetch_one("SELECT sla_horas FROM maquina WHERE codigo = %(c)s", {"c": "PUMP-E4"})
-    fila = await fetch_one("SELECT sla_horas FROM maquina WHERE codigo = %(c)s", {"c": "PUMP-E4"})
+    fila_antes = await fetch_one("SELECT sla_horas FROM maquina WHERE codigo = %(c)s", {"c": "BOM-001"})
+    fila = await fetch_one("SELECT sla_horas FROM maquina WHERE codigo = %(c)s", {"c": "BOM-001"})
     assert float(fila["sla_horas"] or -1) == float(fila_antes["sla_horas"] or -1), "sin permiso ni con «sí» no cambia nada"
 
 
@@ -623,11 +623,11 @@ async def test_el_grafo_no_reintenta_tras_fallo_de_creacion(db_pool, monkeypatch
 # =============================================================================
 
 
-def _propuesta_parametros() -> str:
+def _propuesta_parametros(actual: float = 6, nuevo: float = 8.0) -> str:
     return _texto_propuesta_parametros(
-        {"nombre": "Pump E4", "codigo": "PUMP-E4", "planta": "Planta Candado SLA"},
-        {"sla_horas": 6, "costo_inactividad_minuto": 1000},
-        {"sla_horas": 8.0},
+        {"nombre": "Bomba de pulpa KSB", "codigo": "BOM-001", "planta": "Planta Candado SLA"},
+        {"sla_horas": actual, "costo_inactividad_minuto": 1000},
+        {"sla_horas": nuevo},
     )
 
 
@@ -639,14 +639,14 @@ async def test_el_grafo_no_cambia_parametros_sin_confirmacion(db_pool, monkeypat
     modelo = _LLMFalso()
     grafo = crear_grafo(empresa_id=1, llm=modelo, usuario_id=ADMIN_ID, rol="admin")
 
-    fila_antes = await fetch_one("SELECT sla_horas FROM maquina WHERE codigo = 'PUMP-E4'")
+    fila_antes = await fetch_one("SELECT sla_horas FROM maquina WHERE codigo = 'BOM-001'")
     estado = await grafo.ainvoke(
         _entrada([AIMessage(content=_propuesta_parametros()), HumanMessage(content="mmm, déjame pensarlo")])
     )
 
     final = estado["messages"][-1]
     assert final.content == _propuesta_parametros(), "la propuesta se re-emite byte a byte"
-    fila = await fetch_one("SELECT sla_horas FROM maquina WHERE codigo = 'PUMP-E4'")
+    fila = await fetch_one("SELECT sla_horas FROM maquina WHERE codigo = 'BOM-001'")
     assert fila["sla_horas"] == fila_antes["sla_horas"], "sin el «sí» del usuario no se escribe nada"
 
 
@@ -657,22 +657,24 @@ async def test_el_grafo_cambia_parametros_con_confirmacion(db_pool, monkeypatch)
     modelo = _LLMFalso()
     grafo = crear_grafo(empresa_id=1, llm=modelo, usuario_id=ADMIN_ID, rol="admin")
 
-    # El «antes» se lee de la base: el seed/backfill define el SLA inicial y hardcodearlo
-    # acoplaba el test a una base local concreta (6 h) en vez de al comportamiento.
-    antes = await fetch_one("SELECT sla_horas FROM maquina WHERE codigo = 'PUMP-E4'")
-    sla_antes = antes["sla_horas"]
+    # El «antes» se lee de la base: el seed define el SLA inicial y hardcodearlo acoplaba
+    # el test a una base concreta en vez de al comportamiento. Con el catálogo real
+    # BOM-001 ya nace en 8 h, así que proponemos 10 h (sla_antes + 2).
+    antes = await fetch_one("SELECT sla_horas FROM maquina WHERE codigo = 'BOM-001'")
+    sla_antes = float(antes["sla_horas"])
+    sla_nuevo = sla_antes + 2
 
     try:
-        estado = await grafo.ainvoke(_entrada([AIMessage(content=_propuesta_parametros()), HumanMessage(content="sí")]))
+        estado = await grafo.ainvoke(_entrada([AIMessage(content=_propuesta_parametros(sla_antes, sla_nuevo)), HumanMessage(content="sí")]))
 
         final = estado["messages"][-1]
-        assert "Actualicé «Pump E4»" in final.content
-        assert f"{float(sla_antes):g} h → 8 h" in final.content
-        fila = await fetch_one("SELECT sla_horas FROM maquina WHERE codigo = 'PUMP-E4'")
-        assert float(fila["sla_horas"]) == 8
+        assert "Actualicé «Bomba de pulpa KSB»" in final.content
+        assert f"{sla_antes:g} h → {sla_nuevo:g} h" in final.content
+        fila = await fetch_one("SELECT sla_horas FROM maquina WHERE codigo = 'BOM-001'")
+        assert float(fila["sla_horas"]) == sla_nuevo
     finally:
         await execute(
-            "UPDATE maquina SET sla_horas = %(sla)s WHERE codigo = 'PUMP-E4'",
+            "UPDATE maquina SET sla_horas = %(sla)s WHERE codigo = 'BOM-001'",
             {"sla": sla_antes},
         )
 

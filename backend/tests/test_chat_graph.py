@@ -205,20 +205,20 @@ async def test_la_tool_encuentra_una_maquina_real_y_cuenta_sus_ots(db_pool):
     ]
 
     consultar = next(t for t in tools if t.name == "consultar_ots_maquina")
-    salida = await consultar.ainvoke({"nombre_maquina": "Compressor A1"})
+    salida = await consultar.ainvoke({"nombre_maquina": "Bomba de pulpa KSB"})
 
-    assert "Compressor A1" in salida
+    assert "Bomba de pulpa KSB" in salida
     assert "Órdenes de trabajo abiertas:" in salida
 
 
 @pytest.mark.asyncio
 async def test_la_tool_no_ve_maquinas_de_otra_empresa(db_pool):
     """El aislamiento no depende de lo que escriba el modelo: va en la clausura."""
-    maquinas_e1 = await _buscar_maquinas(1, "Compressor A1")
-    assert maquinas_e1, "el seed debería tener el Compressor A1 en la empresa 1"
+    maquinas_e1 = await _buscar_maquinas(1, "Bomba de pulpa KSB")
+    assert maquinas_e1, "el seed debería tener la bomba en la empresa 1"
 
     # La misma búsqueda desde otra empresa no debe encontrarla.
-    maquinas_ajenas = await _buscar_maquinas(999, "Compressor A1")
+    maquinas_ajenas = await _buscar_maquinas(999, "Bomba de pulpa KSB")
     assert maquinas_ajenas == []
 
 
@@ -226,11 +226,11 @@ async def test_la_tool_no_ve_maquinas_de_otra_empresa(db_pool):
 async def test_identificar_maquina_exige_mencion_exacta(db_pool):
     """Para etiquetar una sesión no basta el parecido difuso: hace falta código o nombre."""
     maquina = await identificar_maquina(
-        1, "Necesito saber por qué la bomba PUMP-E4 está vibrando demasiado"
+        1, "Necesito saber por qué la bomba BOM-001 está vibrando demasiado"
     )
     assert maquina is not None
-    assert maquina["codigo"] == "PUMP-E4"
-    assert maquina["disciplina"] == "Hidráulica"
+    assert maquina["codigo"] == "BOM-001"
+    assert maquina["disciplina"] == "Mecánica"
 
     # «prensa B3» se parece a «Prensa» (otra planta), pero no es su nombre ni su código.
     assert await identificar_maquina(1, "La prensa B3 pierde presión") is None
@@ -435,26 +435,26 @@ async def test_la_tool_sugiere_alternativas_cuando_no_encuentra(db_pool):
     assert "No encontré" in salida
     assert "Estas son las disponibles" in salida
     # Las sugerencias son equipos reales de la empresa, con su código.
-    assert "Compressor A1 (COMP-A1)" in salida
+    assert "Bomba de pulpa KSB (BOM-001)" in salida
 
 
 @pytest.mark.asyncio
 async def test_las_sugerencias_priorizan_las_maquinas_mencionadas(db_pool):
     """
-    «Tengo un problema con el compresor» debe ofrecer los compresores primero.
+    «Tengo un problema con la bomba» debe ofrecer las bombas primero,
+    respetando la priorización por mención sobre el listado alfabérico.
 
-    El listado de respaldo era alfabético: a quien preguntaba por un compresor se le
-    ofrecían antes un analizador de gases, un brazo robótico o una cinta transportadora.
+    Con el catálogo nuevo, empresa 1 = Minera del Norte: CHA-001, COR-001, MOL-001, BOM-001.
     """
     tools = crear_tools(empresa_id=1)
-    salida = await tools[0].ainvoke({"nombre_maquina": "Tengo un problema con el compresor"})
+    salida = await tools[0].ainvoke({"nombre_maquina": "Tengo un problema con la bomba"})
 
     assert "No encontré" in salida
     assert "Estas son las disponibles" in salida
-    pos_compresor = salida.find("Compressor A1 (COMP-A1)")
+    pos_bomba = salida.find("Bomba de pulpa KSB (BOM-001)")
     pos_ajena = salida.find("Analizador de Gases")
-    assert pos_compresor != -1, salida[:300]
-    assert pos_ajena == -1 or pos_compresor < pos_ajena
+    assert pos_bomba != -1, salida[:300]
+    assert pos_ajena == -1 or pos_bomba < pos_ajena
 
 
 def test_las_alternativas_no_repiten_la_misma_maquina():

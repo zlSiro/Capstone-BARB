@@ -87,11 +87,11 @@ async def test_la_tool_propone_sin_registrar(db_pool):
     descripcion = f"Vibración anormal en el cojinete, desde la mañana ({uuid.uuid4().hex[:6]})"
 
     salida = await _herramientas_avisos()["proponer_aviso_falla"].ainvoke(
-        {"nombre_maquina": "Pump E4", "descripcion": descripcion, "severidad": "alta"}
+        {"nombre_maquina": "BOM-001", "descripcion": descripcion, "severidad": "alta"}
     )
 
     assert salida.startswith(_PREFIJO_PROPUESTA_AVISO), "la propuesta termina el turno con el texto EXACTO"
-    assert "- **codigo:** PUMP-E4" in salida
+    assert "- **codigo:** BOM-001" in salida
     fila = await fetch_one(
         "SELECT aviso_falla_id FROM aviso_falla WHERE descripcion = %(d)s",
         {"d": descripcion},
@@ -115,13 +115,13 @@ async def test_la_tool_exige_15_caracteres(db_pool):
     herramientas = _herramientas_avisos()
 
     corta = await herramientas["proponer_aviso_falla"].ainvoke(
-        {"nombre_maquina": "Pump E4", "descripcion": "se paró solo", "severidad": "media"}
+        {"nombre_maquina": "BOM-001", "descripcion": "se paró solo", "severidad": "media"}
     )
     assert "15" in corta
     assert not corta.startswith(_PREFIJO_PROPUESTA_AVISO)
 
     suficiente = await herramientas["proponer_aviso_falla"].ainvoke(
-        {"nombre_maquina": "Pump E4", "descripcion": "se paró y no arranca", "severidad": "media"}
+        {"nombre_maquina": "BOM-001", "descripcion": "se paró y no arranca", "severidad": "media"}
     )
     assert suficiente.startswith(_PREFIJO_PROPUESTA_AVISO)
 
@@ -155,7 +155,7 @@ async def test_la_tool_acepta_una_descripcion_armada_entre_varios_mensajes(db_po
     )
     salida = await herramientas["proponer_aviso_falla"].ainvoke(
         {
-            "nombre_maquina": "Pump E4",
+            "nombre_maquina": "BOM-001",
             "descripcion": "no arranca desde ayer",
             "severidad": "media",
         }
@@ -226,7 +226,7 @@ async def test_una_severidad_vieja_no_contamina_la_correccion(db_pool):
     )
     salida = await herramientas["proponer_aviso_falla"].ainvoke(
         {
-            "nombre_maquina": "Pump E4",
+            "nombre_maquina": "BOM-001",
             "descripcion": "Se paró solo y no arranca desde ayer",
             "severidad": "media",
         }
@@ -359,7 +359,11 @@ async def test_el_grafo_registra_aviso_con_confirmacion(db_pool):
 
     try:
         estado = await grafo.ainvoke(
-            _entrada([AIMessage(content=_texto_aviso_para_pump(descripcion)), HumanMessage(content="sí, dale")])
+            _entrada([AIMessage(content=_texto_propuesta_aviso(
+                {"nombre": "Bomba de pulpa KSB", "codigo": "BOM-001", "planta": None},
+                descripcion,
+                "medium",
+            )), HumanMessage(content="sí, dale")])
         )
 
         final = estado["messages"][-1]
