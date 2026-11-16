@@ -15,7 +15,7 @@ from unittest.mock import patch
 import pytest
 from fastapi import HTTPException
 
-from barb.core.db import fetch_all, fetch_one, execute
+from barb.core.db import actor_usuario_id, execute, fetch_all, fetch_one
 from barb.core.permissions import ACCIONES, RUTAS, puede_acceder_ruta, puede_ejecutar_accion, resolver_empresa
 from barb.core.rate_limit import chat_rate_limiter
 from barb.core.security import get_current_user
@@ -350,9 +350,24 @@ async def test_super_crea_edita_suspende_y_elimina_empresa_con_gerente_inicial(c
             "DELETE FROM auditoria_cambio WHERE tabla = 'empresa' AND registro_id::text = %(e)s::text",
             {"e": eid},
         )
-        # El 409 con dependencias ya está cubierto arriba. Aquí solo se limpia lo que se pueda:
-        # la API no borra la empresa si quedan filas asociadas y ese comportamiento es el correcto.
-        assert (await client.delete(f"/api/empresas/{eid}", headers=hs)).status_code in (204, 409)
+        # El 409 con dependencias ya está cubierto arriba. Borrar por la API no sirve para
+        # limpiar: con un usuario en sesión, `trg_transaccion` inserta en `transacciones` una
+        # fila con el `empresa_id` que se está borrando y la FK la rechaza (409 siempre). Por
+        # eso se borra por SQL, sin usuario en contexto (el trigger no registra nada), y se
+        # verifica que la empresa de prueba no quede en la base. El actor es un ContextVar que
+        # la última petición deja puesto en este contexto: se anula mientras dura la limpieza.
+        token = actor_usuario_id.set(None)
+        try:
+            await execute("DELETE FROM usuario WHERE empresa_id = %(e)s", {"e": eid})
+            await execute("DELETE FROM empresa WHERE empresa_id = %(e)s", {"e": eid})
+            # `trg_auditar_empresa` deja la fila del propio DELETE: se purga igual que la anterior.
+            await execute(
+                "DELETE FROM auditoria_cambio WHERE tabla = 'empresa' AND registro_id::text = %(e)s::text",
+                {"e": eid},
+            )
+        finally:
+            actor_usuario_id.reset(token)
+        assert await fetch_one("SELECT 1 FROM empresa WHERE empresa_id = %(e)s", {"e": eid}) is None
 
 
 # =============================================================================
