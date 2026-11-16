@@ -93,6 +93,33 @@ describe('MaquinaSelectorComponent (HU-23)', () => {
     expect(el.querySelector('[data-testid="maquina-vacio"]')).not.toBeNull();
   });
 
+  it('tolera la ortografía del inglés: «compresor» encuentra «Compressor A1»', () => {
+    abrir();
+    escribir('compresor');
+
+    // El seed y el catálogo dicen «Compressor» (doble ese); quien escribe en español
+    // teclea «compresor» y antes veía la lista vacía.
+    expect(opciones().map((o) => o.textContent?.trim())).toEqual(['Compressor A1 (COMP-A1)']);
+  });
+
+  it('acepta prefijos y no arrastra equipos por una sola letra de diferencia en palabras cortas', () => {
+    abrir();
+
+    escribir('comp');
+    expect(opciones()).toHaveLength(1);
+
+    escribir('sag');
+    expect(opciones().map((o) => o.textContent?.trim())).toEqual(['Molino SAG (SAG-1)']);
+
+    // «pump» vs «pomp» difiere en una letra, pero con 4 letras la tolerancia aplica.
+    escribir('pomp');
+    expect(opciones()).toHaveLength(1);
+
+    // «a1» no debe traer «b1»: por debajo de 3 letras no hay tolerancia.
+    escribir('b1');
+    expect(opciones()).toHaveLength(0);
+  });
+
   it('elegir con el clic fija el valor, muestra su etiqueta y cierra la lista', () => {
     abrir();
     opciones()[2].click(); // Pump E4

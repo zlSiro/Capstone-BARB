@@ -24,6 +24,7 @@ from __future__ import annotations
 import difflib
 import logging
 import re
+import string
 import unicodedata
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -93,6 +94,35 @@ def _cobertura(consulta: list[str], tokens: list[str]) -> float:
     return hallados / len(utiles)
 
 
+def _nucleo(token: str) -> str:
+    """Token sin signos en los extremos: «d1!!!» → «d1», «(comp-a1)» → «comp-a1»."""
+    return token.strip(string.punctuation)
+
+
+def _es_identificador(token: str) -> bool:
+    """Token que mezcla letras y dígitos («a1», «b3», «xyz-99»): el distintivo del equipo.
+
+    Los números sueltos («sector 2») no cuentan: son ruido de la frase, no un código.
+    """
+    return any(ch.isalpha() for ch in token) and any(ch.isdigit() for ch in token)
+
+
+def _coincide_identificador(ident: str, parte: str) -> bool:
+    """True si el distintivo de la consulta aparece en el nombre/código de la máquina.
+
+    Admite que vaya pegado al nombre («compressora1» vs «a1») y tolera erratas
+    («compresr a1» → el distintivo «a1» coincide exacto).
+    """
+    if len(parte) < 2:
+        return False
+    if ident == parte or parte.endswith(ident) or ident.endswith(parte):
+        return True
+    # Letras/dígitos intercambiados («7S» por «S7»): el error de tipeo más común.
+    if _es_identificador(parte) and sorted(ident) == sorted(parte):
+        return True
+    return _parecido(ident, parte) >= _UMBRAL_PALABRA
+
+
 def _puntaje(consulta: str, nombre: str, codigo: str) -> float:
     """
     Cuán probable es que `consulta` se refiera a esta máquina. No conoce ningún equipo: se
@@ -108,6 +138,12 @@ def _puntaje(consulta: str, nombre: str, codigo: str) -> float:
     Ninguno de los dos gana solo: difflib elegía «Compresor Neumático N2» para la frase
     larga, y la cobertura no encontraba «el motor». Tomar el máximo de ambos acertó los 17
     casos del banco.
+
+    El distintivo manda: si la consulta trae un token con letras y dígitos («XYZ-99») que
+    no aparece en el nombre ni en el código, es OTRA máquina aunque comparta la palabra
+    genérica. Sin este corte, difflib puntuaba 0.69 a «compresor XYZ-99» contra
+    «Compressor A1» por el prefijo compartido y la falla se registraba en el equipo
+    equivocado (QA conversacional).
     """
     q = _normalizar(consulta)
     n = _normalizar(nombre)
@@ -116,12 +152,76 @@ def _puntaje(consulta: str, nombre: str, codigo: str) -> float:
     if q in (n, c):
         return 1.0
 
-    completo = max(_parecido(q, n), _parecido(q, c))
+    # Nombre escrito sin espacios («BrazoRobóticoKUKA1»): es la misma cadena, no una
+    # consulta distinta. Se compara el esqueleto para no castigar el distintivo pegado.
+    if q and q.replace(" ", "") in (n.replace(" ", ""), c.replace(" ", "")):
+        return 1.0
 
+    identificadores = [t for t in (_nucleo(x) for x in q.split()) if _es_identificador(t)]
+    partes = [p for p in (_nucleo(x) for x in n.split()) if len(p) >= 2]
+    if c:
+        partes.append(_nucleo(c))
+    if identificadores and not all(
+        any(_coincide_identificador(i, p) for p in partes) for i in identificadores
+    ):
+        return 0.0
+
+    # Sin distintivo, la última palabra tampoco puede ser inventada: «compresor zzz» no
+    # es el «Compressor A1». Si la consulta sí trae distintivo («compresor A1 de la
+    # planta»), esta regla no aplica: el equipo ya está identificado.
     palabras = [p for p in q.split() if len(p) >= 2]
+    crudas = q.split()
+    if not identificadores and len(crudas) >= 2:
+        ultima = _nucleo(crudas[-1])
+        if ultima.isalpha() and len(ultima) >= 3 and not any(
+            _parecido(ultima, p) >= _UMBRAL_PALABRA for p in partes
+        ):
+            return 0.0
+
+    completo = max(_parecido(q, n), _parecido(q, c))
     por_palabra = max(_cobertura(palabras, n.split()), _cobertura(palabras, c.split()))
 
     return max(completo, por_palabra)
+
+
+def _sin_duplicados(filas: list[dict]) -> list[dict]:
+    """Una fila por nombre+código: la misma máquina puede repetirse en plantas distintas.
+
+    La unicidad de `maquina` es `(planta_id, codigo)`, así que dos plantas de la empresa
+    pueden tener el mismo equipo con el mismo código. Para elegir por nombre/código da
+    igual cuál de las dos: mostrarlas dos veces solo confunde («duplicado en la lista»).
+    """
+    vistos: set[tuple[str, str]] = set()
+    unicas: list[dict] = []
+    for fila in filas:
+        clave = (_normalizar(fila.get("nombre") or ""), _normalizar(fila.get("codigo") or ""))
+        if clave in vistos:
+            continue
+        vistos.add(clave)
+        unicas.append(fila)
+    return unicas
+
+
+def _priorizar_por_mencion(filas: list[dict], consulta: str) -> list[dict]:
+    """Máquinas que comparten alguna palabra con la consulta, primero.
+
+    Se compara palabra por palabra con la misma tolerancia ortográfica que la búsqueda
+    («compresor» ↔ «compressor»). El resto conserva el orden alfabético para que el
+    listado de respaldo siga siendo predecible. Sin esto, a quien preguntaba por «el
+    compresor» se le ofrecían primero equipos sin relación (analizador, brazo, cinta).
+    """
+    palabras = _normalizar(consulta).split()
+    if not palabras:
+        return filas
+    relevantes: list[dict] = []
+    resto: list[dict] = []
+    for fila in filas:
+        nombre = _normalizar(fila.get("nombre") or "")
+        if _cobertura(palabras, nombre.split()) > 0:
+            relevantes.append(fila)
+        else:
+            resto.append(fila)
+    return relevantes + resto
 
 
 async def _buscar_maquinas(empresa_id: int, consulta: str) -> list[dict]:
@@ -144,6 +244,7 @@ async def _buscar_maquinas(empresa_id: int, consulta: str) -> list[dict]:
         """,
         {"empresa": empresa_id, "limite": _MAX_CANDIDATAS},
     )
+    filas = _sin_duplicados(filas)
 
     candidatas = [_Candidata(fila, _puntaje(consulta, fila["nombre"], fila["codigo"])) for fila in filas]
     buenas = [c for c in candidatas if c.puntaje >= _UMBRAL_PARECIDO]
@@ -256,35 +357,43 @@ async def _resumen_maquina(empresa_id: int, maquina: dict) -> str:
     return " ".join(lineas)
 
 
-async def _listar_maquinas(empresa_id: int, limite: int = 8) -> tuple[list[str], int]:
+async def _listar_maquinas(
+    empresa_id: int, limite: int = 8, consulta: str | None = None
+) -> tuple[list[str], int]:
     """
     Nombres de las máquinas de la empresa, para sugerir cuando no hay coincidencia.
 
-    Devuelve (primeras `limite`, total). Sin esto, un «no encontré» deja al usuario en un
-    callejón sin salida: en una conversación real insistió cuatro veces con un código
-    inventado («S1») porque no sabía qué equipos existen.
+    Con `consulta`, las máquinas que comparten alguna palabra con lo que escribió la
+    persona van primero (los compresores ante «tengo un problema con el compresor») y
+    después el resto en orden alfabético. Devuelve (primeras `limite`, total). Sin esto,
+    un «no encontré» deja al usuario en un callejón sin salida: en una conversación real
+    insistió cuatro veces con un código inventado («S1») porque no sabía qué equipos
+    existen.
     """
     filas = await fetch_all(
         """
-        SELECT m.nombre, m.codigo
+        SELECT m.maquina_id, m.nombre, m.codigo
           FROM maquina m
           JOIN planta  p ON p.planta_id = m.planta_id
          WHERE p.empresa_id = %(empresa)s
          ORDER BY m.nombre
          LIMIT %(limite)s
         """,
-        {"empresa": empresa_id, "limite": limite},
+        {"empresa": empresa_id, "limite": _MAX_CANDIDATAS},
     )
     total = await fetch_all(
         """
-        SELECT COUNT(*) AS n
+        SELECT COUNT(DISTINCT (m.nombre, m.codigo)) AS n
           FROM maquina m
           JOIN planta  p ON p.planta_id = m.planta_id
          WHERE p.empresa_id = %(empresa)s
         """,
         {"empresa": empresa_id},
     )
-    return [f"{f['nombre']} ({f['codigo']})" for f in filas], int(total[0]["n"]) if total else 0
+    filas = _sin_duplicados(filas)
+    if consulta:
+        filas = _priorizar_por_mencion(filas, consulta)
+    return [f"{f['nombre']} ({f['codigo']})" for f in filas[:limite]], int(total[0]["n"]) if total else 0
 
 
 async def _resolver_maquina(empresa_id: int, consulta: str, accion: str) -> tuple[dict | None, str | None]:
@@ -308,7 +417,7 @@ async def _resolver_maquina(empresa_id: int, consulta: str, accion: str) -> tupl
 
     if not maquinas:
         try:
-            nombres, total = await _listar_maquinas(empresa_id)
+            nombres, total = await _listar_maquinas(empresa_id, consulta=consulta)
         except Exception:  # noqa: BLE001 — la sugerencia es un extra, no el dato pedido
             logger.warning("Tool: no se pudo listar alternativas (empresa %s)", empresa_id, exc_info=True)
             nombres, total = [], 0
@@ -361,6 +470,9 @@ _PRIORIDADES = {
 # las tools no pasan por las dependencias de FastAPI: sin este chequeo, un técnico creaba
 # por el chat OTs que el endpoint le rechaza con 403.
 # Texto fijado por el negocio: se muestra tal cual (la propuesta termina el turno con el texto EXACTO de la tool).
+# Excepción deliberada a `_mensaje_sin_permiso` (HU-20 / CGBIDA-513): este texto lo fijó
+# negocio y lo protege `test_permisos_tools.py`. No nombra al rol responsable a propósito;
+# si negocio lo aprueba, se reemplaza por `_mensaje_sin_permiso("crear_ot")`.
 SIN_PERMISO_OT = "No tiene privilegios para generar OT sin un aviso de falla. Por favor generar conforme al flujo"
 
 
@@ -805,13 +917,42 @@ def _sin_separadores(texto: str) -> str:
     return " ".join(str(texto).replace("|", "/").split())
 
 
+# Viñetas del formato legible: «- **codigo:** COMP-A1». El rótulo va en negrita y el
+# valor queda literal; el parser acepta con o sin los dos puntos dentro de la negrita.
+_RE_CAMPO_VINETA = re.compile(
+    r"^\s*\*\*(?P<clave>[a-zA-Z]+):?\*\*:?\s*(?P<valor>.*)$"
+)
+
+
+def _pares_de_linea(linea: str) -> dict[str, str]:
+    """Campos «**clave:** valor» de una línea, separados por «|».
+
+    Tolera el formato anterior (sin negritas) devolviendo un dict vacío: cada parser
+    mantiene su regex de respaldo para las propuestas ya persistidas.
+    """
+    pares: dict[str, str] = {}
+    for segmento in linea.lstrip("- ").split("|"):
+        m = _RE_CAMPO_VINETA.match(segmento)
+        if m:
+            pares[m.group("clave").lower()] = m.group("valor").strip()
+    return pares
+
+
+def _campos_vineta(texto: str) -> dict[str, str]:
+    """Todos los campos «**clave:** valor» del texto, sin importar en qué línea estén."""
+    campos: dict[str, str] = {}
+    for linea in texto.splitlines():
+        campos.update(_pares_de_linea(linea))
+    return campos
+
+
 def _texto_propuesta_planta(nombre: str, ubicacion: str | None, maquinas: list[dict]) -> str:
     """Texto exacto que el asistente muestra (y persiste) al proponer una planta."""
     lineas = [
         _PREFIJO_PROPUESTA_PLANTA,
         "",
-        f"Voy a crear la planta «{_sin_separadores(nombre)}»"
-        + (f" en {_sin_separadores(ubicacion)}" if ubicacion else "")
+        f"Voy a crear la planta **«{_sin_separadores(nombre)}»**"
+        + (f" en **{_sin_separadores(ubicacion)}**" if ubicacion else "")
         + " con estas máquinas:",
         "",
     ]
@@ -819,19 +960,22 @@ def _texto_propuesta_planta(nombre: str, ubicacion: str | None, maquinas: list[d
         # QA del 05-11: se puede crear una planta vacía (el service lo permite), pero el
         # usuario debe verlo explicíto antes de confirmar, no descubrirlo después.
         lineas += [
-            "⚠️ La propuesta va SIN MÁQUINAS: la planta quedará vacía y podrás "
+            "⚠️ **La propuesta va SIN MÁQUINAS:** la planta quedará vacía y podrás "
             "agregarle equipos después desde el mantenedor o pidiéndomelo.",
             "",
         ]
-    for m in maquinas:
-        lineas.append(
-            f"- MAQ codigo={_sin_separadores(m.get('codigo', ''))} "
-            f"| nombre={_sin_separadores(m.get('nombre', ''))} "
-            f"| disciplina={_sin_separadores(m.get('disciplina') or '')} "
-            f"| sla={m.get('sla_horas') if m.get('sla_horas') is not None else ''} "
-            f"| costo={m.get('costo_inactividad_minuto') if m.get('costo_inactividad_minuto') is not None else ''}"
-        )
-    lineas += ["", "¿Confirmas la creación? (responde sí o no)"]
+    else:
+        lineas += [f"**MÁQUINAS ({len(maquinas)})**"]
+        for m in maquinas:
+            lineas.append(
+                f"- **codigo:** {_sin_separadores(m.get('codigo', ''))} "
+                f"| **nombre:** {_sin_separadores(m.get('nombre', ''))} "
+                f"| **disciplina:** {_sin_separadores(m.get('disciplina') or '')} "
+                f"| **sla:** {m.get('sla_horas') if m.get('sla_horas') is not None else ''} "
+                f"| **costo:** {m.get('costo_inactividad_minuto') if m.get('costo_inactividad_minuto') is not None else ''}"
+            )
+        lineas.append("")
+    lineas += ["**¿Confirmas la creación?** Responde **sí** o **no**."]
     return "\n".join(lineas)
 
 
@@ -844,8 +988,10 @@ def _parsear_propuesta_planta(texto: str) -> dict | None:
     # (parceo estricto: ejecutar un parseo que no cierre = no creó nada). La ubicación es
     # codiciosa y limitada a una línea: hasta la refactorización, `[^»]+?` (+ un grupo
     # opcional a su derecha) capturaba solo la primera letra («Q» en vez de «Quilicura»).
+    # `\*{0,2}` tolera el título en negrita del formato legible y el anterior sin negritas.
     cabecera = re.search(
-        r"Voy a crear la planta «(?P<nombre>[^»]+)»(?: en (?P<ubicacion>[^\n»]+))?"
+        r"Voy a crear la planta \*{0,2}«(?P<nombre>[^»]+)»\*{0,2}"
+        r"(?: en \*{0,2}(?P<ubicacion>[^\n»*]+)\*{0,2})?"
         r" con estas máquinas:",
         texto,
     )
@@ -855,18 +1001,37 @@ def _parsear_propuesta_planta(texto: str) -> dict | None:
     maquinas = []
     for linea in texto.splitlines():
         m = _RE_MAQUINA_PLANTA.match(linea.strip())
-        if not m:
+        if m:
+            try:
+                sla = float(m.group("sla")) if m.group("sla").strip() else None
+                costo = float(m.group("costo")) if m.group("costo").strip() else None
+            except ValueError:
+                return None  # propuesta corrupta: se descarta, no se adivina
+            maquinas.append(
+                {
+                    "nombre": m.group("nombre").strip(),
+                    "codigo": m.group("codigo").strip(),
+                    "disciplina": m.group("disciplina").strip() or None,
+                    "sla_horas": sla,
+                    "costo_inactividad_minuto": costo,
+                }
+            )
+            continue
+
+        # Formato legible: «- **codigo:** TOR-01 | **nombre:** Torno 1 | …».
+        pares = _pares_de_linea(linea)
+        if "codigo" not in pares or "nombre" not in pares:
             continue
         try:
-            sla = float(m.group("sla")) if m.group("sla").strip() else None
-            costo = float(m.group("costo")) if m.group("costo").strip() else None
+            sla = float(pares["sla"]) if pares.get("sla") else None
+            costo = float(pares["costo"]) if pares.get("costo") else None
         except ValueError:
-            return None  # propuesta corrupta: se descarta, no se adivina
+            return None
         maquinas.append(
             {
-                "nombre": m.group("nombre").strip(),
-                "codigo": m.group("codigo").strip(),
-                "disciplina": m.group("disciplina").strip() or None,
+                "nombre": pares["nombre"],
+                "codigo": pares["codigo"],
+                "disciplina": pares.get("disciplina") or None,
                 "sla_horas": sla,
                 "costo_inactividad_minuto": costo,
             }
@@ -974,24 +1139,26 @@ def _texto_propuesta_parametros(maquina: dict, antes: dict, cambios: dict) -> st
     lineas = [
         _PREFIJO_PROPUESTA_PARAMETROS,
         "",
-        f"Voy a actualizar «{_sin_separadores(maquina['nombre'])}» "
-        f"[{_sin_separadores(maquina['codigo'])}]"
-        + (f" en {_sin_separadores(maquina.get('planta') or '')}" if maquina.get("planta") else "")
+        f"Voy a actualizar **«{_sin_separadores(maquina['nombre'])}» "
+        f"[{_sin_separadores(maquina['codigo'])}]**"
+        + (f" en **{_sin_separadores(maquina.get('planta') or '')}**" if maquina.get("planta") else "")
         + ":",
         "",
     ]
     sla_nuevo = f"{cambios['sla_horas']:g}" if "sla_horas" in cambios else ""
     costo_nuevo = f"{cambios['costo_inactividad_minuto']:g}" if "costo_inactividad_minuto" in cambios else ""
-    lineas.append(
-        f"- MAQ codigo={_sin_separadores(maquina['codigo'])} "
-        f"| nombre={_sin_separadores(maquina['nombre'])} "
-        f"| planta={_sin_separadores(maquina.get('planta') or '')} "
-        f"| sla={sla_nuevo} | costo={costo_nuevo}"
-    )
+    # Una viñeta con los campos que parsea el gate: rótulo en negrita, valor literal.
+    lineas += [
+        f"- **codigo:** {_sin_separadores(maquina['codigo'])} "
+        f"| **nombre:** {_sin_separadores(maquina['nombre'])} "
+        f"| **planta:** {_sin_separadores(maquina.get('planta') or '')} "
+        f"| **sla:** {sla_nuevo} | **costo:** {costo_nuevo}",
+        "",
+    ]
     detalles = []
     if "sla_horas" in cambios:
         antes_sla = "sin definir (usa el general)" if antes["sla_horas"] is None else f"{float(antes['sla_horas']):g} h"
-        detalles.append(f"- SLA: {antes_sla} → {float(cambios['sla_horas']):g} h")
+        detalles.append(f"- **SLA:** {antes_sla} → {float(cambios['sla_horas']):g} h")
     if "costo_inactividad_minuto" in cambios:
         antes_costo = (
             "sin definir (usa el general)"
@@ -999,9 +1166,9 @@ def _texto_propuesta_parametros(maquina: dict, antes: dict, cambios: dict) -> st
             else f"{float(antes['costo_inactividad_minuto']):,.0f}/min".replace(",", ".")
         )
         detalles.append(
-            f"- Costo por minuto: {antes_costo} → {float(cambios['costo_inactividad_minuto']):,.0f}/min".replace(",", ".")
+            f"- **Costo por minuto:** {antes_costo} → {float(cambios['costo_inactividad_minuto']):,.0f}/min".replace(",", ".")
         )
-    lineas += [*detalles, "", "¿Confirmas el cambio? (responde sí o no)"]
+    lineas += [*detalles, "", "**¿Confirmas el cambio?** Responde **sí** o **no**."]
     return "\n".join(lineas)
 
 
@@ -1013,18 +1180,38 @@ def _parsear_propuesta_parametros(texto: str) -> dict | None:
     maquinas = []
     for linea in texto.splitlines():
         m = _RE_LINEA_PARAMETROS.match(linea.strip())
-        if not m:
+        if m:
+            try:
+                sla = float(m.group("sla")) if m.group("sla").strip() else None
+                costo = float(m.group("costo")) if m.group("costo").strip() else None
+            except ValueError:
+                return None  # propuesta corrupta: se descarta, no se adivina
+            maquinas.append(
+                {
+                    "nombre": m.group("nombre").strip(),
+                    "codigo": m.group("codigo").strip(),
+                    "planta": m.group("planta").strip() or None,
+                    "sla_horas": sla,
+                    "costo_inactividad_minuto": costo,
+                }
+            )
+            continue
+
+        # Formato legible: la viñeta de datos trae codigo + nombre + planta. Las viñetas
+        # humanas («- **SLA:** 4 h → 2 h») no tienen esos campos y se ignoran.
+        pares = _pares_de_linea(linea)
+        if "codigo" not in pares or "nombre" not in pares or "planta" not in pares:
             continue
         try:
-            sla = float(m.group("sla")) if m.group("sla").strip() else None
-            costo = float(m.group("costo")) if m.group("costo").strip() else None
+            sla = float(pares["sla"]) if pares.get("sla") else None
+            costo = float(pares["costo"]) if pares.get("costo") else None
         except ValueError:
-            return None  # propuesta corrupta: se descarta, no se adivina
+            return None
         maquinas.append(
             {
-                "nombre": m.group("nombre").strip(),
-                "codigo": m.group("codigo").strip(),
-                "planta": m.group("planta").strip() or None,
+                "nombre": pares["nombre"],
+                "codigo": pares["codigo"],
+                "planta": pares.get("planta") or None,
                 "sla_horas": sla,
                 "costo_inactividad_minuto": costo,
             }
@@ -1145,6 +1332,11 @@ async def actualizar_parametros_aprobada(
 
 _PREFIJO_PROPUESTA_AVISO = "PROPUESTA DE AVISO DE FALLA"
 
+# La nota que leerá el supervisor: 15 caracteres como piso para que no llegue «falla» ni
+# «se paró solo». El parser del gate conserva su piso de 5 para no invalidar propuestas
+# ya persistidas con el mínimo anterior.
+_MIN_DESCRIPCION_AVISO = 15
+
 _PREFIJO_AVISO = "AV-"  # espejo de routers.avisos.PREFIJO (importarlo traería la capa HTTP)
 
 # Una sola línea con separador "|", misma disciplina que las otras propuestas.
@@ -1178,19 +1370,76 @@ def _normalizar_severidad(valor: str | None) -> tuple[str, bool]:
     return "medium", False
 
 
+# El usuario puede pedir una severidad que el sistema no maneja («urgentísima»,
+# «grave»). Es un dato suyo, no del modelo: si la nombró, se valida contra sus propias
+# palabras y no contra la traducción que hizo el modelo (QA 14-11, Chat 7).
+_RE_SEVERIDAD_DICHA = re.compile(
+    r"(?:(?:severidad|prioridad|gravedad)\s+(?:de\s+)?"
+    r"|(?:ponle|ponla|que\s+sea)\s+(?:severidad\s+)?)"
+    r"(?P<valor>[a-záéíóúüñ]+)",
+    re.IGNORECASE,
+)
+_SEVERIDADES_NO_SOPORTADAS = {
+    "urgente",
+    "urgentisima",
+    "urgentisimo",
+    "gravisima",
+    "gravisimo",
+    "grave",
+    "severa",
+    "severo",
+    "extrema",
+    "extremo",
+    "maxima",
+    "maximo",
+    "inmediata",
+    "inmediato",
+}
+
+
+def _severidad_no_soportada(texto: str | None) -> str | None:
+    """La severidad inválida que nombró el usuario en su mensaje, si la nombró."""
+    m = _RE_SEVERIDAD_DICHA.search(texto or "")
+    if not m:
+        return None
+    valor = m.group("valor")
+    return valor if _normalizar(valor) in _SEVERIDADES_NO_SOPORTADAS else None
+
+
+def _descripcion_literal(descripcion: str, habla_del_usuario: list[str] | None) -> bool:
+    """True si cada palabra con contenido de la descripción la dijo el usuario.
+
+    El modelo tendía a rellenar el mínimo de caracteres inventando síntomas o fechas
+    («no arranca desde hace poco tiempo, no responde al arranque» cuando la persona solo
+    dijo «no arranca»). La descripción es la nota que lee el supervisor: se compara
+    contra los últimos mensajes del usuario y, si aparece una palabra que nadie dijo, la
+    propuesta se descarta. Sin historial (tests) no se aplica.
+    """
+    if not habla_del_usuario:
+        return True
+    dichas = set(re.findall(r"[a-z0-9]+", _normalizar(" ".join(habla_del_usuario))))
+    palabras = re.findall(r"[a-z0-9]+", _normalizar(descripcion))
+    return all(p in dichas for p in palabras if len(p) >= 3)
+
+
 def _texto_propuesta_aviso(maquina: dict, descripcion: str, severidad: str) -> str:
-    """Texto exacto que el asistente muestra (y persiste) al proponer registrar una falla."""
+    """Texto exacto que el asistente muestra (y persiste) al proponer registrar una falla.
+
+    Ficha en viñetas: el título y el subtítulo van en negrita y cada campo muestra el
+    rótulo en negrita con el valor literal. El gate parsea esas mismas viñetas.
+    """
     return (
         f"{_PREFIJO_PROPUESTA_AVISO}\n\n"
-        f"Voy a registrar un aviso de falla de «{_sin_separadores(maquina['nombre'])}» "
-        f"[{_sin_separadores(maquina['codigo'])}]"
-        + (f" en {_sin_separadores(maquina['planta'])}" if maquina.get("planta") else "")
+        f"Voy a registrar un aviso de falla de "
+        f"**«{_sin_separadores(maquina['nombre'])}» [{_sin_separadores(maquina['codigo'])}]**"
+        + (f" en **{_sin_separadores(maquina['planta'])}**" if maquina.get("planta") else "")
         + ":\n\n"
-        f"- AVISO codigo={_sin_separadores(maquina['codigo'])} "
-        f"| severidad={_ETIQUETA_SEVERIDAD[severidad]} "
-        f"| descripcion={_sin_separadores(descripcion)}\n\n"
-        "La falla queda pendiente para el supervisor (no se crea una OT al instante).\n"
-        "¿Confirmas el registro? (responde sí o no)"
+        "**AVISO**\n"
+        f"- **codigo:** {_sin_separadores(maquina['codigo'])}\n"
+        f"- **severidad:** {_ETIQUETA_SEVERIDAD[severidad]}\n"
+        f"- **descripcion:** {_sin_separadores(descripcion)}\n\n"
+        "La falla queda **pendiente** para el supervisor: no se crea una OT al instante.\n\n"
+        "**¿Confirmas el registro?** Responde **sí** o **no**."
     )
 
 
@@ -1198,6 +1447,24 @@ def _parsear_propuesta_aviso(texto: str) -> dict | None:
     """Datos del aviso propuesto, o None si el formato no cierra (fallo cerrado)."""
     if not texto.startswith(_PREFIJO_PROPUESTA_AVISO):
         return None
+
+    # Formato legible: «- **codigo:** COMP-A1» y compañía.
+    campos = _campos_vineta(texto)
+    if campos.get("codigo") and campos.get("severidad") and campos.get("descripcion"):
+        clave = _normalizar(campos["severidad"])
+        if clave not in _SEVERIDAD_A_CLAVE:
+            return None  # severidad que no cierra: la propuesta se descarta entera
+        descripcion = campos["descripcion"].strip()
+        if len(descripcion) < 5:
+            return None
+        return {
+            "tipo": "aviso",
+            "codigo": campos["codigo"].strip(),
+            "severidad": _SEVERIDAD_A_CLAVE[clave],
+            "descripcion": descripcion,
+        }
+
+    # Formato anterior (una línea con pipes), para propuestas ya persistidas.
     for linea in texto.splitlines():
         m = _RE_LINEA_AVISO.match(linea.strip())
         if not m:
@@ -1271,6 +1538,9 @@ async def registrar_aviso_aprobada(
             "(¿se borró o cambió de planta desde la propuesta?). No registré nada."
         )
 
+    # Deuda (HU-20 / CGBIDA-511): este INSERT replica el de `routers/avisos.py` porque el
+    # gate no puede pasar por el router. Extraer un `avisos_service.crear_aviso()` compartido
+    # quedó diferido a un issue aparte para no tocar el endpoint de avisos en el cierre.
     try:
         async with transaction() as cur:
             await cur.execute(
@@ -1681,18 +1951,35 @@ def crear_tools(
             return _mensaje_sin_permiso("reportar_falla")
 
         desc = " ".join((descripcion or "").split())
-        if len(desc) < 10:
-            return "Necesito una descripción concreta de la falla (mínimo 10 caracteres): qué pasa, dónde y desde cuándo."
+        if len(desc) < _MIN_DESCRIPCION_AVISO:
+            return (
+                f"La descripción de la falla es insuficiente: el aviso requiere al menos "
+                f"{_MIN_DESCRIPCION_AVISO} caracteres con qué pasa, dónde y desde cuándo."
+            )
         if len(desc) > 2000:
-            return "La descripción es demasiado larga para el chat (máximo 2000); resumela y lo propongo."
+            return "La descripción es demasiado larga (máximo 2000 caracteres): resúmela."
+        if not _descripcion_literal(desc, habla_del_usuario):
+            return (
+                "La descripción no es literal: debe usar solo las palabras del usuario, "
+                "sin agregar síntomas, fechas ni contexto que no haya mencionado."
+            )
 
         consulta = (nombre_maquina or "").strip()
         if not consulta:
             return "Necesito el nombre o el código de la máquina con la falla."
 
+        # La severidad la dijo (o no) la persona: si nombró una que no existe, se rechaza
+        # aunque el modelo la haya traducido a una válida. Solo mira el mensaje actual.
+        dicha = _severidad_no_soportada((habla_del_usuario or [None])[-1])
+        if dicha:
+            return (
+                f"La severidad «{dicha}» no es válida: usa baja, media, alta o crítica. "
+                "Dime cuál prefieres y la propongo con esa."
+            )
+
         sev, reconocida = _normalizar_severidad(severidad)
         if not reconocida:
-            return f"La severidad «{severidad}» no la reconocí: usa baja, media, alta o crítica."
+            return f"La severidad «{severidad}» no es válida: usa baja, media, alta o crítica."
 
         maquina, error = await _resolver_maquina(empresa_id, consulta, "registro una falla")
         if error:

@@ -19,6 +19,7 @@ from barb.services.ai_tools import (
     _UMBRAL_PARECIDO,
     _buscar_maquinas,
     _puntaje,
+    _sin_duplicados,
     crear_tools,
     identificar_maquina,
 )
@@ -79,19 +80,19 @@ async def test_el_grafo_ejecuta_la_tool_y_vuelve_a_generar(monkeypatch):
         tool_calls=[
             {
                 "name": "consultar_ots_maquina",
-                "args": {"nombre_maquina": "Chancador de cono Sandvik H8800"},
+                "args": {"nombre_maquina": "Compressor A1"},
                 "id": "call_1",
                 "type": "tool_call",
             }
         ],
     )
-    final = AIMessage(content="El Chancador de cono Sandvik H8800 tiene 7 OTs abiertas.")
+    final = AIMessage(content="El Compressor A1 tiene 7 OTs abiertas.")
     llm = _LLMFalso([pedido, final])
 
     grafo = crear_grafo(empresa_id=1, llm=llm)
     resultado = await grafo.ainvoke(
         {
-            "messages": [HumanMessage(content="¿Cuántas OTs abiertas tiene el Chancador de cono Sandvik H8800?")],
+            "messages": [HumanMessage(content="¿Cuántas OTs abiertas tiene el Compressor A1?")],
             "empresa_id": 1,
             "pistas": [],
             "contexto": "",
@@ -109,7 +110,7 @@ async def test_el_grafo_ejecuta_la_tool_y_vuelve_a_generar(monkeypatch):
     assert "7" in tool_messages[0].content
     assert tool_messages[0].tool_call_id == "call_1"
 
-    assert resultado["messages"][-1].content == "El Chancador de cono Sandvik H8800 tiene 7 OTs abiertas."
+    assert resultado["messages"][-1].content == "El Compressor A1 tiene 7 OTs abiertas."
 
 
 @pytest.mark.asyncio
@@ -204,20 +205,20 @@ async def test_la_tool_encuentra_una_maquina_real_y_cuenta_sus_ots(db_pool):
     ]
 
     consultar = next(t for t in tools if t.name == "consultar_ots_maquina")
-    salida = await consultar.ainvoke({"nombre_maquina": "Chancador de cono Sandvik H8800"})
+    salida = await consultar.ainvoke({"nombre_maquina": "Bomba de pulpa KSB"})
 
-    assert "Chancador de cono Sandvik H8800" in salida
+    assert "Bomba de pulpa KSB" in salida
     assert "Órdenes de trabajo abiertas:" in salida
 
 
 @pytest.mark.asyncio
 async def test_la_tool_no_ve_maquinas_de_otra_empresa(db_pool):
     """El aislamiento no depende de lo que escriba el modelo: va en la clausura."""
-    maquinas_e1 = await _buscar_maquinas(1, "Chancador de cono Sandvik H8800")
-    assert maquinas_e1, "el seed debería tener el Chancador de cono Sandvik H8800 en la empresa 1"
+    maquinas_e1 = await _buscar_maquinas(1, "Bomba de pulpa KSB")
+    assert maquinas_e1, "el seed debería tener la bomba en la empresa 1"
 
     # La misma búsqueda desde otra empresa no debe encontrarla.
-    maquinas_ajenas = await _buscar_maquinas(999, "Chancador de cono Sandvik H8800")
+    maquinas_ajenas = await _buscar_maquinas(999, "Bomba de pulpa KSB")
     assert maquinas_ajenas == []
 
 
@@ -359,6 +360,49 @@ async def test_el_matcher_no_inventa_coincidencias(db_pool):
 
 
 @pytest.mark.asyncio
+async def test_el_matcher_no_confunde_un_distintivo_inventado(db_pool):
+    """Regresión del QA conversacional: «compresor XYZ-99» NO es el «Compressor A1».
+
+    Difflib puntuaba 0.69 por el prefijo compartido («compresor» vs «compressor») y la
+    falla terminaba registrada en el equipo equivocado. El distintivo manda: si la
+    consulta trae un código que no existe, se pregunta en vez de adivinar.
+    """
+    from barb.core.db import fetch_all
+
+    filas = await fetch_all(
+        """
+        SELECT m.nombre, m.codigo
+          FROM maquina m JOIN planta p ON p.planta_id = m.planta_id
+        """
+    )
+    for inventado in ("compresor XYZ-99", "compresor zzz", "compresor A9", "bomba B7"):
+        for fila in filas:
+            assert _puntaje(inventado, fila["nombre"], fila["codigo"]) < _UMBRAL_PARECIDO, (
+                f"«{inventado}» se pareció demasiado a {fila['nombre']} ({fila['codigo']})"
+            )
+
+
+@pytest.mark.asyncio
+async def test_el_matcher_usa_el_distintivo_para_elegir(db_pool):
+    """«prensa b3» es la Prensa Hidráulica B3, no la máquina llamada «Prensa»."""
+    from barb.core.db import fetch_all
+
+    filas = {f["codigo"]: f for f in await fetch_all(
+        """
+        SELECT m.nombre, m.codigo
+          FROM maquina m JOIN planta p ON p.planta_id = m.planta_id
+        """
+    )}
+    if "PRESS-B3" not in filas or "PRE-01" not in filas:
+        pytest.skip("el seed no trae las dos prensas")
+
+    b3 = filas["PRESS-B3"]
+    otra = filas["PRE-01"]
+    assert _puntaje("prensa b3", b3["nombre"], b3["codigo"]) >= _UMBRAL_PARECIDO
+    assert _puntaje("prensa b3", otra["nombre"], otra["codigo"]) < _UMBRAL_PARECIDO
+
+
+@pytest.mark.asyncio
 async def test_la_tool_resuelve_cualquier_maquina_de_la_empresa(db_pool):
     """De punta a punta: el nombre exacto de cada equipo devuelve sus OTs, no otra máquina."""
     from barb.core.db import fetch_all
@@ -391,7 +435,44 @@ async def test_la_tool_sugiere_alternativas_cuando_no_encuentra(db_pool):
     assert "No encontré" in salida
     assert "Estas son las disponibles" in salida
     # Las sugerencias son equipos reales de la empresa, con su código.
-    assert "Chancador de cono Sandvik H8800 (CHA-001)" in salida
+    assert "Bomba de pulpa KSB (BOM-001)" in salida
+
+
+@pytest.mark.asyncio
+async def test_las_sugerencias_priorizan_las_maquinas_mencionadas(db_pool):
+    """
+    «Tengo un problema con la bomba» debe ofrecer las bombas primero,
+    respetando la priorización por mención sobre el listado alfabérico.
+
+    Con el catálogo nuevo, empresa 1 = Minera del Norte: CHA-001, COR-001, MOL-001, BOM-001.
+    """
+    tools = crear_tools(empresa_id=1)
+    salida = await tools[0].ainvoke({"nombre_maquina": "Tengo un problema con la bomba"})
+
+    assert "No encontré" in salida
+    assert "Estas son las disponibles" in salida
+    pos_bomba = salida.find("Bomba de pulpa KSB (BOM-001)")
+    pos_ajena = salida.find("Analizador de Gases")
+    assert pos_bomba != -1, salida[:300]
+    assert pos_ajena == -1 or pos_bomba < pos_ajena
+
+
+def test_las_alternativas_no_repiten_la_misma_maquina():
+    """
+    La unicidad es (planta_id, codigo): el mismo equipo puede estar en dos plantas.
+
+    Mostrarlo dos veces en la lista de opciones confunde («duplicado en la lista») y
+    convierte una elección trivial en una ambigüedad.
+    """
+    filas = [
+        {"maquina_id": 1, "nombre": "Compressor A1", "codigo": "COMP-A1"},
+        {"maquina_id": 9, "nombre": "Compressor A1", "codigo": "COMP-A1"},
+        {"maquina_id": 2, "nombre": "Compresor Neumático N2", "codigo": "COMP-N2"},
+    ]
+
+    unicas = _sin_duplicados(filas)
+
+    assert [f["maquina_id"] for f in unicas] == [1, 2]
 
 
 @pytest.mark.asyncio
@@ -463,3 +544,30 @@ def test_las_reglas_de_conversacion_tienen_prioridad_declarada():
 
     prompt = _prompt_sistema("x")
     assert "tienen prioridad sobre la documentación para interpretar" in prompt
+
+
+def test_el_prompt_manda_registrar_la_falla_y_no_negar_las_herramientas():
+    """
+    Chat 4 de la QA: «se cayó la prensa B3, salió aceite…» respondió con el manual y
+    afirmó que no tenía herramientas. La falla reportada debe ir como aviso (aunque no
+    diga «anótalo») y el modelo no puede negar las tools que tiene en ese turno.
+    """
+    from barb.services.chat_graph import _prompt_sistema
+
+    prompt = _prompt_sistema("(fragmentos de prueba)")
+    assert "NUNCA respondas que no tienes acceso a herramientas" in prompt
+    assert "aunque no diga «anótalo»" in prompt
+    assert "prioridad sobre la de responder solo con documentación" in prompt
+    # Una severidad inventada se pasa literal: la tool la rechaza y ofrece las válidas.
+    assert "«urgentísima»" in prompt
+
+
+def test_el_prompt_exige_hablarle_al_usuario_en_segunda_persona():
+    """QA: el bot narraba su plan («el usuario dijo…», «pregunto al usuario…»)."""
+    from barb.services.chat_graph import _prompt_sistema
+
+    prompt = _prompt_sistema("x")
+    assert "Háblale siempre en segunda persona" in prompt
+    assert "ESTILO DE RESPUESTA" in prompt
+    assert "«pregunto al usuario»" in prompt
+    assert "«la herramienta me pide…»" in prompt

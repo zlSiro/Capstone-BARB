@@ -24,6 +24,54 @@ function normalizar(texto: string): string {
 }
 
 /**
+ * Distancia de edición acotada a `max` (Levenshtein con dos filas).
+ *
+ * Solo se usa para tolerar erratas y dobles consonantes del inglés («compressor» escrito
+ * «compresor»). Si la distancia ya supera `max` se corta: la lista es corta y la intención
+ * es descartar, no medir.
+ */
+function distancia(a: string, b: string, max = 2): number {
+  if (Math.abs(a.length - b.length) > max) return max + 1;
+  let previa = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const actual = [i];
+    let mejor = i;
+    for (let j = 1; j <= b.length; j++) {
+      const costo = a[i - 1] === b[j - 1] ? 0 : 1;
+      const valor = Math.min(previa[j] + 1, actual[j - 1] + 1, previa[j - 1] + costo);
+      actual.push(valor);
+      mejor = Math.min(mejor, valor);
+    }
+    if (mejor > max) return max + 1;
+    previa = actual;
+  }
+  return previa[b.length];
+}
+
+/** Una palabra de la consulta encaja si es prefijo, o si difiere en una sola letra. */
+function encajaPalabra(consulta: string, palabra: string): boolean {
+  if (palabra.startsWith(consulta) || consulta.startsWith(palabra)) return true;
+  // Por debajo de 3 letras la tolerancia solo mete ruido («a1» no debe traer «b1»).
+  return consulta.length >= 3 && palabra.length >= 3 && distancia(consulta, palabra, 1) <= 1;
+}
+
+/**
+ * ¿La máquina coincide con lo escrito?
+ *
+ * Antes era un `includes` estricto: «compresor» no encontraba «Compressor A1» (doble ese
+ * del inglés) y la persona concluía que la máquina no estaba en la lista. Ahora cada
+ * palabra de la consulta debe encajar con alguna del nombre o del código, con tolerancia
+ * de una letra y aceptando prefijos.
+ */
+function coincide(busqueda: string, consulta: string): boolean {
+  if (busqueda.includes(consulta)) return true;
+  const palabrasConsulta = consulta.split(' ').filter(Boolean);
+  if (palabrasConsulta.length === 0) return true;
+  const palabras = busqueda.split(' ').filter(Boolean);
+  return palabrasConsulta.every((q) => palabras.some((p) => encajaPalabra(q, p)));
+}
+
+/**
  * Selector de la máquina de la conversación (HU-23): combobox editable (patrón ARIA 1.2 «list autocomplete»).
  *
  * - Buscable por nombre o código; las máquinas se agrupan por planta.
@@ -161,7 +209,7 @@ export class MaquinaSelectorComponent {
     let indice = this.mostrarSinMaquina() ? 1 : 0;
     const porPlanta = new Map<string, Opcion[]>();
     for (const m of this.etiquetas()) {
-      if (q && !m.busqueda.includes(q)) continue;
+      if (q && !coincide(m.busqueda, q)) continue;
       const lista = porPlanta.get(m.planta) ?? [];
       lista.push({ id: m.id, etiqueta: m.etiqueta, indice: indice++ });
       porPlanta.set(m.planta, lista);

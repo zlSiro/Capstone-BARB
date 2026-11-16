@@ -74,7 +74,7 @@ async def _planta_con_dos_maquinas(client, ctx) -> int:
             "nombre": f"Planta Skill {ctx['marca']}",
             "maquinas": [
                 {
-                    "nombre": f"Torno {ctx['marca']}",
+                    "nombre": f"Compresor {ctx['marca']}",
                     "codigo": "COMP",
                     "disciplina": "Mecánica",
                     "sla_horas": 6,
@@ -130,7 +130,7 @@ async def test_listar_maquinas_planta_muestra_sla_y_costo(client, ctx):
 
     salida = await HERRAMIENTAS["listar_maquinas_planta"].ainvoke({"planta": f"Planta Skill {ctx['marca']}"})
 
-    assert f"Torno {ctx['marca']}" in salida and "PRE" in salida
+    assert f"Compresor {ctx['marca']}" in salida and "PRE" in salida
     assert "6 h" in salida and "| 50 |" in salida, "los valores cargados se muestran (tabla)"
     assert "| Máquina |" in salida, "el listado viene en tabla"
     assert salida.count("el general") == 2, "SLA y costo de la máquina sin valores: dos «el general»"
@@ -149,7 +149,7 @@ async def test_actualizar_parametros_maquina_respeta_empresa(client, ctx):
     ajenas = {t.name: t for t in crear_tools(empresa_id=2, usuario_id=OTRA_EMPRESA_ID, rol="admin")}
 
     salida = await ajenas["actualizar_parametros_maquina"].ainvoke(
-        {"nombre_maquina": f"Torno {ctx['marca']}", "sla_horas": 1}
+        {"nombre_maquina": f"Compresor {ctx['marca']}", "sla_horas": 1}
     )
 
     assert "No encontré" in salida
@@ -165,7 +165,7 @@ async def test_actualizar_parametros_maquina_requiere_permiso(client, ctx):
     tecnicas = {t.name: t for t in crear_tools(empresa_id=1, usuario_id=4, rol="tecnico")}
 
     salida = await tecnicas["actualizar_parametros_maquina"].ainvoke(
-        {"nombre_maquina": f"Torno {ctx['marca']}", "sla_horas": 9}
+        {"nombre_maquina": f"Compresor {ctx['marca']}", "sla_horas": 9}
     )
 
     assert salida == PERMISO_DENEGADO
@@ -180,7 +180,7 @@ async def test_actualizar_parametros_maquina_cambia_sla_y_costo(client, ctx):
     _, maquina_id = await _planta_con_dos_maquinas(client, ctx)
 
     propuesta = await HERRAMIENTAS["actualizar_parametros_maquina"].ainvoke(
-        {"nombre_maquina": f"Torno {ctx['marca']}", "sla_horas": 8, "costo_inactividad_minuto": 120}
+        {"nombre_maquina": f"Compresor {ctx['marca']}", "sla_horas": 8, "costo_inactividad_minuto": 120}
     )
 
     # 1) La tool solo redacta: propuesta parseable y la base SIN cambios.
@@ -205,7 +205,7 @@ async def test_actualizar_parametros_maquina_cambia_sla_y_costo(client, ctx):
         rol="admin",
     )
 
-    assert f"Actualicé «Torno {ctx['marca']}»" in salida
+    assert f"Actualicé «Compresor {ctx['marca']}»" in salida
     assert "6 h → 8 h" in salida, "antes → después del SLA"
     assert "50 /min → 120 /min" in salida, "antes → después del costo"
     fila = await fetch_one(
@@ -254,7 +254,7 @@ def test_la_propuesta_de_parametros_parsea_redonda():
     """Round-trip del texto: lo que redacta la tool es EXACTO lo que parsea el gate
     (con el SLA intacto y el campo no tocado vacío)."""
     texto = _texto_propuesta_parametros(
-        {"nombre": "Bomba de pulpa KSB", "codigo": "BOM-001", "planta": "Planta de Vapor"},
+        {"nombre": "Pump E4", "codigo": "PUMP-E4", "planta": "Planta Central San Bernardo"},
         {"sla_horas": 6, "costo_inactividad_minuto": None},
         {"sla_horas": 8.0},
     )
@@ -262,13 +262,13 @@ def test_la_propuesta_de_parametros_parsea_redonda():
     assert texto.startswith(_PREFIJO_PROPUESTA_PARAMETROS)
     datos = _parsear_propuesta_parametros(texto)
     assert datos["tipo"] == "parametros"
-    assert datos["codigo"] == "BOM-001" and datos["nombre"] == "Bomba de pulpa KSB"
+    assert datos["codigo"] == "PUMP-E4" and datos["nombre"] == "Pump E4"
     assert datos["sla_horas"] == 8.0
     assert datos["costo_inactividad_minuto"] is None, "costo no tocado = sin cambio"
 
     # Formato roto (parseo que no cierra) se descarta: nunca se interpreta el
     # basura como aprobación.
-    corrompido = texto.replace("| sla=8", "| sla=carne")
+    corrompido = texto.replace("| **sla:** 8", "| **sla:** carne")
     assert _parsear_propuesta_parametros(corrompido) is None
 
     # Y una propuesta sin la línea de la máquina (incompleta): no es interpretable.
@@ -572,16 +572,62 @@ async def test_el_grafo_crea_planta_con_confirmacion(db_pool, monkeypatch):
         await execute("DELETE FROM planta WHERE nombre = 'Planta Candado'")
 
 
+@pytest.mark.asyncio
+async def test_el_grafo_no_reintenta_tras_fallo_de_creacion(db_pool, monkeypatch):
+    """CGBIDA-514.5: si la creación falla (planta ya existente), el gate informa el error
+    y NO deja la propuesta pendiente. Un segundo «sí» no reintenta el write ni duplica."""
+    marca = uuid.uuid4().hex[:8]
+    nombre = f"Planta Repetida {marca}"
+    codigo = f"TUR-{marca[:6]}"
+    await execute(
+        "INSERT INTO planta (empresa_id, nombre, ubicacion) VALUES (1, %(n)s, %(u)s)",
+        {"n": nombre, "u": "Rancagua"},
+    )
+    try:
+        propuesta = _texto_propuesta_planta(
+            nombre,
+            "Rancagua",
+            [{"nombre": "Turbina 9", "codigo": codigo, "disciplina": "Mecánica"}],
+        )
+        modelo = _LLMFalso()
+        grafo = crear_grafo(empresa_id=1, llm=modelo, usuario_id=ADMIN_ID, rol="admin")
+
+        estado = await grafo.ainvoke(
+            _entrada([AIMessage(content=propuesta), HumanMessage(content="sí, confirmo")])
+        )
+
+        final = estado["messages"][-1]
+        assert "Ya existe una planta llamada" in final.content
+        assert final.content != propuesta, "el error reemplaza a la propuesta: no queda pendiente"
+        assert not modelo.llamadas, "el gate resuelve el «sí» sin pasar por el modelo"
+
+        # Segundo «sí»: sin propuesta pendiente, el gate no vuelve a escribir.
+        estado2 = await grafo.ainvoke(
+            {**estado, "messages": [*estado["messages"], HumanMessage(content="sí, confirmo")]}
+        )
+        assert "creada con" not in estado2["messages"][-1].content
+        assert len(modelo.llamadas) == 1, "el turno sigue normal; no se re-ejecuta el gate"
+
+        plantas = await fetch_one("SELECT COUNT(*) AS n FROM planta WHERE nombre = %(n)s", {"n": nombre})
+        assert plantas["n"] == 1, "no se duplica la planta ni se reintenta el write"
+    finally:
+        await execute(
+            "DELETE FROM maquina WHERE planta_id IN (SELECT planta_id FROM planta WHERE nombre = %(n)s)",
+            {"n": nombre},
+        )
+        await execute("DELETE FROM planta WHERE nombre = %(n)s", {"n": nombre})
+
+
 # =============================================================================
 # El candado de los parámetros en el grafo (REGLA 10 ya no depende del modelo)
 # =============================================================================
 
 
-def _propuesta_parametros() -> str:
+def _propuesta_parametros(actual: float = 6, nuevo: float = 8.0) -> str:
     return _texto_propuesta_parametros(
         {"nombre": "Bomba de pulpa KSB", "codigo": "BOM-001", "planta": "Planta Candado SLA"},
-        {"sla_horas": 6, "costo_inactividad_minuto": 1000},
-        {"sla_horas": 8.0},
+        {"sla_horas": actual, "costo_inactividad_minuto": 1000},
+        {"sla_horas": nuevo},
     )
 
 
@@ -611,15 +657,26 @@ async def test_el_grafo_cambia_parametros_con_confirmacion(db_pool, monkeypatch)
     modelo = _LLMFalso()
     grafo = crear_grafo(empresa_id=1, llm=modelo, usuario_id=ADMIN_ID, rol="admin")
 
+    # El «antes» se lee de la base: el seed define el SLA inicial y hardcodearlo acoplaba
+    # el test a una base concreta en vez de al comportamiento. Con el catálogo real
+    # BOM-001 ya nace en 8 h, así que proponemos 10 h (sla_antes + 2).
+    antes = await fetch_one("SELECT sla_horas FROM maquina WHERE codigo = 'BOM-001'")
+    sla_antes = float(antes["sla_horas"])
+    sla_nuevo = sla_antes + 2
+
     try:
-        estado = await grafo.ainvoke(_entrada([AIMessage(content=_propuesta_parametros()), HumanMessage(content="sí")]))
+        estado = await grafo.ainvoke(_entrada([AIMessage(content=_propuesta_parametros(sla_antes, sla_nuevo)), HumanMessage(content="sí")]))
 
         final = estado["messages"][-1]
-        assert "Actualicé «Bomba de pulpa KSB»" in final.content and "6 h → 8 h" in final.content
+        assert "Actualicé «Bomba de pulpa KSB»" in final.content
+        assert f"{sla_antes:g} h → {sla_nuevo:g} h" in final.content
         fila = await fetch_one("SELECT sla_horas FROM maquina WHERE codigo = 'BOM-001'")
-        assert float(fila["sla_horas"]) == 8
+        assert float(fila["sla_horas"]) == sla_nuevo
     finally:
-        await execute("UPDATE maquina SET sla_horas = 6 WHERE codigo = 'BOM-001'")
+        await execute(
+            "UPDATE maquina SET sla_horas = %(sla)s WHERE codigo = 'BOM-001'",
+            {"sla": sla_antes},
+        )
 
 
 # =============================================================================

@@ -436,7 +436,11 @@ async def test_stream_sesion_existente_recupera_historial(client, override_auth,
         {"role": "assistant", "content": "respuesta previa"},
     ]
     mock_repo["create_session"].assert_not_called()
-    mock_repo["load_messages"].assert_called_once_with(fake_uuid, 1, limite=10)
+    mock_repo["load_messages"].assert_called_once()
+    assert mock_repo["load_messages"].call_args.args == (fake_uuid, 1)
+    # La ventana de memoria se pasa por keyword y sale de la configuración, no de un
+    # literal: si mañana cambia el valor por defecto, el test sigue midiendo el contrato.
+    assert mock_repo["load_messages"].call_args.kwargs["limite"] == settings.chat_memory_window
 
 
 # =============================================================================

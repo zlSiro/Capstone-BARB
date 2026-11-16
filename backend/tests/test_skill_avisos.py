@@ -33,16 +33,24 @@ from barb.services.ai_tools import (
 from barb.services.chat_graph import crear_grafo
 
 GERENTE_ID = 2  # gerente de la empresa 1 (reportar_falla: True en la matriz)
-MAQUINA_BASE = {"nombre": "Bomba de pulpa KSB", "codigo": "BOM-001", "planta": None}
+MAQUINA_BASE = {"nombre": "Pump E4", "codigo": "PUMP-E4", "planta": None}
 
 
-def _herramientas_avisos(rol: str = "gerente"):
-    return {t.name: t for t in crear_tools(empresa_id=1, usuario_id=GERENTE_ID, rol=rol)}
+def _herramientas_avisos(rol: str = "gerente", habla_del_usuario: list[str] | None = None):
+    return {
+        t.name: t
+        for t in crear_tools(
+            empresa_id=1,
+            usuario_id=GERENTE_ID,
+            rol=rol,
+            habla_del_usuario=habla_del_usuario,
+        )
+    }
 
 
 def _texto_aviso_para_pump(descripcion: str) -> str:
     return _texto_propuesta_aviso(
-        {**MAQUINA_BASE, "planta": "Planta de Vapor"},
+        {**MAQUINA_BASE, "planta": "Planta Central San Bernardo"},
         descripcion,
         "medium",
     )
@@ -79,11 +87,11 @@ async def test_la_tool_propone_sin_registrar(db_pool):
     descripcion = f"Vibración anormal en el cojinete, desde la mañana ({uuid.uuid4().hex[:6]})"
 
     salida = await _herramientas_avisos()["proponer_aviso_falla"].ainvoke(
-        {"nombre_maquina": "Bomba de pulpa KSB", "descripcion": descripcion, "severidad": "alta"}
+        {"nombre_maquina": "BOM-001", "descripcion": descripcion, "severidad": "alta"}
     )
 
     assert salida.startswith(_PREFIJO_PROPUESTA_AVISO), "la propuesta termina el turno con el texto EXACTO"
-    assert "codigo=BOM-001" in salida
+    assert "- **codigo:** BOM-001" in salida
     fila = await fetch_one(
         "SELECT aviso_falla_id FROM aviso_falla WHERE descripcion = %(d)s",
         {"d": descripcion},
@@ -95,19 +103,136 @@ async def test_la_tool_propone_sin_registrar(db_pool):
 async def test_la_tool_pide_descripcion_util(db_pool):
     """«falla» sola no le sirve al supervisor: la tool exige descripción concreta."""
     salida = await _herramientas_avisos()["proponer_aviso_falla"].ainvoke(
-        {"nombre_maquina": "Bomba de pulpa KSB", "descripcion": "falla", "severidad": "media"}
+        {"nombre_maquina": "Pump E4", "descripcion": "falla", "severidad": "media"}
     )
     assert "descripción" in salida
     assert not salida.startswith(_PREFIJO_PROPUESTA_AVISO)
 
 
 @pytest.mark.asyncio
+async def test_la_tool_exige_15_caracteres(db_pool):
+    """«se paró solo» (12) ya no alcanza: el supervisor necesita contexto."""
+    herramientas = _herramientas_avisos()
+
+    corta = await herramientas["proponer_aviso_falla"].ainvoke(
+        {"nombre_maquina": "BOM-001", "descripcion": "se paró solo", "severidad": "media"}
+    )
+    assert "15" in corta
+    assert not corta.startswith(_PREFIJO_PROPUESTA_AVISO)
+
+    suficiente = await herramientas["proponer_aviso_falla"].ainvoke(
+        {"nombre_maquina": "BOM-001", "descripcion": "se paró y no arranca", "severidad": "media"}
+    )
+    assert suficiente.startswith(_PREFIJO_PROPUESTA_AVISO)
+
+
+@pytest.mark.asyncio
+async def test_la_tool_no_deja_inventar_detalle_para_llegar_al_minimo(db_pool):
+    """QA: con «no arranca» el modelo inventó «desde hace poco tiempo, no responde al
+    arranque» para pasar el mínimo. La descripción debe salir de las palabras del usuario."""
+    herramientas = _herramientas_avisos(
+        habla_del_usuario=["Anota una falla del compresor A1: no arranca."]
+    )
+    salida = await herramientas["proponer_aviso_falla"].ainvoke(
+        {
+            "nombre_maquina": "Pump E4",
+            "descripcion": "no arranca desde hace poco tiempo, no responde al arranque",
+            "severidad": "media",
+        }
+    )
+    assert "no es literal" in salida
+    assert not salida.startswith(_PREFIJO_PROPUESTA_AVISO)
+
+
+@pytest.mark.asyncio
+async def test_la_tool_acepta_una_descripcion_armada_entre_varios_mensajes(db_pool):
+    """La persona puede dar el detalle en dos turnos: «no arranca» y luego «desde ayer»."""
+    herramientas = _herramientas_avisos(
+        habla_del_usuario=[
+            "Anota una falla del compresor A1: no arranca.",
+            "Desde ayer, cuando parte el turno.",
+        ]
+    )
+    salida = await herramientas["proponer_aviso_falla"].ainvoke(
+        {
+            "nombre_maquina": "BOM-001",
+            "descripcion": "no arranca desde ayer",
+            "severidad": "media",
+        }
+    )
+    assert salida.startswith(_PREFIJO_PROPUESTA_AVISO)
+
+
+@pytest.mark.asyncio
 async def test_la_tool_rechaza_severidad_invalida(db_pool):
     salida = await _herramientas_avisos()["proponer_aviso_falla"].ainvoke(
-        {"nombre_maquina": "Bomba de pulpa KSB", "descripcion": "Fuga de aceite importante", "severidad": "catastrófica"}
+        {"nombre_maquina": "Pump E4", "descripcion": "Fuga de aceite importante", "severidad": "catastrófica"}
     )
     assert "severidad" in salida.lower()
     assert not salida.startswith(_PREFIJO_PROPUESTA_AVISO)
+
+
+@pytest.mark.asyncio
+async def test_la_tool_rechaza_la_severidad_dicha_aunque_el_modelo_la_traduzca(db_pool):
+    """Chat 7 de la QA: la persona dijo «urgentísima» y el modelo mandó «alta».
+
+    La severidad es un dato del usuario: la tool la valida contra el mensaje real y
+    rechaza la propuesta en vez de aceptar una traducción silenciosa.
+    """
+    herramientas = _herramientas_avisos(
+        habla_del_usuario=[
+            "Anota una falla del compresor A1: se paró solo y no arranca desde ayer. "
+            "Ponle severidad urgentísima."
+        ]
+    )
+    salida = await herramientas["proponer_aviso_falla"].ainvoke(
+        {
+            "nombre_maquina": "Pump E4",
+            "descripcion": "Se paró solo y no arranca desde ayer",
+            "severidad": "alta",
+        }
+    )
+    assert "urgentísima" in salida
+    assert "baja, media, alta o crítica" in salida
+    assert not salida.startswith(_PREFIJO_PROPUESTA_AVISO)
+
+    # También sin la palabra «severidad»: «ponle urgentísima».
+    herramientas = _herramientas_avisos(
+        habla_del_usuario=[
+            "Anota una falla del compresor A1: se paró solo y no arranca desde ayer. "
+            "Ponle urgentísima al aviso."
+        ]
+    )
+    salida = await herramientas["proponer_aviso_falla"].ainvoke(
+        {
+            "nombre_maquina": "Pump E4",
+            "descripcion": "Se paró solo y no arranca desde ayer",
+            "severidad": "alta",
+        }
+    )
+    assert "urgentísima" in salida
+    assert not salida.startswith(_PREFIJO_PROPUESTA_AVISO)
+
+
+@pytest.mark.asyncio
+async def test_una_severidad_vieja_no_contamina_la_correccion(db_pool):
+    """Solo manda el mensaje actual: si antes dijo «urgentísima» y ahora «media», vale media."""
+    herramientas = _herramientas_avisos(
+        habla_del_usuario=[
+            "Anota una falla del compresor A1: se paró solo y no arranca desde ayer. "
+            "Ponle severidad urgentísima.",
+            "Mejor ponle severidad media y anótala.",
+        ]
+    )
+    salida = await herramientas["proponer_aviso_falla"].ainvoke(
+        {
+            "nombre_maquina": "BOM-001",
+            "descripcion": "Se paró solo y no arranca desde ayer",
+            "severidad": "media",
+        }
+    )
+    assert salida.startswith(_PREFIJO_PROPUESTA_AVISO)
+    assert "- **severidad:** media" in salida
 
 
 @pytest.mark.asyncio
@@ -116,7 +241,7 @@ async def test_la_tool_avisa_si_los_permisos_no_alcanzan(db_pool):
     unificado de permisos (CGBIDA-513), no el texto de otra acción."""
     herramientas = _herramientas_avisos(rol="admin")
     salida = await herramientas["proponer_aviso_falla"].ainvoke(
-        {"nombre_maquina": "Bomba de pulpa KSB", "descripcion": "Fuga de aceite importante", "severidad": "media"}
+        {"nombre_maquina": "Pump E4", "descripcion": "Fuga de aceite importante", "severidad": "media"}
     )
     assert "No te está permitido" in salida
     assert "avisos de falla" in salida
@@ -141,14 +266,41 @@ def test_parsear_propuesta_aviso_cierra_redonda():
     datos = _parsear_propuesta_aviso(_texto_aviso_para_pump("El motor se recalienta con carga plena"))
     assert datos is not None
     assert datos["tipo"] == "aviso"
-    assert datos["codigo"] == "BOM-001"
+    assert datos["codigo"] == "PUMP-E4"
     assert datos["severidad"] == "medium"
     assert datos["descripcion"] == "El motor se recalienta con carga plena"
 
 
+def test_el_parser_sigue_leyendo_propuestas_con_el_minimo_anterior():
+    """Una propuesta ya persistida con 10-14 caracteres debe seguir resolviéndose.
+
+    El piso de 15 es de la generación; el parser mantiene 5 para que un «sí» sobre una
+    propuesta vieja no se pierda.
+    """
+    datos = _parsear_propuesta_aviso(_texto_aviso_para_pump("se paró solo"))
+    assert datos is not None
+    assert datos["descripcion"] == "se paró solo"
+
+
 def test_parsear_propuesta_aviso_rechaza_severidad_que_no_cierra():
-    texto = _texto_aviso_para_pump("El motor se recalienta con carga plena").replace("severidad=media", "severidad=tormenta")
+    texto = _texto_aviso_para_pump("El motor se recalienta con carga plena").replace(
+        "**severidad:** media", "**severidad:** tormenta"
+    )
     assert _parsear_propuesta_aviso(texto) is None
+
+
+def test_parsear_propuesta_aviso_sigue_aceptando_el_formato_anterior():
+    """Las propuestas ya persistidas usan la línea con pipes: el gate debe seguir leyéndolas."""
+    anterior = (
+        "PROPUESTA DE AVISO DE FALLA\n\n"
+        "Voy a registrar un aviso de falla de «Pump E4» [PUMP-E4]:\n\n"
+        "- AVISO codigo=PUMP-E4 | severidad=alta | descripcion=El motor se recalienta con carga plena\n"
+    )
+    datos = _parsear_propuesta_aviso(anterior)
+    assert datos is not None
+    assert datos["codigo"] == "PUMP-E4"
+    assert datos["severidad"] == "high"
+    assert datos["descripcion"] == "El motor se recalienta con carga plena"
 
 
 def test_parsear_propuesta_aviso_rechaza_descripcion_corta():
@@ -207,7 +359,11 @@ async def test_el_grafo_registra_aviso_con_confirmacion(db_pool):
 
     try:
         estado = await grafo.ainvoke(
-            _entrada([AIMessage(content=_texto_aviso_para_pump(descripcion)), HumanMessage(content="sí, dale")])
+            _entrada([AIMessage(content=_texto_propuesta_aviso(
+                {"nombre": "Bomba de pulpa KSB", "codigo": "BOM-001", "planta": None},
+                descripcion,
+                "medium",
+            )), HumanMessage(content="sí, dale")])
         )
 
         final = estado["messages"][-1]

@@ -196,7 +196,9 @@ class Settings(BaseSettings):
     barb_system_prompt: str = (
         "Eres BARB, asistente experto en mantenimiento industrial. "
         "Responde de forma clara, técnica y concisa. "
-        "Si el usuario menciona una máquina específica, orienta tu respuesta a ese equipo."
+        "Si el usuario menciona una máquina específica, orienta tu respuesta a ese equipo. "
+        "Háblale siempre en segunda persona y de forma directa: no narres tu razonamiento "
+        "ni te refieras a la persona en tercera persona."
     )
 
     @property
