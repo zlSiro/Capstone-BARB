@@ -31,7 +31,8 @@ npm start
 - features/ — Pantallas por dominio (auth, dashboard, work-orders...)
 
 ## Credenciales demo
-- admin@barb.com / admin123
+- gerente@mineradelnorte.cl / mineria123 (más usuarios: `docs/CREDENCIALES_DEMO.md`, local)
+- super@barb.com / super123
 
 ## Build producción
 npm run build

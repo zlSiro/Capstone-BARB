@@ -17,11 +17,11 @@ from barb.services.overdue_report import (
 )
 
 TZ = ZoneInfo("America/Santiago")
-ADMIN = {"email": "admin@barb.com", "password": "admin123"}
-GERENTE = {"email": "gerente1@planta.com", "password": "gerente123"}
-SUPERVISOR = {"email": "supervisor1@planta.com", "password": "super123"}
-TECNICO = {"email": "carlos@planta.com", "password": "tecnico123"}
-OTRA_EMPRESA = {"email": "admin@mineranorte.cl", "password": "minera123"}
+ADMIN = {"email": "admin@mineradelnorte.cl", "password": "mineria123"}
+GERENTE = {"email": "gerente@mineradelnorte.cl", "password": "mineria123"}
+SUPERVISOR = {"email": "supervisor@mineradelnorte.cl", "password": "mineria123"}
+TECNICO = {"email": "tecnico1@mineradelnorte.cl", "password": "mineria123"}
+OTRA_EMPRESA = {"email": "admin@alimentos.cl", "password": "alimentos123"}
 MARCA = "Test OT atrasada"
 TOKEN = "token-de-prueba"
 
@@ -305,5 +305,6 @@ async def test_preview_excluye_finales(client, empresa_id):
     await _crear_ot_atrasada(client, 3, "cancelled")  # final: no suma
     data = (await client.get("/api/notificaciones/preview", headers=sup)).json()
     assert data["total"] == antes + 1
-    assert all(o["dias_atraso"] >= 1 for o in data["ots"])
+    # Vencida puede ser por horas: `dias_atraso` es 0 en ese caso (el redondeo es a días).
+    assert all(o["dias_atraso"] >= 0 for o in data["ots"])
     assert all(o["estado"] not in ("completed", "cancelled") for o in data["ots"])

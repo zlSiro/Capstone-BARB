@@ -85,7 +85,7 @@ async def test_create_session_guarda_equipo_y_titulo_segmentado(cleanup_sessions
         usuario_id=seeded_ids["usuario_id"],
         empresa_id=seeded_ids["empresa_id"],
         primer_mensaje=(
-            "Necesito saber por qué la bomba PUMP-E4 está vibrando demasiado "
+            "Necesito saber por qué la bomba BOM-001 está vibrando demasiado "
             "y qué debo revisar primero"
         ),
     )
@@ -99,10 +99,10 @@ async def test_create_session_guarda_equipo_y_titulo_segmentado(cleanup_sessions
         {"sid": sid},
     )
     assert row is not None
-    assert row["titulo"] == "PUMP-E4 — vibrando demasiado"
-    assert row["machine_name"] == "Pump E4"
-    assert row["plant_name"] == "Planta Central San Bernardo"
-    assert row["discipline"] == "Hidráulica"
+    assert row["titulo"] == "BOM-001 — vibrando demasiado"
+    assert row["machine_name"] == "Bomba de pulpa KSB"
+    assert row["plant_name"] == "Molienda SAG"
+    assert row["discipline"] == "Mecánica"
 
 
 @pytest.mark.asyncio
@@ -149,13 +149,13 @@ async def test_create_session_titulo_fallback(cleanup_sessions, seeded_ids):
 # =============================================================================
 
 def test_make_titulo_usa_codigo_y_problema():
-    maquina = {"nombre": "Pump E4", "codigo": "PUMP-E4"}
+    maquina = {"nombre": "Bomba de pulpa KSB", "codigo": "BOM-001"}
     titulo = chat_repository._make_titulo(
-        "Necesito saber por qué la bomba PUMP-E4 está vibrando demasiado "
+        "Necesito saber por qué la bomba BOM-001 está vibrando demasiado "
         "y qué debo revisar primero",
         maquina,
     )
-    assert titulo == "PUMP-E4 — vibrando demasiado"
+    assert titulo == "BOM-001 — vibrando demasiado"
 
 
 def test_make_titulo_sin_maquina_corta_en_palabra_y_sin_elipsis():
@@ -419,12 +419,12 @@ async def test_create_session_con_maquina_explicita_fija_maquina_id_y_snapshot(c
 
 @pytest.mark.asyncio
 async def test_maquina_explicita_tiene_prioridad_sobre_identificar_maquina(cleanup_sessions, seeded_ids):
-    # El mensaje nombra PUMP-E4, pero el usuario eligió otra máquina.
-    elegida = await _maquina_dict(seeded_ids["empresa_id"], excluir=(await _maquina_dict(1, "PUMP-E4"))["maquina_id"])
+    # El mensaje nombra BOM-001, pero el usuario eligió otra máquina.
+    elegida = await _maquina_dict(seeded_ids["empresa_id"], excluir=(await _maquina_dict(1, "BOM-001"))["maquina_id"])
     sid = await chat_repository.create_session(
         usuario_id=seeded_ids["usuario_id"],
         empresa_id=seeded_ids["empresa_id"],
-        primer_mensaje="la bomba PUMP-E4 está vibrando",
+        primer_mensaje="la bomba BOM-001 está vibrando",
         maquina=elegida,
     )
     cleanup_sessions.append(sid)
@@ -439,12 +439,12 @@ async def test_maquina_detectada_por_texto_no_vincula_la_sesion(cleanup_sessions
     sid = await chat_repository.create_session(
         usuario_id=seeded_ids["usuario_id"],
         empresa_id=seeded_ids["empresa_id"],
-        primer_mensaje="la bomba PUMP-E4 está vibrando demasiado",
+        primer_mensaje="la bomba BOM-001 está vibrando demasiado",
     )
     cleanup_sessions.append(sid)
 
     row = await _fila_sesion(sid)
-    assert row["machine_name"] == "Pump E4"  # snapshot del historial
+    assert row["machine_name"] == "Bomba de pulpa KSB"  # snapshot del historial
     assert row["maquina_id"] is None  # sin vínculo explícito
 
 

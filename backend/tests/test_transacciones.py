@@ -15,8 +15,11 @@ import pytest_asyncio
 
 from barb.core.db import execute, fetch_all, fetch_one
 
-SUPER_ID = 14  # super@barb.com (sin empresa)
-GERENTE_ID = 2  # gerente1@planta.com (empresa 1)
+# ids del seed realista (02_maestros.sql): el super usuario va después de las 3 empresas
+# y el gerente de Minera del Norte es el segundo usuario. Los INSERT del seed llevan
+# ORDER BY, así que estos ids son deterministas en una base recién sembrada.
+SUPER_ID = 11    # super@barb.com (sin empresa)
+GERENTE_ID = 2   # gerente@mineradelnorte.cl (empresa 1)
 
 
 async def _usuario(usuario_id: int) -> dict:

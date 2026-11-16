@@ -64,7 +64,7 @@ esta carpeta) si se necesita otra config.
 
 ```bash
 uv run alembic upgrade head  # crea schema (enums + tablas + índices)
-uv run python scripts/seed.py  # datos demo + admin (admin@barb.com / admin123)
+uv run python scripts/seed.py  # 3 empresas reales + 25 usuarios demo (ver docs/CREDENCIALES_DEMO.md)
 ```
 
 Idempotente: si `usuario` ya tiene filas, el seed no reinserta nada (solo
@@ -129,7 +129,7 @@ uv run python scripts/seed.py
 uv run fastapi dev src/barb/main.py --port 9000
 ```
 
-Login demo: `admin@barb.com` / `admin123`.
+Login demo: `gerente@mineradelnorte.cl` / `mineria123` (super usuario: `super@barb.com` / `super123`).
 
 ## Compatibilidad con el frontend actual
 

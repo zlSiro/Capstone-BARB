@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Auditoría de falsos positivos · backend/tests</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .card { box-shadow: 0 1px 2px rgba(15,23,42,.06), 0 10px 30px -22px rgba(15,23,42,.45); }
+  table { font-variant-numeric: tabular-nums; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  @media print { body { background:#fff } .card { box-shadow:none; border:1px solid #e2e8f0; break-inside:avoid } }
+</style>
+</head>
+<body class="bg-slate-100 text-slate-800 antialiased">
+
+<header class="relative overflow-hidden bg-slate-900 text-slate-100">
+  <div class="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-sky-500/20 blur-3xl"></div>
+  <div class="pointer-events-none absolute -bottom-28 left-1/4 h-72 w-72 rounded-full bg-emerald-500/10 blur-3xl"></div>
+  <div class="relative mx-auto max-w-6xl px-6 py-12">
+    <p class="mb-3 inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-sky-300">
+      Auditoría de calidad · solo lectura
+    </p>
+    <h1 class="max-w-4xl text-3xl font-extrabold leading-tight sm:text-4xl">
+      ¿Los 885 tests prueban algo,<br class="hidden sm:block" />
+      <span class="text-sky-300">o solo pasan?</span>
+    </h1>
+    <p class="mt-3 max-w-3xl text-slate-300">
+      Barrido heurístico de <code class="rounded bg-white/10 px-1">backend/tests/</code> buscando cinco
+      antipatrones clásicos de falso positivo. Con una advertencia por delante: el análisis es
+      automático, así que cada hallazgo está <strong class="text-white">verificado a mano</strong> antes de
+      acusarlo, y varios resultaron falsos positivos del propio heurístico.
+    </p>
+    <div class="mt-6 grid max-w-4xl grid-cols-2 gap-2.5 text-sm sm:grid-cols-4">
+      <div class="rounded-lg bg-white/10 px-3 py-2"><strong class="block text-xl text-white">57</strong> archivos</div>
+      <div class="rounded-lg bg-white/10 px-3 py-2"><strong class="block text-xl text-white">777</strong> funciones de test</div>
+      <div class="rounded-lg bg-white/10 px-3 py-2"><strong class="block text-xl text-emerald-300">1,6 %</strong> débiles de verdad</div>
+      <div class="rounded-lg bg-white/10 px-3 py-2"><strong class="block text-xl text-amber-300">0</strong> graves</div>
+    </div>
+  </div>
+</header>
+
+<main class="mx-auto max-w-6xl space-y-8 px-6 py-10">
+
+  <!-- ================= RESUMEN EJECUTIVO ================= -->
+  <section class="card rounded-2xl bg-white p-7">
+    <h2 class="flex items-center gap-3 text-2xl font-bold text-slate-900">
+      <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100 text-sm font-extrabold text-emerald-700">1</span>
+      Resumen ejecutivo
+    </h2>
+
+    <div class="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-5">
+      <p class="text-lg font-bold text-emerald-900">
+        La suite está en buena forma: 13 de 777 funciones (1,6 %) tienen una debilidad real, y ninguna es grave.
+      </p>
+      <p class="mt-2 text-sm text-emerald-800">
+        No hay aserciones triviales, ni excepciones silenciadas, ni asserts comentados, ni tests que solo
+        verifiquen que un mock fue llamado. Lo que queda son <strong>13 casos que comprueban el código
+        HTTP pero no el contenido</strong> de una respuesta exitosa: si el backend devolviera 200 con
+        datos equivocados, esos tests seguirían en verde.
+        <br><span class="font-semibold">Ya se corrigieron los 3 de seguridad y KPIs</span> (ver la tabla de
+        abajo, en verde): ahora validan nombre y RUT del listado, el contenido de los documentos y el
+        total del KPI contra un COUNT real.
+      </p>
+    </div>
+
+    <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <p class="text-2xl font-extrabold text-slate-900">133</p>
+        <p class="text-xs text-slate-600">hallazgos vigentes del heurístico</p>
+      </div>
+      <div class="rounded-xl border border-amber-200 bg-amber-50 p-4">
+        <p class="text-2xl font-extrabold text-amber-800">13</p>
+        <p class="text-xs text-amber-700">debilidad real pendiente (media)</p>
+      </div>
+      <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <p class="text-2xl font-extrabold text-slate-900">120</p>
+        <p class="text-xs text-slate-600">aceptables o cosméticos (gravedad baja)</p>
+      </div>
+      <div class="rounded-xl border border-rose-200 bg-rose-50 p-4">
+        <p class="text-2xl font-extrabold text-rose-800">0</p>
+        <p class="text-xs text-rose-700">críticos (gravedad alta)</p>
+      </div>
+    </div>
+
+    <div class="mt-5 overflow-x-auto rounded-xl border border-slate-200">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+          <tr><th class="px-4 py-2.5">Antipatrón buscado</th><th class="px-4 py-2.5 text-center">Encontrados</th><th class="px-4 py-2.5">Lectura</th></tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100 align-top">
+          <tr>
+            <td class="px-4 py-2.5 font-medium">1 · Aserciones triviales</td>
+            <td class="px-4 py-2.5 text-center"><span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-800">0</span></td>
+            <td class="px-4 py-2.5 text-slate-600">Ningún <code>assert True</code> ni comparación entre constantes.</td>
+          </tr>
+          <tr>
+            <td class="px-4 py-2.5 font-medium">2 · Excepciones silenciadas</td>
+            <td class="px-4 py-2.5 text-center"><span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-800">0</span></td>
+            <td class="px-4 py-2.5 text-slate-600">Ningún <code>except: pass</code>. Los <code>except</code> que existen vuelven a lanzar o fallan el test.</td>
+          </tr>
+          <tr>
+            <td class="px-4 py-2.5 font-medium">3 · Sobre-mockeo de la base</td>
+            <td class="px-4 py-2.5 text-center"><span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-800">0</span></td>
+            <td class="px-4 py-2.5 text-slate-600">Hay mocks (chat, storage, LLM), pero siempre acompañados de verificación real contra la base.</td>
+          </tr>
+          <tr>
+            <td class="px-4 py-2.5 font-medium">4 · <code>sleep()</code> en tests</td>
+            <td class="px-4 py-2.5 text-center"><span class="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-700">2</span></td>
+            <td class="px-4 py-2.5 text-slate-600">Ambos en <code>test_db_cancelacion</code>, donde <strong>la espera es el objeto de la prueba</strong>. Aceptables.</td>
+          </tr>
+          <tr>
+            <td class="px-4 py-2.5 font-medium">5 · Tests sin ningún assert</td>
+            <td class="px-4 py-2.5 text-center"><span class="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-700">3</span></td>
+            <td class="px-4 py-2.5 text-slate-600">Tests negativos: «no debe lanzar» <em>es</em> la comprobación. Verificados a mano.</td>
+          </tr>
+          <tr class="bg-amber-50/50">
+            <td class="px-4 py-2.5 font-medium">1b · Solo <code>status_code</code></td>
+            <td class="px-4 py-2.5 text-center"><span class="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-800">108</span></td>
+            <td class="px-4 py-2.5 text-slate-600">
+              <strong>95 son legítimos</strong> (el 401/403/404 <em>es</em> el contrato de una prueba negativa) y
+              <strong>13 siguen siendo un hueco real</strong> (200/201 sin mirar el cuerpo). Los otros 3 se corrigieron.
+            </td>
+          </tr>
+          <tr>
+            <td class="px-4 py-2.5 font-medium">Extra · <code>raises</code> sin detalle</td>
+            <td class="px-4 py-2.5 text-center"><span class="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-700">20</span></td>
+            <td class="px-4 py-2.5 text-slate-600">Comprueban que lanza, pero no el tipo ni el mensaje. Cosmético.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="mt-4 rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
+      <strong>Método.</strong> Análisis con <code>ast</code> sobre las 57 archivos: por cada función
+      <code>test_*</code> se inspeccionan sus aserciones, sus <code>except</code>, sus mocks y sus esperas.
+      777 funciones equivalen a 885 casos de pytest (la diferencia son los parametrizados). «Débil de
+      verdad» = una respuesta <strong>exitosa</strong> cuya única comprobación es el código HTTP.
+    </p>
+  </section>
+
+  <!-- ================= LOS 16 ACCIONABLES ================= -->
+  <section class="card rounded-2xl bg-white p-7">
+    <h2 class="flex items-center gap-3 text-2xl font-bold text-slate-900">
+      <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 text-sm font-extrabold text-amber-700">2</span>
+      Los 13 que faltan (3 ya resueltos)
+    </h2>
+    <p class="mt-2 text-sm text-slate-600">
+      Los tres primeros ya están corregidos y validan el cuerpo. Los que siguen comprueban que la
+      respuesta fue exitosa sin mirar qué devolvió: si mañana un endpoint responde 200 con el objeto
+      equivocado, seguirían en verde.
+    </p>
+
+    <div class="mt-4 overflow-x-auto rounded-xl border border-slate-200">
+      <table class="w-full min-w-[62rem] text-xs">
+        <thead class="bg-slate-50 text-left uppercase tracking-wide text-slate-500">
+          <tr>
+            <th class="px-3 py-2.5">Archivo · test</th>
+            <th class="px-3 py-2.5">Antipatrón</th>
+            <th class="px-3 py-2.5 text-center">Gravedad</th>
+            <th class="px-3 py-2.5">Cómo corregirlo</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100 align-top">
+          <tr class="bg-emerald-50/70">
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_multiempresa.py</code><br><s class="font-medium text-slate-400">test_mantenedor_de_empresas_es_exclusivo_del_super</s></td>
+            <td class="px-3 py-2.5">Resuelto: valida nombre + RUT de las 3 empresas, <code>usuarios_total</code> y el mensaje del 403 (<code>gestionar_empresas</code>)</td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-emerald-100 px-1.5 py-0.5 font-bold text-emerald-700">✓</span></td>
+            <td class="px-3 py-2.5"><strong class="text-emerald-700">Hecho</strong></td>
+          </tr>
+          <tr class="bg-emerald-50/70">
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_multiempresa.py</code><br><s class="font-medium text-slate-400">test_operador_ve_documentos_pero_no_sube_ni_elimina</s></td>
+            <td class="px-3 py-2.5">Resuelto: exige <code>len &gt; 0</code>, que todos sean de su empresa, títulos no vacíos y que el operador no figure en <code>subido_por</code></td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-emerald-100 px-1.5 py-0.5 font-bold text-emerald-700">✓</span></td>
+            <td class="px-3 py-2.5"><strong class="text-emerald-700">Hecho</strong></td>
+          </tr>
+          <tr class="bg-emerald-50/70">
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_stats_filtros.py</code><br><s class="font-medium text-slate-400">test_la_empresa_1_ve_sus_propias_plantas</s></td>
+            <td class="px-3 py-2.5">Resuelto: el total del filtro se compara contra el COUNT real y las máquinas listadas deben ser de esa planta</td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-emerald-100 px-1.5 py-0.5 font-bold text-emerald-700">✓</span></td>
+            <td class="px-3 py-2.5"><strong class="text-emerald-700">Hecho</strong></td>
+          </tr>
+          <tr>
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_work_orders_create.py</code><br><span class="font-medium">test_supervisor_puede_crear_ot</span></td>
+            <td class="px-3 py-2.5">Solo status 200</td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-amber-100 px-1.5 py-0.5 font-bold text-amber-700">Media</span></td>
+            <td class="px-3 py-2.5">Validar que el JSON trae <code>numero_ot</code>, el <code>estado</code> inicial y la máquina correcta.</td>
+          </tr>
+          <tr>
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_work_orders_create.py</code><br><span class="font-medium">test_supervisor_puede_crear_ot_en_la_ruta_con_guion_bajo</span></td>
+            <td class="px-3 py-2.5">Solo status 200</td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-amber-100 px-1.5 py-0.5 font-bold text-amber-700">Media</span></td>
+            <td class="px-3 py-2.5">Igual que el anterior: el objetivo es probar la ruta, pero conviene confirmar que la OT existe.</td>
+          </tr>
+          <tr>
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_work_orders_status.py</code><br><span class="font-medium">test_estados_finales_no_admiten_cambios</span></td>
+            <td class="px-3 py-2.5">Solo status 409</td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-amber-100 px-1.5 py-0.5 font-bold text-amber-700">Media</span></td>
+            <td class="px-3 py-2.5">Verificar el <code>detail</code> del 409 y que el estado en la base no cambió.</td>
+          </tr>
+          <tr>
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_work_orders_status.py</code><br><span class="font-medium">test_el_supervisor_tambien_puede_enviar_a_validacion</span></td>
+            <td class="px-3 py-2.5">Solo status 200</td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-amber-100 px-1.5 py-0.5 font-bold text-amber-700">Media</span></td>
+            <td class="px-3 py-2.5">Comprobar <code>estado == "por_validar"</code> en la respuesta.</td>
+          </tr>
+          <tr>
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_work_orders_status.py</code><br><span class="font-medium">test_ruta_con_guion_bajo_y_put_legado_siguen_funcionando</span></td>
+            <td class="px-3 py-2.5">Solo status 200</td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-amber-100 px-1.5 py-0.5 font-bold text-amber-700">Media</span></td>
+            <td class="px-3 py-2.5">El test es de compatibilidad: basta con verificar que el <code>estado</code> devuelto es el pedido.</td>
+          </tr>
+          <tr>
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_avisos.py</code><br><span class="font-medium">test_la_base_impide_que_un_aviso_origine_dos_ot</span></td>
+            <td class="px-3 py-2.5">Solo status 200</td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-amber-100 px-1.5 py-0.5 font-bold text-amber-700">Media</span></td>
+            <td class="px-3 py-2.5">Contar las OTs en la base después de la segunda llamada: es lo que realmente se quiere probar.</td>
+          </tr>
+          <tr>
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_multiempresa.py</code><br><span class="font-medium">test_con_otro_supervisor_activo_se_puede_desactivar_y_eliminar</span></td>
+            <td class="px-3 py-2.5">Solo status 201</td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-amber-100 px-1.5 py-0.5 font-bold text-amber-700">Media</span></td>
+            <td class="px-3 py-2.5">Verificar el <code>rol</code> y la <code>empresa_id</code> del usuario recién creado.</td>
+          </tr>
+          <tr>
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_chat_history.py</code><br><span class="font-medium">test_list_sessions_paginacion</span></td>
+            <td class="px-3 py-2.5">Solo status 200</td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-amber-100 px-1.5 py-0.5 font-bold text-amber-700">Media</span></td>
+            <td class="px-3 py-2.5">Es una prueba de paginación: sin mirar el largo de la página ni el cursor no prueba nada.</td>
+          </tr>
+          <tr>
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_maquinas_edicion.py</code><br><span class="font-medium">test_el_mismo_codigo_no_choca_consigo_mismo</span></td>
+            <td class="px-3 py-2.5">Solo status 200</td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-amber-100 px-1.5 py-0.5 font-bold text-amber-700">Media</span></td>
+            <td class="px-3 py-2.5">Confirmar que el <code>codigo</code> se mantiene y que el nombre sí cambió.</td>
+          </tr>
+          <tr>
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_plantas_edicion.py</code><br><span class="font-medium">test_el_mismo_codigo_si_se_permite_en_otra_planta</span></td>
+            <td class="px-3 py-2.5">Solo status 201</td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-amber-100 px-1.5 py-0.5 font-bold text-amber-700">Media</span></td>
+            <td class="px-3 py-2.5">Comprobar que la máquina nueva quedó en la planta destino.</td>
+          </tr>
+          <tr>
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_topology_nodo.py</code><br><span class="font-medium">test_empresa_ve_sus_propios_nodos</span></td>
+            <td class="px-3 py-2.5">Solo status 200</td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-amber-100 px-1.5 py-0.5 font-bold text-amber-700">Media</span></td>
+            <td class="px-3 py-2.5">Es la contraprueba del aislamiento: debe verificar que el nodo devuelto es el pedido.</td>
+          </tr>
+          <tr class="bg-slate-50/60">
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_transacciones_empresa.py</code><br><span class="font-medium">test_solo_el_gerente_accede</span></td>
+            <td class="px-3 py-2.5">Solo status (403 y 422, mixto)</td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-slate-200 px-1.5 py-0.5 font-bold text-slate-700">Baja</span></td>
+            <td class="px-3 py-2.5">Negativo legítimo; solo falta el mensaje del <code>detail</code>.</td>
+          </tr>
+          <tr class="bg-slate-50/60">
+            <td class="px-3 py-2.5"><code class="text-slate-500">test_transacciones.py</code><br><span class="font-medium">test_solo_el_super_usuario_accede</span></td>
+            <td class="px-3 py-2.5">Solo status (403 y 422, mixto)</td>
+            <td class="px-3 py-2.5 text-center"><span class="rounded bg-slate-200 px-1.5 py-0.5 font-bold text-slate-700">Baja</span></td>
+            <td class="px-3 py-2.5">Igual: añadir el <code>detail</code> para que el 403 no sea intercambiable.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="mt-3 text-xs text-slate-500">
+      Las dos últimas filas bajaron a <strong>Baja</strong> tras revisarlas: son pruebas negativas donde el
+      código de error es la comprobación correcta.
+    </p>
+  </section>
+
+  <!-- ================= LOS 120 ACEPTABLES ================= -->
+  <section class="card rounded-2xl bg-white p-7">
+    <h2 class="flex items-center gap-3 text-2xl font-bold text-slate-900">
+      <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-200 text-sm font-extrabold text-slate-700">3</span>
+      Los 120 que se pueden dejar como están
+    </h2>
+
+    <div class="mt-4 grid gap-3 md:grid-cols-2">
+      <div class="rounded-xl border border-slate-200 p-4">
+        <p class="text-sm font-bold text-slate-900">95 · <code>status_code</code> de error</p>
+        <p class="mt-1.5 text-sm text-slate-600">
+          En una prueba negativa el <strong>401/403/404/409 es la aserción</strong>: lo que se está
+          verificando es que la operación se rechaza. Mirar el cuerpo añade valor, pero no es un hueco
+          de cobertura.
+        </p>
+        <p class="mt-2 text-xs text-slate-500">Ejemplos: <code>test_auth</code> (401), <code>test_multiempresa</code> (403 entre empresas), <code>test_work_orders_status</code> (409 en estados finales).</p>
+      </div>
+      <div class="rounded-xl border border-slate-200 p-4">
+        <p class="text-sm font-bold text-slate-900">20 · <code>pytest.raises</code> sin detalle</p>
+        <p class="mt-1.5 text-sm text-slate-600">
+          Comprueban que algo lanza, pero no <code>match=</code> ni el <code>status_code</code>. Se
+          concentran en <code>test_embeddings</code> (4), <code>test_avisos</code> (3) y
+          <code>test_utils</code> (3).
+        </p>
+        <p class="mt-2 text-xs text-slate-500">Coste de arreglarlo: una línea por test. Valor: distinguir un 400 de negocio de un 500 inesperado.</p>
+      </div>
+      <div class="rounded-xl border border-slate-200 p-4">
+        <p class="text-sm font-bold text-slate-900">3 · tests negativos sin assert</p>
+        <p class="mt-1.5 text-sm text-slate-600">
+          <code>test_delete_disco_tolerante_si_no_existe</code>,
+          <code>test_delete_supabase_404_es_tolerado</code> y
+          <code>test_acepta_la_dimension_que_exige_la_columna</code>: que no lance <em>es</em> el resultado esperado.
+        </p>
+        <p class="mt-2 text-xs text-slate-500">Lo verifiqué leyendo el código: no es un falso positivo silencioso, es una prueba de tolerancia.</p>
+      </div>
+      <div class="rounded-xl border border-slate-200 p-4">
+        <p class="text-sm font-bold text-slate-900">2 · <code>sleep</code></p>
+        <p class="mt-1.5 text-sm text-slate-600">
+          En <code>test_db_cancelacion</code> la espera <strong>es el escenario</strong>: hay que dar tiempo a
+          que la consulta esté en vuelo para cancelarla. Cambiarlo por un <code>await</code> de evento sería
+          más elegante, no más correcto.
+        </p>
+        <p class="mt-2 text-xs text-slate-500">Único riesgo: si el CI es lento, el test puede volverse intermitente.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= RECOMENDACION ================= -->
+  <section class="card rounded-2xl bg-slate-900 p-7 text-slate-200">
+    <h2 class="text-2xl font-bold text-white">4 · Qué arreglaría primero</h2>
+
+    <ol class="mt-4 space-y-3">
+      <li class="rounded-xl bg-white/5 p-4">
+        <p class="text-sm font-bold text-emerald-300">1. Los tres de seguridad y KPIs — ✅ hecho</p>
+        <p class="mt-1 text-sm text-slate-300">
+          Los tres ya validan el cuerpo: el listado de empresas con su RUT, el contenido de los
+          documentos que ve un operador y el total del KPI contra un COUNT real. Eran los únicos donde
+          un 200 con datos equivocados pasaba desapercibido, y cubrían aislamiento entre empresas y
+          cálculo de KPIs: justo lo que no puede fallar en la demo.
+        </p>
+      </li>
+      <li class="rounded-xl bg-white/5 p-4">
+        <p class="text-sm font-bold text-amber-300">2. Los de creación y estado de OT (1,5 h)</p>
+        <p class="mt-1 text-sm text-slate-300">
+          Los cinco de <code>test_work_orders_create</code> / <code>status</code>: son el flujo central
+          del producto y hoy solo confirman que la llamada no reventó.
+        </p>
+      </li>
+      <li class="rounded-xl bg-white/5 p-4">
+        <p class="text-sm font-bold text-sky-300">3. El resto de los 16, cuando haya hueco</p>
+        <p class="mt-1 text-sm text-slate-300">
+          Paginación, códigos duplicados y topología. Añadir dos o tres aserciones por test.
+        </p>
+      </li>
+      <li class="rounded-xl bg-white/5 p-4">
+        <p class="text-sm font-bold text-slate-400">No tocaría</p>
+        <p class="mt-1 text-sm text-slate-300">
+          Los 95 de código de error y los 3 tests de tolerancia: cambiarlos sería ruido, no mejora.
+          Los 20 <code>raises</code> y los 2 <code>sleep</code> son mejoras cosméticas.
+        </p>
+      </li>
+    </ol>
+
+    <div class="mt-5 rounded-xl border border-emerald-400/30 bg-emerald-400/10 p-4">
+      <p class="text-sm font-bold text-emerald-200">Lo importante, sin alarmismo</p>
+      <p class="mt-1 text-sm text-emerald-100/90">
+        <strong>No hay falsos positivos sistémicos.</strong> El 1,6 % de debilidad real está concentrado
+        en respuestas exitosas, los tres casos de seguridad y KPIs ya se corrigieron, y los antipatrones
+        más peligrosos —asserts triviales, excepciones comidas, mocks que se prueban a sí mismos— dan
+        <strong>cero</strong>. La suite pasó de roja a verde
+        sin atajos: cada uno de los 885 tests ejercita código real contra la base.
+      </p>
+    </div>
+  </section>
+
+  <footer class="pb-8 text-center text-xs text-slate-500">
+    <p>
+      Análisis estático con <code class="rounded bg-slate-200 px-1">ast</code> sobre 57 archivos y 777
+      funciones de test (885 casos con parametrizados) + revisión manual de los hallazgos.
+    </p>
+    <p class="mt-1">Solo lectura: no se modificó ningún archivo de test.</p>
+  </footer>
+</main>
+</body>
+</html>

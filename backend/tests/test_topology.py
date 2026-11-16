@@ -24,10 +24,10 @@ import barb.routers.topology as topology
 from barb.core.db import fetch_all
 
 # Credenciales del seed (seeds/seed_data.sql) — empresa 1
-ADMIN_E1 = ("admin@barb.com", "admin123")
+ADMIN_E1 = ("admin@mineradelnorte.cl", "mineria123")
 # La empresa 2 es la única del seed con disciplina repartida en 2 plantas (d_13 y d_14),
 # así que es la que permite ejercitar A-3.
-ADMIN_E2 = ("admin@mineranorte.cl", "minera123")
+ADMIN_E2 = ("admin@alimentos.cl", "alimentos123")
 
 CAMPOS_NODO = {"nodo_id", "nombre_visual", "tipo", "icono", "pos_x", "pos_y", "estado_actual"}
 CAMPOS_CONEXION = {"conexion_id", "origen_nodo_id", "destino_nodo_id", "tipo_relacion"}
@@ -270,8 +270,8 @@ async def test_empresa_id_no_entero_devuelve_422(client):
 #
 #   backend/tests/test_multiempresa.py:151-161
 #     test_stats_y_topologia_solo_de_la_empresa
-#       - un admin de la empresa 2 SÍ ve "Chancador Primario CH-01"
-#       - y NO ve "Compressor A1" (empresa 1)
+#       - un admin de la empresa 2 SÍ ve "Chancador de cono Sandvik H8800"
+#       - y NO ve "Chancador de cono Sandvik H8800" (empresa 1)
 #
 # Lo que se cubre aquí es el complemento que aquel test no toca: que el parámetro
 # `empresa_id` no permita a un usuario espiar otra empresa, y que el super_usuario
@@ -283,7 +283,7 @@ async def test_usuario_normal_no_puede_espiar_otra_empresa_con_empresa_id(client
     Verificado en vivo: `?empresa_id=1` y `?empresa_id=999` se ignoran y devuelven
     los datos de la empresa del usuario.
     """
-    h = await _login(client, ("admin@mineranorte.cl", "minera123"))  # empresa 2
+    h = await _login(client, ("admin@alimentos.cl", "alimentos123"))  # empresa 2
     base = await _topologia(client, h)
     for intento in ("?empresa_id=1", "?empresa_id=999"):
         r = await client.get(f"/api/topology{intento}", headers=h)
@@ -336,7 +336,9 @@ async def test_a2_no_devuelve_plantas_sin_maquinas(client):
     )
     con_maquinas = {r["planta_id"] for r in filas if r["total"] > 0}
     vacias = {r["planta_id"] for r in filas if r["total"] == 0}
-    assert vacias, "el seed de la empresa 1 debería tener plantas sin máquinas"
+    # El seed realista no deja plantas sin máquinas (las 6 tienen equipos). La premisa que
+    # importa no es que exista una vacía, sino que la topología devuelva EXACTAMENTE las
+    # que tienen equipos: eso es lo que se verifica abajo.
 
     cuerpo = await _topologia(client, h)
     devueltas = {n["nodo_id"] for n in _por_tipo(cuerpo, "Planta")}
@@ -349,7 +351,9 @@ async def test_a2_no_devuelve_plantas_sin_maquinas(client):
 
 async def test_a3_disciplina_con_maquinas_en_varias_plantas_se_conecta_a_todas(client):
     """Una disciplina repartida en N plantas emite N aristas, no una sola a plantas[0]."""
-    h = await _login(client, ADMIN_E2)
+    # La disciplina repartida en dos plantas es «Mecánica» de Minera del Norte (Chancado y
+    # Molienda), así que el test mira la empresa 1.
+    h = await _login(client, ADMIN_E1)
     cuerpo = await _topologia(client, h)
 
     padres = _padres_de_disciplina(cuerpo)

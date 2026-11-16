@@ -76,8 +76,11 @@ async def ot_creada(client, db_pool):
 
     token = f"test-sla-{uuid.uuid4().hex[:8]}"
     await execute(
+        # El creador de OTs es el SUPERVISOR (matriz de roles vigente); se resuelve por
+        # email en vez de hardcodear el id.
         "INSERT INTO sesion (token, usuario_id, expira_en) "
-        "VALUES (%(t)s, 10, NOW() + INTERVAL '10 minutes')",
+        "SELECT %(t)s, usuario_id, NOW() + INTERVAL '10 minutes' "
+        "FROM usuario WHERE email = 'supervisor@mineradelnorte.cl'",
         {"t": token},
     )
     h = {"Authorization": f"Bearer {token}"}

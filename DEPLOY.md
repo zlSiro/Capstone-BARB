@@ -53,7 +53,7 @@ cd backend
 uv sync
 $env:DATABASE_URL = "postgresql://postgres.<REF>:<PASSWORD>@aws-0-<REGION>.pooler.supabase.com:5432/postgres"   # Session pooler
 uv run alembic upgrade heads
-uv run python scripts/seed.py      # admin@barb.com / admin123 + datos demo (idempotente)
+uv run python scripts/seed.py      # 3 empresas reales + 25 usuarios demo (idempotente, no borra nada)
 ```
 
 (En Git Bash: `export DATABASE_URL="..."`.) La variable de entorno tiene prioridad sobre `.env`, así no tocas tu config local.
@@ -209,7 +209,7 @@ SPA: Pages sirve `index.html` como fallback cuando no hay `404.html`; las rutas 
 - [ ] `CORS_ORIGINS`/`CORS_ORIGIN_REGEX` con dominio `pages.dev`
 - [ ] Login en la URL `pages.dev` funciona
 - [ ] Chat IA responde (streaming)
-- [ ] Usuarios demo del seed cambiados o eliminados (en especial `super@barb.com` y `admin@barb.com`)
+- [ ] Usuarios demo del seed cambiados o eliminados (en especial `super@barb.com` y los `admin@*.cl` / `gerente@*.cl`)
 
 ## 8. Troubleshooting
 
@@ -288,17 +288,33 @@ El esquema por sí solo deja la base **sin ningún usuario**, así que nadie pue
 uv run python scripts/seed.py
 ```
 
-Crea 4 empresas ficticias, órdenes de trabajo, documentos y estos usuarios con **contraseñas conocidas, públicas en el repo**:
+Crea 3 empresas (Minera del Norte, Planta de Alimentos, Manufactura Automotriz), 6 plantas, 11 máquinas, 528 OTs, documentos y 25 usuarios con **contraseñas conocidas, públicas en el repo** (los hashes están en `backend/seeds/02_maestros.sql`):
 
 | Usuario | Contraseña | Rol |
 |---|---|---|
 | `super@barb.com` | `super123` | `super_usuario` (ve toda la plataforma) |
-| `admin@barb.com` | `admin123` | `admin` (Planta Demo BARB) |
-| `admin@mineranorte.cl` | `minera123` | `admin` |
-| `admin@trialcorp.cl` | `trial123` | `admin` |
-| `admin@constructorasur.cl` | `sur12345` | `admin` (empresa suspendida) |
+| `admin@mineradelnorte.cl` | `mineria123` | `admin` |
+| `admin@alimentos.cl` | `alimentos123` | `admin` |
+| `admin@automotriz.cl` | `automotriz123` | `admin` |
 
-El seed también crea otros usuarios de ejemplo (técnicos, operadores, etc.). Es idempotente. **Nunca lo uses en una instalación expuesta a internet sin cambiar o borrar esas cuentas.**
+Cada empresa tiene además gerentes, supervisor y técnicos con la misma clave de su empresa (`gerente@`, `supervisor@`, `tecnico1@`…). Es idempotente pero **no borra nada**. **Nunca lo uses en una instalación expuesta a internet sin cambiar o borrar esas cuentas.**
+
+**Reset completo de datos (base que ya tenía otro seed)**
+
+Los seeds solo agregan filas: sobre una base con datos viejos quedan mezclados. Para partir limpio:
+
+1. Backup (Supabase → Database → Backups + `pg_dump -Fc`).
+2. Vaciar el schema `public` (SQL editor):
+   ```sql
+   DROP SCHEMA public CASCADE;
+   CREATE SCHEMA public;
+   GRANT USAGE ON SCHEMA public TO postgres, anon, authenticated, service_role;
+   GRANT ALL ON SCHEMA public TO postgres, service_role;
+   ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO postgres, service_role;
+   ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO postgres, service_role;
+   ```
+3. `uv run alembic upgrade head` y `uv run python scripts/seed.py` con `DATABASE_URL` del Session pooler (5432).
+4. Borrar del bucket de Storage los documentos viejos (quedan huérfanos). Las sesiones activas se pierden.
 
 **Opción B — Producción real (sin datos demo)**
 

@@ -20,7 +20,7 @@ from barb.routers.stats import (
     _semaforo_operacional,
 )
 
-GERENTE_E1 = ("gerente1@planta.com", "gerente123")
+GERENTE_E1 = ("gerente@mineradelnorte.cl", "mineria123")
 RUTA = "/api/stats/financial-impact"
 
 
