@@ -190,11 +190,11 @@ async def test_el_prompt_incluye_el_contexto_recuperado(monkeypatch):
 @pytest.mark.asyncio
 async def test_la_tool_encuentra_una_maquina_real_y_cuenta_sus_ots(db_pool):
     """Integración: la Skill consulta datos verdaderos de la empresa 1 del seed."""
-    tools = crear_tools(empresa_id=1)
+    tools = crear_tools(empresa_id=1, rol="supervisor")
     # Consultar y PROponer; el orden importa poco, sí que estén las dos. El candado
     # (CGBIDA-476) garantiza que ninguna tool escriba en la base.
     # HU-26: el universo de Skills quedó en 5; HU-20 sumó el aviso de falla (6).
-    # El candado (CGBIDA-476) garantiza que ninguna tool escriba en la base.
+    # Con rol supervisor están las 6; sin permiso (fail-closed, HU-24) son 5 (sin proponer_ot).
     assert sorted(t.name for t in tools) == [
         "actualizar_parametros_maquina",
         "consultar_ots_maquina",
@@ -203,6 +203,8 @@ async def test_la_tool_encuentra_una_maquina_real_y_cuenta_sus_ots(db_pool):
         "proponer_ot",
         "proponer_planta_completa",
     ]
+    tools_sin_ot = crear_tools(empresa_id=1, rol="tecnico")
+    assert "proponer_ot" not in [t.name for t in tools_sin_ot]
 
     consultar = next(t for t in tools if t.name == "consultar_ots_maquina")
     salida = await consultar.ainvoke({"nombre_maquina": "Bomba de pulpa KSB"})
@@ -217,9 +219,34 @@ async def test_la_tool_no_ve_maquinas_de_otra_empresa(db_pool):
     maquinas_e1 = await _buscar_maquinas(1, "Bomba de pulpa KSB")
     assert maquinas_e1, "el seed debería tener la bomba en la empresa 1"
 
-    # La misma búsqueda desde otra empresa no debe encontrarla.
+    # La misma búsqueda desde otra empresa no debe encontrarla (HU-24 / CGBIDA-539).
+    maquinas_e2 = await _buscar_maquinas(2, "Bomba de pulpa KSB")
+    assert maquinas_e2 == []
+
     maquinas_ajenas = await _buscar_maquinas(999, "Bomba de pulpa KSB")
     assert maquinas_ajenas == []
+
+
+@pytest.mark.asyncio
+async def test_el_matcher_tolera_variaciones_en_codigo_de_maquina(db_pool):
+    """
+    HU-24 / CGBIDA-539: Tolerar variaciones comunes en códigos ('BOM001', 'bom-01', 'BOM-001').
+    """
+    from barb.core.db import fetch_all
+
+    filas = await fetch_all(
+        "SELECT m.nombre, m.codigo FROM maquina m JOIN planta p ON p.planta_id = m.planta_id WHERE p.empresa_id = 1"
+    )
+    bomba = next((f for f in filas if f["codigo"] == "BOM-001"), None)
+    if not bomba:
+        pytest.skip("BOM-001 no encontrada en empresa 1")
+
+    # Sin guion pegado
+    assert _puntaje("bom001", bomba["nombre"], bomba["codigo"]) >= _UMBRAL_PARECIDO
+    # Con guion y minúsculas
+    assert _puntaje("bom-001", bomba["nombre"], bomba["codigo"]) >= _UMBRAL_PARECIDO
+    # Variación de ceros en código
+    assert _puntaje("BOM-01", bomba["nombre"], bomba["codigo"]) >= _UMBRAL_PARECIDO
 
 
 @pytest.mark.asyncio

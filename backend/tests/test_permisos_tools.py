@@ -60,33 +60,37 @@ def test_un_rol_desconocido_falla_cerrado():
 
 
 # =============================================================================
-# proponer_ot: la propuesta tampoco se le ofrece a quien no puede crear
+# proponer_ot: RBAC fail-closed (HU-24 / CGBIDA-536)
 # =============================================================================
-
-
-@pytest.mark.asyncio
-async def test_el_tecnico_no_puede_proponer_ot():
-    salida = await _tools(TECNICO)["proponer_ot"].ainvoke({"nombre_maquina": "Chancador de cono Sandvik H8800", "descripcion_problema": PROBLEMA})
-    assert salida == SIN_PERMISO_OT
 
 
 def test_el_mensaje_de_rechazo_es_el_definido_por_el_negocio():
     assert SIN_PERMISO_OT == "No tiene privilegios para generar OT sin un aviso de falla. Por favor generar conforme al flujo"
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize("rol", ["operador", "tecnico", "engineer", "gerente", "admin", "super_usuario"])
-async def test_todo_rol_que_no_es_supervisor_recibe_el_mensaje_al_intentar_generar_una_ot(rol):
-    """La intención de crear una OT desde el chat, sin un aviso de falla, se rechaza con el texto del negocio."""
-    salida = await _tools(rol)["proponer_ot"].ainvoke({"nombre_maquina": "Chancador de cono Sandvik H8800", "descripcion_problema": PROBLEMA})
-    assert salida == "No tiene privilegios para generar OT sin un aviso de falla. Por favor generar conforme al flujo"
+@pytest.mark.parametrize("rol", ["operador", "tecnico", "engineer", "gerente", "admin", "super_usuario", None])
+def test_roles_sin_permiso_no_reciben_la_tool_proponer_ot(rol):
+    """RBAC fail-closed: la tool proponer_ot no se registra para ningún rol que no sea supervisor."""
+    herramientas = _tools(rol)
+    assert "proponer_ot" not in herramientas
 
 
-@pytest.mark.asyncio
-async def test_el_gerente_no_puede_proponer_ot():
-    """La creación directa de OT es solo del supervisor: el gerente genera OT desde un aviso."""
-    salida = await _tools(GERENTE)["proponer_ot"].ainvoke({"nombre_maquina": "Chancador de cono Sandvik H8800", "descripcion_problema": PROBLEMA})
-    assert salida == SIN_PERMISO_OT
+def test_el_supervisor_si_recibe_la_tool_proponer_ot():
+    """El supervisor sí tiene registrada la tool proponer_ot."""
+    herramientas = _tools(SUPERVISOR)
+    assert "proponer_ot" in herramientas
+
+
+def test_el_prompt_omite_regla_proponer_ot_para_roles_sin_permiso():
+    """El prompt omite la regla 9 de proponer_ot si el usuario no puede crear OTs directas."""
+    from barb.services.chat_graph import _prompt_sistema
+
+    prompt_sin = _prompt_sistema("contexto", puede_crear_ot=False)
+    assert "proponer_ot" not in prompt_sin
+
+    prompt_con = _prompt_sistema("contexto", puede_crear_ot=True)
+    assert "proponer_ot" in prompt_con
+    assert "Usa `proponer_ot` solo cuando el usuario pida explícitamente" in prompt_con
 
 
 @pytest.mark.asyncio
