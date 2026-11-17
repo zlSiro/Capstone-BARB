@@ -18,7 +18,7 @@ import { Icon } from '../../shared/components/ui/icon/icon';
       [class.justify-start]="message.role === 'assistant'"
     >
       <div
-        class="max-w-[75%] px-4 py-2 rounded-control text-sm leading-relaxed prose prose-sm max-w-none dark:prose-invert"
+        class="max-w-[85%] md:max-w-[78%] px-4 py-3 rounded-control text-base md:text-[17px] leading-relaxed prose max-w-none dark:prose-invert"
         [class.bg-accion]="message.role === 'user'"
         [class.text-sobre-accion]="message.role === 'user'"
         [class.rounded-br-sm]="message.role === 'user'"
