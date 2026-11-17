@@ -705,3 +705,13 @@ def test_prepare_input_sin_documentacion_no_mienta_sobre_el_origen():
     assert "DOCUMENTACIÓN DE LA EMPRESA:\n" not in system
     assert "identificación visual" in system
     assert system.endswith("Reasoning strength: low")
+
+
+def test_prepare_input_instruye_concision_y_negritas():
+    msgs = _prepare_multimodal_input(
+        {"input": "x", "image": "data:image/png;base64,QQ==", "context": ""}
+    )
+    system = msgs[0].content
+    assert "conciso" in system.lower()
+    assert "negrita" in system.lower()
+
