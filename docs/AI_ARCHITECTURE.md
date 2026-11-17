@@ -679,3 +679,59 @@ un solo sitio.
   el proceso y `continuar --session <uuid>` comprueba que el turno siguiente lo recuerda
   y que la conversación creció en la BD. Sirve igual contra local (`--base-url`) o
   contra Render.
+
+---
+
+## 2.14 Skills de OT: RBAC fail-closed, asignación por rol y caducidad de propuestas (HU-24 / CGBIDA-535)
+
+### 2.14.1 RBAC fail-closed en tools y prompt (CGBIDA-536)
+
+- **Principio fail-closed:** el endpoint `/api/work-orders` está protegido con
+  `require_action("crear_ot")`, que por matriz de negocio es exclusivo del rol `supervisor`.
+  Para evitar que otros perfiles (`tecnico`, `gerente`, `admin`, `operador`) puedan solicitar
+  al LLM la creación directa de OTs, el control se aplica en el registro de herramientas:
+  - `crear_tools(empresa_id, usuario_id, rol)` evalúa `_puede_crear_ot(rol)`. Si es falso,
+    `proponer_ot` **no se incluye** en la lista de herramientas pasadas al modelo.
+  - El system prompt (`_prompt_sistema`) condiciona la regla 9 (`REGLAS_PROPONER_OT`): si
+    `puede_crear_ot` es falso, la regla se omite del prompt y el modelo no recibe la instrucción
+    de usar `proponer_ot`.
+  - **Defensa en profundidad:** si una propuesta quedase abierta y se confirmara tras un
+    cambio de rol, `crear_ot_aprobada` re-evalúa `_puede_crear_ot(rol)` en el gate del grafo
+    antes de cualquier `INSERT`, respondiendo con el mensaje normativo `SIN_PERMISO_OT`.
+
+### 2.14.2 Asignación de técnico por rol y aislamiento (CGBIDA-537)
+
+- `_resolver_tecnico(empresa_id, usuario_id, rol)` define a quién se le asigna la OT:
+  - **Técnico propio:** si quien interactúa en el chat es técnico (`rol == "tecnico"`),
+    la OT se le asigna a él (`tecnico_id = usuario_id`, verificado contra `empresa_id` y
+    `activo = TRUE`).
+  - **Fallback por empresa:** si quien interactúa es supervisor o admin, la OT se asigna al
+    primer técnico activo de la empresa ordenado por `usuario_id` (`ORDER BY usuario_id LIMIT 1`).
+  - **Empresa sin técnicos:** si la empresa no tiene técnicos registrados, la creación se
+    bloquea limpiamente devolviendo un mensaje explicativo al usuario y sin tocar la base.
+  - **Aislamiento multiempresa:** la consulta SQL filtra siempre por `empresa_id`. Un técnico
+    de la empresa B jamás puede ser asignado en una OT de la empresa A.
+
+### 2.14.3 Ciclo de vida y caducidad de la propuesta (CGBIDA-538)
+
+- **Caducidad natural:** la función `propuesta_pendiente(messages)` inspecciona exclusivamente
+  el **último** mensaje del asistente en el historial. Si el usuario no confirma y cambia de
+  tema o formula una nueva pregunta, el asistente genera una respuesta común y la propuesta
+  caduca automáticamente al dejar de ser el último mensaje.
+- **Re-resolución en confirmación:** al momento de recibir el sí en el gate (`gate_ot`),
+  `crear_ot_aprobada` vuelve a invocar `_resolver_maquina` sobre la base de datos viva. Si la
+  máquina fue eliminada o modificada entre turnos, la creación se rechaza limpiamente.
+- **Ventana anti-duplicados:** ventana defensiva de 10 minutos (`_MINUTOS_ANTIDUPLICADO = 10`)
+  para prevenir duplicación accidental de OTs ante re-envíos o confirmaciones dobles.
+
+### 2.14.4 Tolerancia ortográfica (Fuzzy matching) en equipos (CGBIDA-539)
+
+- `_buscar_maquinas` combina similitud de cadena completa (`difflib.SequenceMatcher`, umbral 0.6)
+  con cobertura de palabras clave (umbral de palabra 0.8) y normalización sin acentos.
+- **Tolerancia a variaciones en códigos:** admite códigos escritos sin guion o con ceros
+  diferentes (`bom001`, `bom-01`, `BOM-001`).
+- **Prioridad del distintivo:** `_coincide_identificador` exige que cualquier token alfanumérico
+  presente en la consulta coincida con el identificador del equipo para evitar colisiones por
+  prefijos genéricos compartidos («compresor A1» vs «compresor XYZ-99»).
+- **Aislamiento estricto:** la búsqueda en base de datos ejecuta `WHERE p.empresa_id = %(empresa)s`
+  antes de calcular cualquier puntaje en memoria.

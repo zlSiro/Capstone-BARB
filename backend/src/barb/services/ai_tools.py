@@ -521,13 +521,17 @@ async def _resolver_tecnico(empresa_id: int, usuario_id: int | None, rol: str | 
       asignar el trabajo a un administrador sería un dato falso en el tablero de carga.
     - Si la empresa no tiene técnicos, se devuelve None y la tool explica el bloqueo.
     """
-    if rol == "tecnico" and usuario_id:
+    rol_limpio = (rol or "").lower()
+    if rol_limpio == "tecnico" and usuario_id:
         fila = await fetch_one(
             """
             SELECT u.usuario_id, u.nombre
               FROM usuario u
               JOIN empresa e ON e.empresa_id = u.empresa_id
-             WHERE u.usuario_id = %(uid)s AND u.empresa_id = %(empresa)s AND u.rol = 'tecnico'
+             WHERE u.usuario_id = %(uid)s
+               AND u.empresa_id = %(empresa)s
+               AND u.rol = 'tecnico'
+               AND u.activo = TRUE
             """,
             {"uid": usuario_id, "empresa": empresa_id},
         )
@@ -538,7 +542,9 @@ async def _resolver_tecnico(empresa_id: int, usuario_id: int | None, rol: str | 
         """
         SELECT usuario_id, nombre
           FROM usuario
-         WHERE empresa_id = %(empresa)s AND rol = 'tecnico'
+         WHERE empresa_id = %(empresa)s
+           AND rol = 'tecnico'
+           AND activo = TRUE
          ORDER BY usuario_id
          LIMIT 1
         """,
@@ -1987,11 +1993,17 @@ def crear_tools(
 
         return _texto_propuesta_aviso(maquina, desc, sev)
 
-    return [
+    tools: list[BaseTool] = [
         consultar_ots_maquina,
-        proponer_ot,
         listar_maquinas_planta,
         actualizar_parametros_maquina,
         proponer_planta_completa,
         proponer_aviso_falla,
     ]
+    # RBAC fail-closed (HU-24 / CGBIDA-536): solo los roles autorizados para crear OTs
+    # directas (supervisor) reciben la tool `proponer_ot`. El resto de roles no la tiene
+    # registrada y el prompt no la menciona.
+    if _puede_crear_ot(rol):
+        tools.insert(1, proponer_ot)
+
+    return tools

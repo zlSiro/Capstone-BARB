@@ -18,6 +18,7 @@ from langchain_core.messages import AIMessage
 from barb.core.db import execute, fetch_all, fetch_one
 from barb.services.ai_tools import (
     _PREFIJO_PROPUESTA,
+    _resolver_tecnico,
     crear_ot_aprobada,
     crear_tools,
     propuesta_pendiente,
@@ -244,3 +245,65 @@ async def test_la_propuesta_persistida_es_parseable_por_el_gate(db_pool, tools_c
     assert borrador["consulta_maquina"] == "Chancador de cono Sandvik H8800"
     assert borrador["problema"] == "Ruido metálico al arrancar, desde ayer"
     assert borrador["prioridad"] == "high", "«alta» se normaliza antes de persistir"
+
+
+# ---------------------------------------------------------------------------
+# Asignación de técnico por rol (HU-24 / CGBIDA-537)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_resolver_tecnico_asigna_al_tecnico_de_la_conversacion(db_pool):
+    """Si quien chatea es técnico, se le asigna a él directamente."""
+    tecnico = await _resolver_tecnico(empresa_id=1, usuario_id=5, rol="tecnico")
+    assert tecnico is not None
+    assert tecnico["usuario_id"] == 5
+    assert tecnico["nombre"] == "Paula Riquelme"
+
+
+@pytest.mark.asyncio
+async def test_resolver_tecnico_supervisor_asigna_al_primer_tecnico(db_pool):
+    """Si quien chatea es supervisor o admin, cae al primer técnico de su empresa."""
+    tecnico = await _resolver_tecnico(empresa_id=1, usuario_id=7, rol="supervisor")
+    assert tecnico is not None
+    assert tecnico["usuario_id"] == 4
+    assert tecnico["nombre"] == "Matías Contreras"
+
+
+@pytest.mark.asyncio
+async def test_resolver_tecnico_aislamiento_multiempresa(db_pool):
+    """Un técnico de la empresa 2 no puede ser asignado en una OT de la empresa 1."""
+    # usuario 15 es técnico de la empresa 2
+    tecnico = await _resolver_tecnico(empresa_id=1, usuario_id=15, rol="tecnico")
+    assert tecnico is not None
+    # No asigna al 15: cae al primer técnico de la empresa 1 (usuario 4)
+    assert tecnico["usuario_id"] == 4
+
+
+@pytest.mark.asyncio
+async def test_resolver_tecnico_empresa_sin_tecnicos(db_pool):
+    """Una empresa sin técnicos retorna None."""
+    tecnico = await _resolver_tecnico(empresa_id=999, usuario_id=1, rol="supervisor")
+    assert tecnico is None
+
+
+@pytest.mark.asyncio
+async def test_crear_ot_falla_si_empresa_no_tiene_tecnicos(db_pool, monkeypatch):
+    """crear_ot_aprobada bloquea limpiamente si la empresa no tiene técnicos para asignar."""
+    from barb.services import ai_tools
+
+    async def resolver_mock(empresa_id, consulta, accion):
+        return ({"maquina_id": 1, "nombre": "Bomba de pulpa KSB", "codigo": "BOM-001"}, None)
+
+    monkeypatch.setattr(ai_tools, "_resolver_maquina", resolver_mock)
+
+    salida = await crear_ot_aprobada(
+        "Bomba de pulpa KSB",
+        "Vibración y ruido metálico al arrancar, desde ayer",
+        "alta",
+        empresa_id=999,
+        usuario_id=1,
+        rol="supervisor",
+    )
+    assert "no tiene técnicos registrados" in salida.lower()
+
