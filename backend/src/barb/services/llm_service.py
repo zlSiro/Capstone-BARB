@@ -339,7 +339,12 @@ _MULTIMODAL_VISUAL_INSTRUCTIONS = (
     "respóndela con ella y cita el documento de origen entre paréntesis, igual que el chat documental.\n"
     "3. Si la documentación no aplica o no está, y te piden procedimientos o valores específicos de "
     "la empresa (torques, presiones, frecuencias, pasos), dilo claramente: NO inventes esos datos, y "
-    "sugiere revisar la sección Documentos o pedir que suban el manual correspondiente."
+    "sugiere revisar la sección Documentos o pedir que suban el manual correspondiente.\n\n"
+    "FORMATO Y ESTILO DE RESPUESTA (obligatorio):\n"
+    "- Sé conciso, directo y estructurado: evita párrafos largos de relleno o introducciones redundantes.\n"
+    "- Usa **negrita** (`**término**`) para resaltar nombres de componentes, piezas, advertencias críticas de "
+    "seguridad y valores clave.\n"
+    "- Organiza la respuesta en viñetas cortas y fáciles de leer en terreno o proyector."
 )
 
 # HU-23: con un equipo seleccionado, si la foto parece de otro, se advierte y se sigue con el elegido.
