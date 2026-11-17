@@ -1,19 +1,28 @@
-### 2.3 Gestión de memoria: `RunnableWithMessageHistory` + `InMemoryChatMessageHistory`
+### 2.3 Gestión de memoria: persistencia en `chat_session` (HU-22)
 
-**Decisión:** usar la API moderna de LangChain 1.x con `RunnableWithMessageHistory`
-y almacenamiento en memoria RAM por sesión.
+**Decisión:** la conversación **no vive en el proceso**. Cada turno se lee de la base al
+empezar y se escribe al terminar, así que el contexto sobrevive a reinicios del backend,
+a un redeploy de Render y a tener varios workers.
 
-**Configuración:**
-- Ventana de memoria: `CHAT_MEMORY_WINDOW=10` (últimas 10 interacciones).
-- Almacén actual: `dict[str, InMemoryChatMessageHistory]` en `llm_service.py`.
-- Clave de sesión: `f"{user_id}:{session_id}"` — **aislada por usuario** para
-  evitar colisiones entre conversaciones de distintos usuarios.
+- **Almacén:** `chat_session.messages` (JSONB), a través de
+  `services/chat_repository.py` (`create_session`, `get_session`, `load_messages`,
+  `append_messages`).
+- **Clave:** `(session_id, usuario_id)`; toda consulta filtra por usuario, así que una
+  sesión no se puede abrir desde otra cuenta.
+- **Ventana de memoria:** `CHAT_MEMORY_WINDOW=10` acota lo que viaja al modelo
+  (`ventana_de_memoria`), no lo que se muestra al usuario en el detalle de la sesión.
+- **Sin checkpointer:** el grafo de LangGraph se crea en cada turno y se compila sin
+  `checkpointer` (`chat_graph.crear_grafo`). No se usó `PostgresSaver`: su `setup()`
+  crea tablas y el equipo tiene prohibido modificar el esquema (ver `AGENTS.md`). El
+  checkpointer solo aportaría reanudar un turno a medias o *time-travel*, cosas que la
+  HU no pide.
 
-**Deuda técnica conocida:**
-- La memoria se pierde al reiniciar el backend.
-- Pendiente migrar a PostgreSQL (tabla `chat_session`) en CGBIDA-150.
-- `RunnableWithMessageHistory` e `InMemoryChatMessageHistory` están deprecados
-  en LangChain 1.x. Migración a LangGraph persistence planificada para Sprint 3.
+El modelo de datos, la persistencia durante el streaming, la reconstrucción del
+historial y el comportamiento con varios workers están en §2.8.
+
+> Estado anterior (HU-03, ya no vigente): `RunnableWithMessageHistory` con
+> `InMemoryChatMessageHistory` en un `dict` del proceso. Esas clases se eliminaron del
+> backend; la deuda quedó cerrada en CGBIDA-442/444/447.
 
 ### 2.5 Autenticación y control de uso
 
@@ -107,6 +116,57 @@ del stream. Esto garantiza que:
 - Si el LLM falla a mitad, los tokens parciales quedan persistidos.
 - El consumo de tokens se registra siempre, incluso si el stream falla.
 
+La escritura va en una tarea propia (`_persistir_pese_a_la_cancelacion`) y se espera
+con `asyncio.shield`: Starlette cancela la corrutina del stream cuando el navegador se
+va, y sin eso el turno se perdía a mitad del `UPDATE` (además de devolver al pool una
+conexión sucia). Evidencia en `tests/test_db_cancelacion.py`.
+
+### Parámetros por modelo: `MODEL_SETTINGS`
+
+Cada modelo del sistema declara sus parámetros en **un solo lugar**:
+`MODEL_SETTINGS` en `core/config.py` (HU-22 / CGBIDA-443). `llm_service` lo consume;
+no hay literales de temperatura, timeout ni razonamiento repartidos por los servicios.
+
+| Rol | Modelo (env) | temperature | max_tokens | timeout | reasoning |
+|-----|--------------|-------------|------------|---------|-----------|
+| `texto` | `LLM_MODEL` | `LLM_TEMPERATURE` (0.1) | `LLM_MAX_TOKENS` (1024) | `NVIDIA_TIMEOUT` (60; 180 en Render) | `enable_thinking` de NIM |
+| `multimodal` | `MULTIMODAL_MODEL` | `MULTIMODAL_TEMPERATURE` (0.1) | `MULTIMODAL_MAX_TOKENS` (1024) | `MULTIMODAL_TIMEOUT` (120) | `low` (obligatorio: sin la línea «Reasoning strength: low» el modelo devuelve `content` vacío) |
+
+Notas de diseño:
+
+- **Son independientes.** Antes el multimodal reusaba `LLM_TEMPERATURE` y
+  `LLM_MAX_TOKENS`; ajustar el chat textual movía el análisis de imágenes. Ahora cada
+  modelo tiene los suyos (los defaults reproducen el comportamiento anterior).
+- **El id del modelo lo elige la env**; el registro se indexa por rol, que es la clave
+  estable, y se resuelve al arrancar (mismo ciclo de vida que el resto de `settings`).
+- **Agregar un modelo** es añadir su entrada: `ModelSettings` ya declara modelo,
+  temperatura, tokens, timeout, reasoning y `enable_thinking`.
+- Las **embeddings** quedan fuera del registro porque su API no usa parámetros de
+  generación; su modelo, key y timeout siguen en `EMBEDDINGS_*` (HU-04).
+
+### Varios workers y reinicios
+
+La conversación es compatible con varios procesos **porque no hay estado de chat en
+RAM**: el historial se relee de `chat_session` en cada turno y el grafo se construye de
+cero. Verificado con `tests/test_persistencia_reinicio.py` (un turno persiste, el
+siguiente lo recupera de la base; dos «procesos» leen lo mismo y el grafo se compila
+sin `checkpointer`). Además se levantó la app con `uvicorn --workers 2`: los dos
+procesos arrancaron (`Started server process` ×2) y tanto `GET /api/chat/sessions`
+como `GET /api/chat/sessions/{id}` respondieron `200` con los mismos datos en ambos.
+
+Lo que **sí** es por proceso, y por lo tanto se multiplica al escalar horizontalmente:
+
+| Estado | Dónde vive | Efecto con N workers | Mitigación |
+|--------|-----------|----------------------|------------|
+| `chat_rate_limiter` (10 req/min) | RAM (`core/rate_limit.py`) | la cuota efectiva pasa a 10×N | Redis (ya es dependencia, hoy solo lo usa `health`) |
+| `token_limiter` (50k tokens/día) | RAM (`core/token_limit.py`) | la cuota efectiva pasa a 50k×N | Redis o tabla de contabilidad |
+| Uploads de fotos de OT y documentos | disco local (`UPLOAD_DIR`, `/tmp` en Render) | un worker puede no ver el archivo que subió otro | Supabase Storage, ya usado por RAG |
+| Caches de catálogo/stats | RAM | sólo se recalientan | ninguno necesario |
+
+Despliegue actual: `render.yaml` levanta **un** proceso uvicorn (sin `--workers`), así
+que las cuotas de la tabla son las reales. Si se escala, la decisión pendiente es mover
+los dos limitadores a Redis; el contexto del chat no requiere cambio alguno.
+
 ### Reconstrucción del historial
 
 Al abrir una conversación existente, el flujo es:
@@ -132,9 +192,10 @@ Al abrir una conversación existente, el flujo es:
 │                                                                 │
 │  Router: chat.py                                                │
 │    ├── Depends(get_current_user)     → valida token             │
-│    ├── chat_rate_limiter.check()     → 10 req/min               │
+│    ├── chat_rate_limiter.check()     → 10 req/min (por proceso) │
 │    ├── token_limiter.check()         → 50k tokens/día           │
-│    ├── session_id = f"{uid}:{sid}"   → aislamiento              │
+│    ├── chat_repository.get_session() → sesión + aislamiento     │
+│    ├── chat_repository.load_messages(..., limite=ventana)       │
 │    └── EventSourceResponse(...)                                 │
 │           │                                                     │
 │           ├── event: session  →  {session_id}                   │
@@ -142,22 +203,25 @@ Al abrir una conversación existente, el flujo es:
 │           ├── event: error    →  {code, message}                │
 │           └── event: done     →  {}                             │
 │                                                                 │
-│  Service: llm_service.py                                        │
-│    ├── _build_llm_with_resilience()                             │
+│  Persistencia: chat_repository.py                               │
+│    └── append_messages() en el `finally` (asyncio.shield)       │
+│           └── chat_session.messages (JSONB) ← sobrevive reinicio│
+│                                                                 │
+│  Motor: chat_graph.py (grafo LangGraph, se crea en cada turno)  │
+│    ├── gate_ot → retrieve → generate → tools → generate         │
+│    ├── llm_service._build_llm_con_fallback()                    │
+│    │      ├── parámetros desde MODEL_SETTINGS (config.py)       │
 │    │      ├── with_retry(stop_after_attempt=3)                  │
 │    │      └── with_fallbacks([...])                             │
-│    ├── ChatPromptTemplate (system + history + human)            │
-│    ├── StrOutputParser                                          │
-│    └── RunnableWithMessageHistory                               │
-│           └── _store: dict["uid:sid" → history]                 │
+│    └── sin checkpointer: el historial se lee de la BD           │
 └──────────────────────────────────────┬──────────────────────────┘
                                        │
                                        │ HTTPS (streaming)
                                        ▼
-                              ┌──────────────────────┐
-                              │ api.deepseek.com     │
-                              │ (deepseek-chat)      │
-                              └──────────────────────┘
+                         ┌──────────────────────────────┐
+                         │ NVIDIA NIM (LLM_PROVIDER)    │
+                         │ respaldo automático: DeepSeek│
+                         └──────────────────────────────┘
 ## 2.9 Chat multimodal — análisis de imágenes (HU-05, estado final)
 
 > CGBIDA-276/277 (backend, PR #24) + CGBIDA-278/279 (frontend, PR #25) + Fase 3
@@ -165,10 +229,11 @@ Al abrir una conversación existente, el flujo es:
 > `docs/MULTIMODAL_ARCHITECTURE.md` · Contrato: `docs/contrato_api_chat_multimedia.md`
 > · Evidencia: `docs/verificacion_hu05_multimedia.md`.
 >
-> ⚠️ Vigencia: las secciones 2.3–2.8 describen el estado de la HU-03 (deepseek,
-> `RunnableWithMessageHistory` con memoria en RAM). El estado vigente del chat
-> textual es NVIDIA NIM (`LLM_PROVIDER=nvidia`, modelo `nemotron-3.5-lightning`,
-> historial reconstruido desde `chat_session` vía `chat_repository`).
+> Vigencia: las secciones 2.3–2.8 se escribieron en la HU-03 (deepseek con memoria en
+> RAM) y se actualizaron en la HU-22 (§2.13): hoy el chat textual usa NVIDIA NIM
+> (`LLM_PROVIDER=nvidia`, `nemotron-3.5-lightning`), con el historial reconstruido desde
+> `chat_session` vía `chat_repository` y los parámetros de cada modelo en
+> `MODEL_SETTINGS`.
 
 **Decisión:** el chat tiene **dos modelos**. El textual (nemotron, text-only) no se
 reemplaza; para imágenes, un endpoint separado consulta un segundo modelo multimodal
@@ -572,3 +637,45 @@ permiso; el aislamiento por empresa va cerrado en la clausura de la tool.
   `avisos_service.crear_aviso()` compartido queda para un issue de refactor.
 - La regla autoritativa de ubicación/duplicados en service/BD no existe: requiere
   migración, así que queda como propuesta a JP/Samuel. El chat la aplica igual.
+
+## 2.13 Contexto persistente del chat y configuración por modelo (HU-22)
+
+Cierra la deuda §2.3 y se apoya en el diseño de §2.8. La HU pedía que el chat no
+perdiera el hilo al reiniciar el backend y que cada modelo declarara sus parámetros en
+un solo sitio.
+
+### Qué quedó implementado
+
+| Criterio de aceptación | Estado | Evidencia |
+|---|---|---|
+| El contexto sobrevive a reinicios (redeploy incluido) | ✅ | historial leído de `chat_session` en cada turno (`routers/chat.py`, `chat_repository.load_messages`) |
+| La memoria se persiste en BD, no en RAM | ✅ | `chat_session.messages` JSONB; no quedan `RunnableWithMessageHistory` ni `InMemoryChatMessageHistory` |
+| Compatible con varios workers (o límite documentado) | ✅ (documentado) | §2.8 «Varios workers y reinicios»: el chat es stateless; los limitadores son por proceso |
+| Cada modelo declara sus parámetros en un único lugar | ✅ | `MODEL_SETTINGS` en `core/config.py` (§2.8) |
+| Deuda §2.3 cerrada | ✅ | esta sección y §2.3 reescrita |
+
+### Decisiones
+
+1. **No se usó el checkpointer de LangGraph (`PostgresSaver`).** `setup()` crea tablas
+   y el equipo tiene prohibido modificar el esquema sin JP (`AGENTS.md`). El checkpointer
+   solo aportaría reanudar un turno a medias o *time-travel*; la HU pide continuidad entre
+   turnos, que `chat_repository` ya resuelve. La subtarea del spike quedó cerrada como
+   «no aplica».
+2. **El candado de confirmación de OTs también es stateless.** La propuesta pendiente se
+   deduce del último `AIMessage` persistido (`chat_graph.gate_ot`), así que un turno puede
+   resolverse en otro worker sin estado compartido.
+3. **Temperatura del multimodal independiente del chat.** Nuevas variables
+   `MULTIMODAL_TEMPERATURE` (0.1) y `MULTIMODAL_MAX_TOKENS` (1024); los defaults
+   reproducen el comportamiento previo.
+
+### Tests
+
+- `tests/test_persistencia_reinicio.py` — continuidad tras reinicio, dos procesos sobre
+  la misma conversación y ausencia de checkpointer.
+- `tests/test_model_settings.py` — el registro declara los dos modelos, el multimodal
+  declara su `reasoning` y cada constructor usa los parámetros de su entrada.
+- `scripts/verificar_contexto_persistente.py` — prueba manual de humo con el backend
+  corriendo y el modelo real: `inicio` guarda un dato inventado en un turno, se reinicia
+  el proceso y `continuar --session <uuid>` comprueba que el turno siguiente lo recuerda
+  y que la conversación creció en la BD. Sirve igual contra local (`--base-url`) o
+  contra Render.

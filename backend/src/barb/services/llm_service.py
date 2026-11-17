@@ -8,7 +8,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables import Runnable, RunnableLambda
 
-from barb.core.config import settings
+from barb.core.config import MODEL_SETTINGS, settings
 
 logger = logging.getLogger("barb.llm")
 
@@ -18,9 +18,12 @@ logger = logging.getLogger("barb.llm")
 
 def _build_llm(provider: str | None = None, modelo: str | None = None):
     provider = provider or settings.llm_provider
+    # Parámetros del modelo de chat textual: salen del registro declarativo
+    # (`MODEL_SETTINGS`, config.py) y no de literales dispersos (HU-22 / CGBIDA-443).
+    cfg = MODEL_SETTINGS["texto"]
     # `modelo` permite construir un respaldo con SU nombre de modelo: los ids no son
     # intercambiables entre proveedores.
-    modelo = modelo or settings.llm_model
+    modelo = modelo or cfg.model
 
     if provider == "deepseek":
         from langchain_deepseek import ChatDeepSeek
@@ -28,8 +31,8 @@ def _build_llm(provider: str | None = None, modelo: str | None = None):
             raise RuntimeError("DEEPSEEK_API_KEY no configurada en .env")
         return ChatDeepSeek(
             model=modelo,
-            temperature=settings.llm_temperature,
-            max_tokens=settings.llm_max_tokens,
+            temperature=cfg.temperature,
+            max_tokens=cfg.max_tokens,
             streaming=True,
             api_key=settings.deepseek_api_key,
         )
@@ -40,8 +43,8 @@ def _build_llm(provider: str | None = None, modelo: str | None = None):
             raise RuntimeError("OPENAI_API_KEY no configurada en .env")
         return ChatOpenAI(
             model=modelo,
-            temperature=settings.llm_temperature,
-            max_tokens=settings.llm_max_tokens,
+            temperature=cfg.temperature,
+            max_tokens=cfg.max_tokens,
             streaming=True,
             api_key=settings.openai_api_key,
         )
@@ -52,8 +55,8 @@ def _build_llm(provider: str | None = None, modelo: str | None = None):
             raise RuntimeError("OPENROUTER_API_KEY no configurada en .env")
         return ChatOpenRouter(
             model=modelo,
-            temperature=settings.llm_temperature,
-            max_tokens=settings.llm_max_tokens,
+            temperature=cfg.temperature,
+            max_tokens=cfg.max_tokens,
             streaming=True,
             api_key=settings.openrouter_api_key,
         )
@@ -64,8 +67,8 @@ def _build_llm(provider: str | None = None, modelo: str | None = None):
             raise RuntimeError("GROQ_API_KEY no configurada en .env")
         return ChatGroq(
             model=modelo,
-            temperature=settings.llm_temperature,
-            max_tokens=settings.llm_max_tokens,
+            temperature=cfg.temperature,
+            max_tokens=cfg.max_tokens,
             streaming=True,
             api_key=settings.groq_api_key,
         )
@@ -77,13 +80,13 @@ def _build_llm(provider: str | None = None, modelo: str | None = None):
             raise RuntimeError("NVIDIA_API_KEY no configurada en .env")
         return ChatOpenAI(
             model=modelo,
-            temperature=settings.llm_temperature,
-            max_tokens=settings.llm_max_tokens,
+            temperature=cfg.temperature,
+            max_tokens=cfg.max_tokens,
             streaming=True,
             api_key=settings.nvidia_api_key,
             base_url=settings.nvidia_base_url,
-            request_timeout=settings.nvidia_timeout,
-            extra_body={"chat_template_kwargs": {"enable_thinking": settings.nvidia_enable_thinking}},
+            request_timeout=cfg.timeout,
+            extra_body={"chat_template_kwargs": {"enable_thinking": cfg.enable_thinking}},
         )
 
     raise ValueError(f"Proveedor LLM no soportado: {provider}")
@@ -360,7 +363,8 @@ _SIN_DOCUMENTACION = (
 
 # Se arma en _prepare_multimodal_input: instrucciones + (documentación si hay) +
 # Reasoning strength al final (se mantiene como última línea del system prompt).
-_REASONING_SUFFIX = "\nReasoning strength: low"
+# La fuerza del razonamiento ya no es un literal: la declara `MODEL_SETTINGS["multimodal"]`
+# (HU-22), junto con la temperatura y el timeout del modelo.
 
 
 def _build_multimodal_llm():
@@ -368,7 +372,7 @@ def _build_multimodal_llm():
 
     Sin reintentos ni fallbacks entre proveedores: el modelo solo existe en NIM y
     la latencia del free tier (hasta ~20 s por request) haría un reintento peor
-    que el error. El timeout MULTIMODAL_TIMEOUT es la protección.
+    que el error. El timeout del registro es la protección.
     """
     from langchain_openai import ChatOpenAI
 
@@ -377,14 +381,18 @@ def _build_multimodal_llm():
             "Multimodal no configurado: se requiere NVIDIA_MULTIMODAL_API_KEY o NVIDIA_API_KEY"
         )
 
+    # Temperatura y max_tokens PROPIOS del modelo multimodal (HU-22): ya no hereda los
+    # del chat textual, así que ajustar uno no mueve el otro.
+    cfg = MODEL_SETTINGS["multimodal"]
+
     return ChatOpenAI(
-        model=settings.multimodal_model,
-        temperature=settings.llm_temperature,
-        max_tokens=settings.llm_max_tokens,
+        model=cfg.model,
+        temperature=cfg.temperature,
+        max_tokens=cfg.max_tokens,
         streaming=True,
         api_key=settings.multimodal_api_key,
         base_url=settings.nvidia_base_url,
-        request_timeout=settings.multimodal_timeout,
+        request_timeout=cfg.timeout,
     )
 
 
@@ -413,7 +421,7 @@ def _prepare_multimodal_input(payload: dict[str, Any]) -> list[BaseMessage]:
         system_content += f"\n\nDOCUMENTACIÓN DE LA EMPRESA:\n{context}"
     else:
         system_content += _SIN_DOCUMENTACION
-    system_content += _REASONING_SUFFIX
+    system_content += MODEL_SETTINGS["multimodal"].reasoning_suffix
 
     content = [
         {"type": "text", "text": payload.get("input", "")},

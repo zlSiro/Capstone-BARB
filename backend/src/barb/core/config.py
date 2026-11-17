@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
@@ -81,6 +82,11 @@ class Settings(BaseSettings):
     # Key dedicada al modelo multimodal. Vacía = usa NVIDIA_API_KEY: la misma key
     # de la cuenta sirve para chat + embeddings + multimodal (validado por el equipo).
     nvidia_multimodal_api_key: str = ""
+    # Temperatura y tope de tokens PROPIOS (HU-22): antes el modelo multimodal reusaba
+    # LLM_TEMPERATURE y LLM_MAX_TOKENS, así que ajustar el chat textual movía también el
+    # análisis de imágenes. Los defaults reproducen el comportamiento anterior.
+    multimodal_temperature: float = 0.1
+    multimodal_max_tokens: int = 1024
     # Timeout por request (segundos): el análisis de imágenes es más lento que el
     # chat textual (ping real: 4-20 s en el free tier).
     multimodal_timeout: int = 120
@@ -208,4 +214,70 @@ class Settings(BaseSettings):
 
 settings = Settings()
 settings.upload_dir.mkdir(parents=True, exist_ok=True)
+
+
+# ---------------------------------------------------------------------------
+# Registro de modelos del sistema (HU-22 / CGBIDA-443)
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class ModelSettings:
+    """Parámetros de UN modelo del sistema, declarados en un solo sitio.
+
+    Existe para que nadie tenga que "adivinar" la temperatura, el timeout o el
+    razonamiento de un modelo: se leen de acá, no de literales repartidos por los
+    servicios. Un modelo nuevo se declara en `MODEL_SETTINGS` y el código que lo
+    construye (`llm_service`) sólo tiene que referenciar su rol.
+
+    - `model`: id que espera el proveedor (varía por API y por eso viaja acá).
+    - `temperature` / `max_tokens`: parámetros de generación.
+    - `timeout`: segundos por request, o `None` si el proveedor no recibe uno.
+    - `reasoning`: fuerza del razonamiento cuando el modelo la declara en el prompt
+      (`muse-glimmer` necesita "low" o devuelve `content` vacío).
+    - `enable_thinking`: sólo NIM; apaga el razonamiento interno del modelo.
+    """
+
+    model: str
+    temperature: float
+    max_tokens: int
+    timeout: int | None = None
+    reasoning: str | None = None
+    enable_thinking: bool | None = None
+
+    @property
+    def reasoning_suffix(self) -> str:
+        """Línea que algunos modelos exigen al final del system prompt; vacía si no aplica."""
+        return f"\nReasoning strength: {self.reasoning}" if self.reasoning else ""
+
+
+def _tabla_de_modelos(s: Settings) -> dict[str, ModelSettings]:
+    """
+    Modelos del sistema indexados por ROL, no por proveedor.
+
+    El id concreto lo elige la env (`LLM_MODEL`, `MULTIMODAL_MODEL`), así que el rol es
+    la clave estable: `texto` es el chat documental (con o sin respaldo entre
+    proveedores) y `multimodal` es el análisis de imágenes.
+
+    Los valores se resuelven al arrancar, igual que el resto de `settings`: para
+    cambiar los parámetros se cambia la env y se reinicia el proceso.
+    """
+    return {
+        "texto": ModelSettings(
+            model=s.llm_model,
+            temperature=s.llm_temperature,
+            max_tokens=s.llm_max_tokens,
+            timeout=s.nvidia_timeout,
+            enable_thinking=s.nvidia_enable_thinking,
+        ),
+        "multimodal": ModelSettings(
+            model=s.multimodal_model,
+            temperature=s.multimodal_temperature,
+            max_tokens=s.multimodal_max_tokens,
+            timeout=s.multimodal_timeout,
+            reasoning="low",
+        ),
+    }
+
+
+MODEL_SETTINGS: dict[str, ModelSettings] = _tabla_de_modelos(settings)
 

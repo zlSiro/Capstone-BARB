@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from barb.core.cache import close_redis_client
-from barb.core.config import settings
+from barb.core.config import MODEL_SETTINGS, settings
 from barb.core.db import close_pool, execute, open_pool
 from barb.routers import (
     auth,
@@ -55,6 +55,20 @@ async def lifespan(app: FastAPI):
         logger.warning(
             "Multimodal no configurado: /api/chat/multimedia responderá 503 "
             "(requiere MULTIMODAL_MODEL y NVIDIA_MULTIMODAL_API_KEY o NVIDIA_API_KEY)."
+        )
+
+    # --- Parámetros declarados por modelo (HU-22 / CGBIDA-443) ---
+    # Se loguean en cada arranque para que nadie tenga que adivinar con qué temperatura,
+    # timeout o razonamiento está corriendo cada modelo del sistema.
+    for rol, cfg in MODEL_SETTINGS.items():
+        logger.info(
+            "Modelo %s: %s (temperature=%s, max_tokens=%s, timeout=%s, reasoning=%s)",
+            rol,
+            cfg.model,
+            cfg.temperature,
+            cfg.max_tokens,
+            cfg.timeout,
+            cfg.reasoning or "—",
         )
 
     # --- Identidad del motor de chat (HU-04) ---
