@@ -1,5 +1,6 @@
 CLAUDE.md
 /specs/*
+*.pptx
 
 # Visual Studio Code
 .vscode/*
