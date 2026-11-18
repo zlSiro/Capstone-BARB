@@ -23,6 +23,7 @@ export interface User {
   name: string;
   role: Role;
   token?: string;
+  activo?: boolean;
   // Multi-empresa: null para el super_usuario (no pertenece a ninguna empresa).
   empresa_id?: number | null;
   empresa_nombre?: string | null;

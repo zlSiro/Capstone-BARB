@@ -88,7 +88,8 @@ export class LoginComponent {
       // Cada rol aterriza en su página inicial (super_usuario -> /empresas).
       next: () => this.router.navigateByUrl(this.permissions.getDefaultRoute()),
       error: (err: HttpErrorResponse) => {
-        // 403 = empresa suspendida/cancelada; el backend explica el motivo.
+        // 403 = usuario desactivado (activo=false) o empresa suspendida/cancelada;
+        // el backend explica el motivo en `detail`.
         this.error.set(err.status === 403 && err.error?.detail ? err.error.detail : this.i18n.tr('acceso.usuario_o_contrasena_incorrect'));
         this.loading.set(false);
       }

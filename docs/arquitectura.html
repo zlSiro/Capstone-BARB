@@ -1,0 +1,840 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arquitectura de software · BARB</title>
+<style>
+:root{
+  --bg:#f6f7f9;--panel:#fff;--ink:#1c2430;--muted:#5b6678;--line:#dde2ea;
+  --accent:#1f6feb;--accent-soft:#e6f0ff;
+  --fe:#7c3aed;--fe-soft:#f0e9ff;
+  --be:#0f766e;--be-soft:#dcf5f1;
+  --db:#b45309;--db-soft:#fdf0dc;
+  --ext:#475569;--ext-soft:#e9edf2;
+  --code:#eef1f5;
+}
+:root[data-theme="dark"]{
+  --bg:#0f141b;--panel:#171e28;--ink:#e6ebf2;--muted:#9aa6b8;--line:#2a3442;
+  --accent:#58a6ff;--accent-soft:#16294a;
+  --fe:#b794f6;--fe-soft:#2a1f45;
+  --be:#4fd1c0;--be-soft:#10312e;
+  --db:#f6ad55;--db-soft:#3a2a12;
+  --ext:#a0aec0;--ext-soft:#222b38;
+  --code:#1f2733;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f141b;--panel:#171e28;--ink:#e6ebf2;--muted:#9aa6b8;--line:#2a3442;
+    --accent:#58a6ff;--accent-soft:#16294a;
+    --fe:#b794f6;--fe-soft:#2a1f45;
+    --be:#4fd1c0;--be-soft:#10312e;
+    --db:#f6ad55;--db-soft:#3a2a12;
+    --ext:#a0aec0;--ext-soft:#222b38;
+    --code:#1f2733;
+  }
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{position:sticky;top:0;z-index:10;background:var(--panel);border-bottom:1px solid var(--line)}
+.bar{max-width:1200px;margin:0 auto;padding:12px 20px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.bar h1{font-size:18px;margin:0;flex:1 1 auto}
+.bar h1 small{color:var(--muted);font-weight:400;margin-left:8px}
+input[type=search]{padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);min-width:200px}
+button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:6px 12px;border-radius:8px}
+button:hover{border-color:var(--accent)}
+nav{max-width:1200px;margin:0 auto;padding:0 20px 10px;display:flex;gap:6px;flex-wrap:wrap}
+nav button[aria-selected=true]{background:var(--accent);color:#fff;border-color:var(--accent)}
+main{max-width:1200px;margin:0 auto;padding:24px 20px 60px}
+section.tab{display:none}
+section.tab.on{display:block}
+h2{margin:0 0 6px;font-size:22px}
+h3{margin:26px 0 8px;font-size:16px}
+p.lead{color:var(--muted);margin:0 0 18px;max-width:80ch}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:12px 0}
+.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+code{background:var(--code);padding:1px 6px;border-radius:5px;font:13px ui-monospace,Consolas,monospace}
+pre{background:var(--code);padding:12px 14px;border-radius:10px;overflow:auto;font:13px/1.5 ui-monospace,Consolas,monospace}
+ul{margin:6px 0;padding-left:20px}
+li{margin:3px 0}
+.tag{display:inline-block;font-size:11px;font-weight:600;padding:1px 8px;border-radius:99px;margin-right:4px;vertical-align:middle}
+.t-fe{background:var(--fe-soft);color:var(--fe)}.t-be{background:var(--be-soft);color:var(--be)}
+.t-db{background:var(--db-soft);color:var(--db)}.t-ext{background:var(--ext-soft);color:var(--ext)}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+th{background:var(--code)}
+.scroll{overflow-x:auto}
+mark{background:#ffe58a;color:#000;border-radius:3px}
+.hidden{display:none!important}
+
+/* Diagrama */
+.diagram{display:grid;gap:14px}
+.layer{border:1px dashed var(--line);border-radius:14px;padding:12px 14px}
+.layer>h4{margin:0 0 10px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.row{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
+.node{border-radius:10px;padding:10px 12px;border:1px solid transparent;text-align:left;font-size:13.5px;line-height:1.4;width:100%}
+.node b{display:block;font-size:14px}
+.node span{color:var(--muted);font-size:12.5px}
+.n-fe{background:var(--fe-soft);border-color:var(--fe)}
+.n-be{background:var(--be-soft);border-color:var(--be)}
+.n-db{background:var(--db-soft);border-color:var(--db)}
+.n-ext{background:var(--ext-soft);border-color:var(--ext)}
+.node[aria-pressed=true]{outline:3px solid var(--accent)}
+.arrow{text-align:center;color:var(--muted);font-size:13px}
+#detail{min-height:90px}
+#detail h4{margin:0 0 4px}
+.legend{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 14px}
+.flow{display:flex;gap:8px;flex-wrap:wrap;align-items:stretch;margin:10px 0}
+.step{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 12px;font-size:13.5px;flex:1 1 150px}
+.step b{display:block;color:var(--accent)}
+footer{max-width:1200px;margin:0 auto;padding:0 20px 40px;color:var(--muted);font-size:13px}
+
+/* Modelo de datos */
+.er-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+#er{display:block;min-width:980px;width:100%;height:auto}
+#er .dom-title{font:600 11px system-ui,sans-serif;fill:var(--muted);letter-spacing:.06em;text-transform:uppercase}
+#er .dom-bg{fill:none;stroke:var(--line);stroke-dasharray:4 4}
+#er .tbl{cursor:pointer}
+#er .tbl rect{stroke-width:1.2}
+#er .tbl text{font:12px ui-monospace,Consolas,monospace;fill:var(--ink);pointer-events:none}
+#er .tbl:focus{outline:none}
+#er .tbl:focus rect,#er .tbl.sel rect{stroke:var(--accent);stroke-width:3}
+#er .tbl.dim{opacity:.28}
+#er path.fk{fill:none;stroke:var(--muted);stroke-width:1;opacity:.22}
+#er path.fk.hi{stroke-width:2;opacity:1}
+#er path.fk.hi.out{stroke:var(--accent)}
+#er path.fk.hi.in{stroke:var(--db)}
+.d0{fill:var(--fe-soft);stroke:var(--fe)}.d1{fill:var(--be-soft);stroke:var(--be)}.d2{fill:var(--db-soft);stroke:var(--db)}
+.d3{fill:var(--accent-soft);stroke:var(--accent)}.d4{fill:var(--ext-soft);stroke:var(--ext)}.d5{fill:var(--code);stroke:var(--muted)}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 12px}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;border:1px solid var(--line);border-radius:99px;padding:3px 10px;background:var(--panel)}
+.chip i{width:10px;height:10px;border-radius:3px;border:1px solid}
+.rel a{color:var(--accent);cursor:pointer;text-decoration:underline;margin-right:10px;font:13px ui-monospace,Consolas,monospace}
+.pill{font-size:11px;font-weight:600;padding:0 6px;border-radius:5px;margin-right:3px;background:var(--code)}
+.pill.pk{background:#fde68a;color:#5b4300}.pill.fk{background:var(--accent-soft);color:var(--accent)}.pill.uq{background:var(--be-soft);color:var(--be)}
+#tdetail td:first-child{font-family:ui-monospace,Consolas,monospace;font-size:13px;white-space:nowrap}
+#tdetail td:nth-child(2){font-family:ui-monospace,Consolas,monospace;font-size:12.5px;color:var(--muted)}
+@media (max-width:600px){.bar{padding:10px 16px}main{padding:18px 16px 50px}nav{padding:0 16px 10px}}
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <h1>BARB · Arquitectura de software<small>estado actual del repositorio</small></h1>
+    <input type="search" id="q" placeholder="Buscar en todas las secciones…" aria-label="Buscar">
+    <button id="theme" type="button" aria-label="Cambiar tema">Tema</button>
+  </div>
+  <nav role="tablist" id="tabs"></nav>
+</header>
+
+<main>
+
+<!-- ============ VISTA GENERAL ============ -->
+<section class="tab" id="general" data-title="Vista general">
+  <h2>Vista general</h2>
+  <p class="lead">BARB es una plataforma multiempresa de mantenimiento industrial: órdenes de trabajo (OT), dashboard de KPIs, topología de plantas, avisos de falla y un asistente de IA con RAG sobre los documentos de cada empresa. Monorepo con dos proyectos independientes, sin build compartido.</p>
+
+  <div class="legend">
+    <span class="tag t-fe">Frontend</span><span class="tag t-be">Backend</span><span class="tag t-db">Datos</span><span class="tag t-ext">Servicios externos</span>
+    <span style="color:var(--muted);font-size:13px">Haz clic en un bloque para ver detalle.</span>
+  </div>
+
+  <div class="diagram" id="diagram">
+    <div class="layer"><h4>Cliente · Cloudflare Pages</h4>
+      <div class="row">
+        <button class="node n-fe" data-k="spa" type="button"><b>Angular 22 SPA</b><span>Standalone, signals, Tailwind v4</span></button>
+        <button class="node n-fe" data-k="sse" type="button"><b>Cliente SSE</b><span>ot-realtime.service</span></button>
+        <button class="node n-fe" data-k="perm" type="button"><b>permissions.ts</b><span>espejo de RUTAS/ACCIONES</span></button>
+      </div>
+    </div>
+    <div class="arrow">▼ HTTPS · <code>/api/*</code> · Authorization: Bearer &lt;token&gt; · SSE ▼</div>
+    <div class="layer"><h4>API · Render (FastAPI + Uvicorn, Python 3.12)</h4>
+      <div class="row">
+        <button class="node n-be" data-k="routers" type="button"><b>Routers</b><span>un archivo por recurso, SQL propio</span></button>
+        <button class="node n-be" data-k="rbac" type="button"><b>RBAC</b><span>core/permissions.py</span></button>
+        <button class="node n-be" data-k="ot" type="button"><b>Máquina de estados OT</b><span>work_order_states.py</span></button>
+        <button class="node n-be" data-k="chat" type="button"><b>Motor de chat</b><span>LangGraph + tools + RAG</span></button>
+        <button class="node n-be" data-k="rt" type="button"><b>Realtime</b><span>OtEventBroker (SSE)</span></button>
+        <button class="node n-be" data-k="jobs" type="button"><b>Jobs / email</b><span>overdue_report, SMTP</span></button>
+      </div>
+    </div>
+    <div class="arrow">▼ psycopg3 async pool · SQL crudo ▼</div>
+    <div class="layer"><h4>Datos</h4>
+      <div class="row">
+        <button class="node n-db" data-k="pg" type="button"><b>PostgreSQL 17 + pgvector</b><span>Supabase (prod) / Docker (local)</span></button>
+        <button class="node n-db" data-k="redis" type="button"><b>Redis</b><span>caché opcional</span></button>
+        <button class="node n-db" data-k="storage" type="button"><b>Supabase Storage</b><span>documentos (opcional)</span></button>
+        <button class="node n-db" data-k="disk" type="button"><b>Disco <code>uploads/</code></b><span>fotos de OT y avisos</span></button>
+      </div>
+    </div>
+    <div class="layer"><h4>Servicios externos</h4>
+      <div class="row">
+        <button class="node n-ext" data-k="llm" type="button"><b>Proveedores LLM</b><span>deepseek · openai · openrouter · groq · nvidia</span></button>
+        <button class="node n-ext" data-k="emb" type="button"><b>Embeddings NVIDIA</b><span>nemotron-3-embed-1b · 2048 dims</span></button>
+        <button class="node n-ext" data-k="smtp" type="button"><b>SMTP</b><span>correo de OT atrasadas</span></button>
+        <button class="node n-ext" data-k="gha" type="button"><b>GitHub Actions</b><span>cron overdue-report</span></button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" id="detail" aria-live="polite"><h4>Detalle</h4><span style="color:var(--muted)">Selecciona un bloque del diagrama.</span></div>
+</section>
+
+<!-- ============ DECISIONES ============ -->
+<section class="tab" id="decisiones" data-title="Decisiones de diseño">
+  <h2>Decisiones de diseño</h2>
+  <p class="lead">Decisiones de arquitectura que condicionan cómo se escribe y se opera BARB.</p>
+  <div class="grid">
+    <div class="card"><b>Sin ORM en runtime</b><br>SQL crudo con <code>%(name)s</code> y <code>dict_row</code>. SQLAlchemy solo existe como dependencia de desarrollo para Alembic.</div>
+    <div class="card"><b>Sesión nunca confiada al cliente</b><br>Cada dependencia re-resuelve el rol desde la tabla <code>sesion</code> con el token Bearer.</div>
+    <div class="card"><b>Multiempresa por diseño</b><br>Todo dato se filtra por <code>empresa_id</code>; el cliente nunca decide el alcance (salvo <code>super_usuario</code>).</div>
+    <div class="card"><b>Backend decide, frontend refleja</b><br>El backend devuelve <code>allowed_transitions</code> por OT según rol; el frontend no duplica reglas.</div>
+    <div class="card"><b>Hard lock de OT en IA</b><br>El modelo no tiene herramienta de escritura de OT: propone, y el código resuelve la confirmación del usuario.</div>
+    <div class="card"><b>RBAC fail-closed en el chat (HU-24)</b><br>Solo <code>supervisor</code> recibe la tool <code>proponer_ot</code>; el gate re-verifica el rol antes de crear.</div>
+    <div class="card"><b>Contexto persistente en BD (HU-22)</b><br>El historial se lee de <code>chat_session.messages</code> en cada turno. LangGraph sin checkpointer: no crea tablas extra y sirve con varios workers.</div>
+    <div class="card"><b>Parámetros por modelo</b><br><code>MODEL_SETTINGS</code> separa temperatura y max tokens de <code>texto</code> y <code>multimodal</code>.</div>
+    <div class="card"><b>Esquema solo por migraciones</b><br>Alembic con un único head; nada de DDL en handlers. Migrar Supabase antes de hacer merge a <code>main</code>.</div>
+    <div class="card"><b>Infra tolerante</b><br>Redis, Supabase Storage y embeddings son opcionales; sin ellos hay degradación controlada (503 / full-text).</div>
+    <div class="card"><b>Sin scheduler en proceso</b><br>Render free duerme: los jobs corren por cron externo (GitHub Actions) contra un endpoint idempotente.</div>
+    <div class="card"><b>Estado en memoria, un proceso</b><br><code>OtEventBroker</code> y limitadores viven en RAM. Escalar horizontalmente exige Redis.</div>
+  </div>
+</section>
+
+<!-- ============ BACKEND ============ -->
+<section class="tab" id="backend" data-title="Backend">
+  <h2>Backend</h2>
+  <p class="lead">FastAPI + Uvicorn, psycopg3 async con <code>AsyncConnectionPool</code>, configuración con pydantic-settings (<code>src/barb/core/config.py</code>, lee <code>.env</code>). Gestor de paquetes: <code>uv</code>.</p>
+
+  <h3>Estructura del repositorio</h3>
+  <pre>Capstone-BARB/
+├─ backend/            FastAPI + Postgres (uv, pytest, alembic, ruff)
+│  ├─ src/barb/        core/ · routers/ · schemas/ · services/
+│  ├─ migrations/      Alembic 0001…0016 (un solo head)
+│  ├─ seeds/           01_estructura · 02_maestros · 03_operativos
+│  ├─ scripts/         seed.py · backfill_*.py · run_overdue_job.py · sse_load.py
+│  └─ tests/           pytest contra Postgres real
+├─ frontend/           Angular 22 (Vitest, Tailwind v4)
+├─ docs/               documentación de features (este archivo incluido)
+├─ docker-compose.yml  solo Postgres (pgvector/pgvector:pg17)
+├─ render.yaml         blueprint del backend en Render
+├─ DEPLOY.md           Supabase + Render + Cloudflare Pages
+└─ matriz_rol.md       matriz de roles y privilegios (fuente de verdad RBAC)</pre>
+
+  <h3>Capas y módulos</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>Módulo</th><th>Responsabilidad</th></tr></thead>
+    <tbody>
+      <tr><td><code>main.py</code></td><td>Fábrica de la app, lifespan (abre/cierra pool y Redis, borra sesiones expiradas al inicio), CORS, registro de routers.</td></tr>
+      <tr><td><code>core/db.py</code></td><td>Único pool. Helpers <code>fetch_all</code>, <code>fetch_one</code>, <code>execute</code>, <code>transaction()</code>. Fija <code>app.usuario_id</code> por request para los triggers de auditoría.</td></tr>
+      <tr><td><code>core/permissions.py</code></td><td>Matrices <code>RUTAS</code> y <code>ACCIONES</code> por rol; dependencias <code>require_route</code>, <code>require_action</code>, <code>require_auth</code>; <code>resolver_empresa</code> / <code>empresa_obligatoria</code>.</td></tr>
+      <tr><td><code>core/work_order_states.py</code></td><td>Máquina de estados de OT (<code>TRANSICIONES</code>).</td></tr>
+      <tr><td><code>core/security.py</code>, <code>core/cache.py</code></td><td>Hash de contraseñas; cliente Redis tolerante a fallas.</td></tr>
+      <tr><td><code>core/rate_limit.py</code>, <code>core/token_limit.py</code></td><td>Límites en memoria por usuario (tasa de chat y tokens diarios). Un solo proceso.</td></tr>
+      <tr><td><code>routers/</code></td><td><code>auth, users, empresas, documents, chat, catalog, topology, stats, work_orders, avisos, transacciones, transacciones_empresa, notifications, realtime, preferences, health</code>. Cada uno contiene su SQL.</td></tr>
+      <tr><td><code>schemas/</code></td><td>Modelos pydantic de request/response, separados de la forma de las filas.</td></tr>
+      <tr><td><code>services/</code></td><td><code>files, document_service, document_repository, document_storage, embeddings, llm_service, chat_repository, chat_graph, ai_tools, realtime, overdue_report, email_service</code>.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Convenciones</h3>
+  <ul>
+    <li>Conexiones del pool siempre liberadas vía context manager (nunca <code>conn.close()</code>).</li>
+    <li>Sin <code>@lru_cache</code> en endpoints de catálogo; dependencias de permisos realmente async.</li>
+    <li>Alias de rutas conservados por compatibilidad: <code>/api/work-orders</code> y <code>/api/work_orders</code>, <code>/auth/login</code> y <code>/api/auth/login</code>.</li>
+    <li>El esquema vive solo en migraciones Alembic; nunca se crea en handlers.</li>
+  </ul>
+
+  <h3>Flujo de una request protegida</h3>
+  <div class="flow">
+    <div class="step"><b>1 · Cliente</b>Bearer token en header (interceptor Angular)</div>
+    <div class="step"><b>2 · Dependencia</b><code>get_sesion_actual</code> lee tabla <code>sesion</code></div>
+    <div class="step"><b>3 · RBAC</b><code>require_route / require_action</code> contra matrices</div>
+    <div class="step"><b>4 · Alcance</b><code>resolver_empresa</code> fija <code>empresa_id</code></div>
+    <div class="step"><b>5 · SQL</b>pool → <code>app.usuario_id</code> → trigger registra cambio</div>
+    <div class="step"><b>6 · Respuesta</b>schema pydantic; SSE tras commit si aplica</div>
+  </div>
+
+  <h3>Endpoints principales</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>Área</th><th>Rutas</th></tr></thead>
+    <tbody>
+      <tr><td>Auth</td><td><code>POST /auth/login</code> · <code>/api/auth/login</code></td></tr>
+      <tr><td>OT</td><td><code>/api/work-orders</code> · <code>PATCH|PUT /api/work-orders/{numero_ot}/status</code> · <code>GET /api/work-orders/stream</code> · <code>POST …/stream/ticket</code></td></tr>
+      <tr><td>Chat</td><td><code>POST /api/chat/stream</code> · <code>POST /api/chat/multimedia</code> · <code>GET/DELETE /api/chat/sessions[/{id}]</code></td></tr>
+      <tr><td>Documentos</td><td><code>/api/documents</code> (POST/PATCH con <code>maquina_id</code>)</td></tr>
+      <tr><td>Dashboard</td><td><code>GET /api/stats/financial-impact</code> + históricos y top-5</td></tr>
+      <tr><td>Jobs</td><td><code>POST /api/jobs/ot-atrasadas</code> (header <code>X-Job-Token</code>)</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- ============ SEGURIDAD ============ -->
+<section class="tab" id="seguridad" data-title="Seguridad y multiempresa">
+  <h2>Seguridad, roles y multiempresa</h2>
+  <p class="lead">RBAC estático en backend, espejado en frontend. Cualquier cambio de permisos toca tres lugares a la vez y los tests verifican la alineación.</p>
+
+  <div class="card"><b>Regla de sincronía</b><br>
+    <code>backend/src/barb/core/permissions.py</code> + <code>frontend/src/app/core/permissions/permissions.ts</code> + <code>matriz_rol.md</code>. Tests: <code>test_permissions.py</code> / <code>permissions.spec.ts</code>.</div>
+
+  <h3>Roles</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>Rol</th><th>Alcance</th></tr></thead>
+    <tbody>
+      <tr><td><code>super_usuario</code></td><td>Contraparte comercial de BARB (<code>empresa_id</code> NULL). Gestiona empresas (ver/crear/editar/suspender/habilitar; nunca se borran) y crea el <code>gerente</code> de cada una. Sin acceso a dashboard, OT, topología, DocChat ni documentos. Ve todas las transacciones.</td></tr>
+      <tr><td><code>gerente</code></td><td>Lectura de OT; KPIs financieros (costo/ahorro) exclusivos; gestiona <code>admin</code> y roles operativos; ve transacciones de su empresa; lee repositorio de avisos.</td></tr>
+      <tr><td><code>admin</code></td><td>Lectura de OT; gestión de usuarios operativos.</td></tr>
+      <tr><td><code>supervisor</code></td><td>ÚNICO rol que opera OT (crear, asignar, validar, cancelar); decide sobre avisos (generar OT o descartar). Mínimo 1 activo por empresa.</td></tr>
+      <tr><td><code>engineer</code></td><td>Lectura de OT; reporta fallas.</td></tr>
+      <tr><td><code>tecnico</code></td><td>Ejecuta OT asignadas; puede enviar a validación; reporta fallas.</td></tr>
+      <tr><td><code>operador</code></td><td>Reporta fallas.</td></tr>
+    </tbody>
+  </table></div>
+  <p style="color:var(--muted);font-size:13px">El rol <code>visitante</code> fue eliminado (migración 0013). <code>eliminar_ot</code> está denegado a todos.</p>
+
+  <h3>Aislamiento por empresa</h3>
+  <ul>
+    <li>OT derivan empresa por <code>orden_trabajo → maquina → planta.empresa_id</code>.</li>
+    <li>Documentos, chunks y chat llevan <code>empresa_id</code> propio.</li>
+    <li>Búsqueda RAG siempre filtrada por <code>empresa_id</code> y <code>activo = TRUE</code>.</li>
+    <li>Las tools del chat fijan la empresa al construirse y re-verifican el rol (no pasan por dependencias FastAPI).</li>
+    <li><code>max_usuarios</code> se aplica por empresa; estado <code>active | suspended | cancelled</code>.</li>
+  </ul>
+
+  <h3>Auditoría</h3>
+  <div class="grid">
+    <div class="card"><b><code>transacciones</code></b> (0008/0009)<br>Log de acciones de usuario. Triggers <code>trg_transaccion</code> en tablas de negocio; el usuario llega como <code>app.usuario_id</code>. Sin usuario no hay fila (seed, jobs y SQL manual no se registran).</div>
+    <div class="card"><b><code>auditoria_cambio</code></b> (0007)<br>Triggers en <code>usuario</code>, <code>empresa</code>, <code>orden_trabajo</code>. Fila completa en JSONB, sin <code>password_hash</code>.</div>
+  </div>
+</section>
+
+<!-- ============ OT ============ -->
+<section class="tab" id="ot" data-title="Órdenes de trabajo">
+  <h2>Órdenes de trabajo</h2>
+  <p class="lead">Cierre en dos pasos (migración 0014). Sin transición directa <code>in_progress → completed</code>. Comentario obligatorio al cancelar o devolver.</p>
+
+  <h3>Máquina de estados</h3>
+  <pre>pending ─┐
+assigned ├──► in_progress ──► por_validar ──► completed   (final)
+overdue ─┘        │                │  └──────► in_progress (devolución, con comentario)
+                  │                └─────────► cancelled
+                  └──────────────────────────► cancelled   (final, con comentario)
+
+pending | assigned | overdue ──► cancelled</pre>
+  <ul>
+    <li>Cada estado destino mapea a una acción en <code>ACCIONES</code>; el backend filtra <code>allowed_transitions</code> por rol.</li>
+    <li>Pasar a <code>por_validar</code>: técnico asignado o supervisor (<code>enviar_a_validacion</code>). Validar: solo supervisor (<code>validar_ot</code>).</li>
+    <li>Endpoint: <code>PATCH|PUT /api/work-orders/{numero_ot}/status</code>.</li>
+  </ul>
+
+  <h3>Avisos de falla → OT</h3>
+  <div class="flow">
+    <div class="step"><b>Reporta</b>operador / técnico / engineer / gerente / supervisor (<code>reportar_falla</code>), foto en disco</div>
+    <div class="step"><b>Repositorio</b>tabla <code>aviso_falla</code> (0012)</div>
+    <div class="step"><b>Decide</b>supervisor (<code>gestionar_avisos</code>): generar OT o descartar</div>
+    <div class="step"><b>Lectura</b>gerente ve el repositorio</div>
+  </div>
+
+  <h3>Tiempo real (SSE, HU-10)</h3>
+  <ul>
+    <li><code>OtEventBroker</code> en memoria: fan-out por empresa, buffer de 500 eventos para <code>Last-Event-ID</code>, evento <code>resync</code> si hay hueco/desborde.</li>
+    <li><code>work_orders</code> llama a <code>publish_safe(...)</code> tras commit en crear / cambiar estado / eliminar.</li>
+    <li>Stream: <code>GET /api/work-orders/stream</code> con Bearer o <code>?ticket=</code> de un solo uso (<code>POST …/stream/ticket</code>).</li>
+    <li>El router realtime se registra antes que <code>work_orders</code> para que <code>/stream</code> no caiga en <code>/{numero_ot}</code>.</li>
+    <li>Limitación: un solo proceso. Escalar implicaría Redis pub/sub.</li>
+  </ul>
+
+  <h3>OT atrasadas (email)</h3>
+  <div class="flow">
+    <div class="step"><b>GitHub Actions</b><code>overdue-report.yml</code> (cron externo; Render free duerme)</div>
+    <div class="step"><b>Endpoint</b><code>POST /api/jobs/ot-atrasadas</code> + <code>X-Job-Token</code></div>
+    <div class="step"><b>Servicio</b><code>overdue_report.py</code>, idempotente por período</div>
+    <div class="step"><b>Correo</b><code>email_service.py</code> (SMTP stdlib), config en <code>notificacion_config</code></div>
+  </div>
+  <p style="color:var(--muted);font-size:13px">No hay scheduler en proceso. CLI alterno: <code>scripts/run_overdue_job.py</code>.</p>
+</section>
+
+<!-- ============ IA ============ -->
+<section class="tab" id="ia" data-title="IA y RAG">
+  <h2>Asistente de IA y RAG</h2>
+  <p class="lead">Chat sobre LangGraph (HU-26) con recuperación de documentos de la empresa y skills/tools construidas por request.</p>
+
+  <h3>Grafo del chat</h3>
+  <div class="flow">
+    <div class="step"><b>gate_ot</b>resuelve en código si el usuario confirma una OT propuesta</div>
+    <div class="step"><b>retrieve</b>pgvector o full-text por <code>empresa_id</code> (+ <code>maquina_id</code>)</div>
+    <div class="step"><b>generate ⇄ tools</b>LLM con tools <code>crear_tools(empresa_id, usuario_id, rol)</code></div>
+    <div class="step"><b>propuesta</b>termina el turno con texto exacto de <code>proponer_ot</code></div>
+  </div>
+
+  <h3>Tools del modelo</h3>
+  <ul>
+    <li><code>consultar_ots_maquina</code>, <code>proponer_ot</code>, <code>listar_maquinas_planta</code>, <code>actualizar_parametros_maquina</code> (SLA/costo), <code>proponer_planta_completa</code>.</li>
+    <li><b>Hard lock (CGBIDA-476):</b> el modelo no tiene tool para escribir OT; <code>crear_ot_aprobada</code> no es una tool.</li>
+    <li><b>RBAC fail-closed (HU-24):</b> <code>proponer_ot</code> solo se registra para <code>supervisor</code>; el prompt omite la regla de creación para otros roles y <code>crear_ot_aprobada</code> re-verifica el rol en el gate.</li>
+    <li>Asignación: técnico que chatea se asigna a sí mismo; supervisor/admin → primer técnico activo de la empresa; sin técnicos, se bloquea. Máquinas con fuzzy match (<code>bom001</code> = <code>BOM-001</code>).</li>
+    <li>La propuesta caduca si la conversación avanza; ventana anti-duplicados de 10 min.</li>
+  </ul>
+
+  <h3>RAG</h3>
+  <div class="grid">
+    <div class="card"><b>Ingesta</b><br>Extracción de texto (pdf/docx/txt/md/csv/json/log) → chunks ~1000 chars → <code>documento_chunk</code>. Embeddings best-effort al subir (<code>scripts/backfill_embeddings.py</code> para rellenar).</div>
+    <div class="card"><b>Recuperación</b><br>Similitud pgvector (<code>search_similar_chunks</code>, <code>&lt;=&gt;</code> sobre <code>documento_embedding</code>, 0003). Fallback a full-text <code>spanish</code> (<code>search_chunks</code>) si no hay proveedor, falla o la tabla está vacía.</div>
+    <div class="card"><b>Máquina por conversación (HU-23)</b><br><code>chat_session.maquina_id</code> (0016) y <code>documento.maquina_id</code>. Primero docs de la máquina, relleno con generales de la empresa. Ficha <code>bloque_equipo</code> en el prompt.</div>
+    <div class="card"><b>Multimodal</b><br><code>POST /api/chat/multimedia</code>. Turnos con imagen se persisten con <code>has_image: true</code> (la imagen no). Prompt exige respuestas concisas con <code>**negritas**</code>.</div>
+    <div class="card"><b>Memoria y modelos (HU-22)</b><br>Historial en <code>chat_session.messages</code> (JSONB), guardado en el <code>finally</code> del stream con <code>asyncio.shield</code>. <code>MODEL_SETTINGS</code> define parámetros de <code>texto</code> y <code>multimodal</code>.</div>
+  </div>
+
+  <h3>Proveedores</h3>
+  <ul>
+    <li>LLM vía LangChain: <code>llm_provider</code> ∈ deepseek / openai / openrouter / groq / nvidia, con <code>llm_fallback_providers</code> opcional.</li>
+    <li>Embeddings: NVIDIA <code>nvidia/nemotron-3-embed-1b</code>, 2048 dims; la key cae a <code>NVIDIA_API_KEY</code>.</li>
+    <li>Documentos en Supabase Storage; sin <code>SUPABASE_URL</code>/<code>SUPABASE_SERVICE_ROLE_KEY</code> los endpoints responden 503.</li>
+    <li>Límites por usuario: tasa de chat y tokens diarios (en memoria).</li>
+  </ul>
+</section>
+
+<!-- ============ FRONTEND ============ -->
+<section class="tab" id="frontend" data-title="Frontend">
+  <h2>Frontend</h2>
+  <p class="lead">Angular 22: componentes standalone, signals, Vite/Vitest vía <code>@angular/build</code>, Tailwind v4. Layout por features bajo <code>src/app/</code>. En desarrollo, <code>proxy.conf.json</code> envía <code>/api</code> a <code>http://localhost:9000</code>.</p>
+
+  <h3>Core</h3>
+  <div class="grid">
+    <div class="card"><b>guards</b><br><code>authGuard</code>, <code>roleGuard(route, …)</code>, <code>homeRedirectGuard</code>.</div>
+    <div class="card"><b>interceptors</b><br><code>auth.interceptor.ts</code>: agrega Bearer; 401 → login.</div>
+    <div class="card"><b>permissions</b><br><code>permissions.ts</code> espeja <code>RUTAS</code>/<code>ACCIONES</code> del backend.</div>
+    <div class="card"><b>services</b><br>auth, work-orders, chat, documents, empresas, users-admin, tenant-context, catalog, stats, theme, toast, ot-realtime, currency, mtbf-unit, avisos-*.</div>
+    <div class="card"><b>i18n</b><br>Pipe <code>translate</code>; <code>textos/&lt;vista&gt;.ts</code> exporta <code>{es, en}</code> (en tipado <code>typeof es</code>), registrado en <code>textos/index.ts</code>.</div>
+    <div class="card"><b>models</b><br>Tipos compartidos de dominio.</div>
+  </div>
+
+  <h3>Features</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>Feature</th><th>Contenido</th></tr></thead>
+    <tbody>
+      <tr><td><code>auth/login</code></td><td>Login; <code>super_usuario</code> aterriza en <code>/empresas</code>.</td></tr>
+      <tr><td><code>dashboard</code></td><td>KPIs, históricos, top 5; KPIs financieros solo gerente. «Explícame»: resumen en lenguaje natural generado en el cliente (<code>explicame-resumen.ts</code>).</td></tr>
+      <tr><td><code>work-orders</code></td><td>Lista, creación, hoja de detalle, diálogo de cambio de estado, indicador en vivo.</td></tr>
+      <tr><td><code>avisos</code></td><td>Reportar falla y repositorio del supervisor.</td></tr>
+      <tr><td><code>plantas</code> · <code>topology</code></td><td>Mantenedor de plantas/máquinas (SLA/costo) y topología.</td></tr>
+      <tr><td><code>chat</code></td><td>Streaming, historial, imágenes, markdown/KaTeX (ngx-markdown), <code>maquina-selector.component.ts</code>.</td></tr>
+      <tr><td><code>documentos</code></td><td>Gestión de documentos con selector de máquina por fila.</td></tr>
+      <tr><td><code>empresas</code> · <code>usuarios</code></td><td>Administración multiempresa y de usuarios.</td></tr>
+      <tr><td><code>transacciones</code> · <code>transacciones-empresa</code></td><td>Log global (super_usuario) y por empresa (gerente).</td></tr>
+      <tr><td><code>ayuda</code></td><td>«Aprende BARB»: 100% frontend; rutas sin <code>roleGuard</code>, contenido filtrado por rol vía <code>AyudaService.cumple()</code>; recorridos guiados; progreso en <code>localStorage</code>; buscador local sin LLM.</td></tr>
+      <tr><td><code>forbidden</code></td><td>Página de acceso denegado.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Layout y navegación</h3>
+  <ul>
+    <li><code>shared/components/layout/main-layout</code>: shell; rutas lazy y protegidas por rol en <code>app.routes.ts</code>.</li>
+    <li><code>NAV_ITEMS</code> (<code>layout/nav-items.ts</code>): <code>ruta</code> opcional; ítem sin ruta (Ayuda) lo ve toda sesión, va al fondo y dentro de «Más» en móvil.</li>
+  </ul>
+
+  <h3>Convenciones Angular</h3>
+  <ul>
+    <li>Sin <code>standalone: true</code> ni <code>OnPush</code> explícitos; <code>input()</code>/<code>output()</code>/<code>model()</code>; signals + <code>computed()</code>; <code>inject()</code>.</li>
+    <li>Control de flujo <code>@if</code>/<code>@for</code>/<code>@switch</code>; sin <code>ngClass</code>/<code>ngStyle</code>; sin <code>CommonModule</code>.</li>
+    <li>Formularios: Signal Forms primero, Reactive Forms si no; nunca template-driven.</li>
+    <li>Debe pasar AXE y cumplir WCAG AA.</li>
+  </ul>
+</section>
+
+<!-- ============ DATOS ============ -->
+<section class="tab" id="datos" data-title="Datos y migraciones">
+  <h2>Datos y migraciones</h2>
+  <p class="lead">PostgreSQL 17 con extensión pgvector. Esquema solo en Alembic; un único head (<code>uv run alembic heads</code>).</p>
+
+  <h3>Cadena de migraciones</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>#</th><th>Migración</th></tr></thead>
+    <tbody>
+      <tr><td>0001–0002</td><td>initial · runtime tables</td></tr>
+      <tr><td>0003 (×2)</td><td><code>pgvector_embeddings</code> · <code>work_order_indexes</code></td></tr>
+      <tr><td>0004–0005</td><td>multiempresa_documentos · merge_heads</td></tr>
+      <tr><td>0006</td><td>notificacion_config</td></tr>
+      <tr><td>0007–0009</td><td>auditoria_cambios · transacciones · transacciones_triggers</td></tr>
+      <tr><td>0010</td><td>merge_heads</td></tr>
+      <tr><td>0011</td><td>sla_costo_maquina (<code>sla_horas</code>, <code>costo_inactividad_minuto</code>; NULL = SLA empresa)</td></tr>
+      <tr><td>0012</td><td>aviso_falla</td></tr>
+      <tr><td>0013</td><td>eliminar_rol_visitante</td></tr>
+      <tr><td>0014</td><td>estado_por_validar</td></tr>
+      <tr><td>0015</td><td>eliminar_estado_demo</td></tr>
+      <tr><td>0016</td><td>chat_session_maquina (<code>maquina_id</code> FK, <code>ON DELETE SET NULL</code>; elimina <code>machine_id VARCHAR</code>)</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Entidades principales</h3>
+  <pre>empresa ──┬─ usuario ──── sesion
+          ├─ planta ──── maquina ──── orden_trabajo
+          │                  │              └─ (estados, fotos, comentarios)
+          │                  ├─ aviso_falla
+          │                  └─ documento.maquina_id · chat_session.maquina_id
+          ├─ documento ──── documento_chunk ──── documento_embedding (pgvector)
+          ├─ chat_session ──── mensajes
+          └─ notificacion_config
+
+Auditoría:  transacciones (trg_transaccion)  ·  auditoria_cambio (JSONB)</pre>
+
+  <h3>Seeds</h3>
+  <ul>
+    <li><code>scripts/seed.py</code> aplica <code>seeds/01_estructura</code> → <code>02_maestros</code> → <code>03_operativos</code>: 3 empresas reales, 25 usuarios, 11 máquinas, 528 OT.</li>
+    <li>Idempotente pero nunca borra: reset = base vacía (ver <code>DEPLOY.md</code>).</li>
+    <li>Otros scripts: <code>backfill_sla_costos.py</code>, <code>backfill_embeddings.py</code>, <code>run_overdue_job.py</code>, <code>sse_load.py</code>.</li>
+  </ul>
+
+  <h3>Dashboard (stats)</h3>
+  <p><code>routers/stats.py</code> calcula MTBF, costo, salud, SLA e impacto con SLA y costo por máquina; KPIs financieros solo para gerente. Ver <code>docs/DASHBOARD_KPIS.md</code>.</p>
+</section>
+
+<!-- ============ MODELO DE DATOS ============ -->
+<section class="tab" id="modelo" data-title="Modelo de datos">
+  <h2>Modelo de datos</h2>
+  <p class="lead">PostgreSQL 17 + pgvector. Modelo relacional multiempresa derivado de las migraciones Alembic 0001–0016. Haz clic (o Enter) en una tabla para ver sus columnas y relaciones; las líneas resaltadas son claves foráneas.</p>
+  <div class="chips" id="er-legend"></div>
+  <div class="er-wrap"><svg id="er" role="group" aria-label="Diagrama entidad-relación"></svg></div>
+  <p style="color:var(--muted);font-size:13px;margin:6px 0 0">Línea <b style="color:var(--accent)">azul</b>: la tabla seleccionada referencia a otra · <b style="color:var(--db)">naranja</b>: otra tabla la referencia. Referencias lógicas sin FK no tienen línea.</p>
+
+  <div class="card" id="tdetail" aria-live="polite"><span style="color:var(--muted)">Selecciona una tabla del diagrama.</span></div>
+
+  <h3>Enums (tipos PostgreSQL)</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>Tipo</th><th>Valores</th><th>Usado en</th></tr></thead>
+    <tbody>
+      <tr><td><code>estado_ot</code></td><td>pending · assigned · in_progress · <b>por_validar</b> · completed · cancelled · overdue</td><td><code>orden_trabajo.estado</code> (0014 agrega <code>por_validar</code>)</td></tr>
+      <tr><td><code>prioridad_ot</code></td><td>low · medium · high · urgent</td><td><code>orden_trabajo.priority</code></td></tr>
+      <tr><td><code>tipo_mantenimiento</code></td><td>corrective · preventive · predictive · inspection</td><td><code>orden_trabajo.tipo</code></td></tr>
+      <tr><td><code>nivel_severidad</code></td><td>low · medium · high · critical</td><td><code>orden_trabajo</code>, <code>aviso_falla</code>, <code>diagnostico</code>, <code>reporte</code></td></tr>
+      <tr><td><code>estado_empresa</code></td><td>active · suspended · cancelled (<code>demo</code> eliminado en 0015)</td><td><code>empresa.estado</code></td></tr>
+      <tr><td><code>plan_empresa</code></td><td>trial · starter · professional · enterprise</td><td><code>empresa.plan</code> (sin uso)</td></tr>
+      <tr><td><code>estado_reporte</code></td><td>draft · generated · uploaded · approved · archived</td><td><code>reporte.estado</code></td></tr>
+      <tr><td><code>estado_repuesto</code></td><td>active · discontinued · out_of_stock</td><td><code>repuesto.estado</code></td></tr>
+      <tr><td><code>tipo_nodo</code> / <code>estado_nodo</code></td><td>machine · controller · sensor · hub / operational · warning · error · offline</td><td><code>topologia_nodo</code></td></tr>
+      <tr><td><code>tipo_conexion</code> / <code>estado_conexion</code></td><td>electrical · mechanical · data · hydraulic · pneumatic / active · inactive</td><td><code>topologia_conexion</code></td></tr>
+      <tr><td><code>frecuencia_mant</code>, <code>prioridad_mant</code>, <code>estado_programa</code>, <code>estado_ejecucion</code></td><td>daily…yearly · custom / low · medium · high / active · paused · inactive / scheduled · completed · skipped · overdue</td><td><code>programa_mantenimiento</code>, <code>ejecucion_programa</code></td></tr>
+      <tr><td><code>estado_lectura</code></td><td>normal · warning · critical</td><td><code>lectura_sensor.estado</code></td></tr>
+      <tr><td><code>accion_audit</code></td><td>login · logout · create · update · delete · view · export · import · approve · reject · assign · upload · download · chat_query · chat_save · report_generate</td><td><code>system_audit_log.accion</code></td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Restricciones y reglas de integridad</h3>
+  <ul>
+    <li><b>Roles</b>: <code>ck_usuario_rol_valido</code> limita <code>usuario.rol</code> a operador, tecnico, supervisor, engineer, gerente, admin, super_usuario. <code>ck_usuario_empresa_rol</code>: <code>empresa_id</code> NULL solo para <code>super_usuario</code>.</li>
+    <li><b>Aviso de falla</b>: <code>estado</code> ∈ pendiente | con_ot | descartado; descartar exige <code>motivo_descarte</code>; resolver exige <code>resuelto_por</code> y <code>resuelto_en</code>; los 4 campos de foto van todos nulos o todos presentes.</li>
+    <li><b>Notificaciones</b>: frecuencia diaria | semanal, hora 0–23, <code>dia_semana</code> 0–6 y obligatorio si es semanal.</li>
+    <li><b>Aislamiento</b>: <code>documento_chunk.empresa_id</code> duplicado a propósito (filtro de tenant sin join + barrera extra). Las OT derivan empresa por <code>orden_trabajo → maquina → planta → empresa</code>.</li>
+    <li><b>Borrado</b>: cascada en dependientes (<code>ot_foto</code>, <code>ot_repuesto</code>, <code>ot_audit_log</code>, <code>documento_chunk</code>, <code>documento_embedding</code>, <code>sesion</code>, <code>lectura_sensor</code>, zonas/conexiones); <code>SET NULL</code> en vínculos opcionales (<code>chat_session.maquina_id</code>, <code>documento.maquina_id</code>, <code>transacciones.usuario_id</code>).</li>
+    <li><b>Índices destacados</b>: GIN sobre <code>documento_chunk.tsv</code> (full-text español, columna generada) · HNSW sobre <code>documento_embedding.embedding::halfvec(2048)</code> · <code>ix_ot_abiertas_vencimiento</code> (OT abiertas por vencimiento) · índices por <code>(empresa_id, fecha DESC)</code> en bitácoras.</li>
+    <li><b>Triggers</b>: <code>trg_transaccion</code> (por fila, tablas de negocio → <code>transacciones</code>) y <code>trg_auditar_usuario/empresa/orden_trabajo</code> (→ <code>auditoria_cambio</code>). El usuario llega por <code>app.usuario_id</code>.</li>
+  </ul>
+  <p style="color:var(--muted);font-size:13px"><code>auditoria_cambio.registro_id</code> y <code>usuario_id</code> son referencias lógicas sin FK, para conservar el historial aunque el registro se borre. Las tablas heredadas del esquema inicial (<code>reporte</code>, <code>sesion_debug</code>, <code>diagnostico</code>, <code>programa_mantenimiento</code>, <code>system_audit_log</code>…) siguen en el esquema; su uso activo en la API es el descrito en las otras pestañas.</p>
+</section>
+
+<!-- ============ DESPLIEGUE ============ -->
+<section class="tab" id="deploy" data-title="Despliegue y operación">
+  <h2>Despliegue y operación</h2>
+  <p class="lead">Producción separada en tres proveedores gratuitos; local con Docker solo para Postgres.</p>
+
+  <div class="flow">
+    <div class="step"><b>Cloudflare Pages</b>Frontend Angular (Node 24 en build). CORS permite el dominio de Pages.</div>
+    <div class="step"><b>Render</b>Backend FastAPI definido en <code>render.yaml</code>. Free tier duerme.</div>
+    <div class="step"><b>Supabase</b>Postgres (pooler de transacciones, puerto 6543) + Storage de documentos.</div>
+    <div class="step"><b>GitHub Actions</b>Cron externo del job de OT atrasadas.</div>
+  </div>
+
+  <h3>Orden al cambiar el esquema</h3>
+  <ol>
+    <li>Aplicar la migración a Supabase.</li>
+    <li>Recién entonces hacer merge a <code>main</code>.</li>
+  </ol>
+  <p style="color:var(--muted);font-size:13px">Los pushes a <code>main</code> no ejecutan migraciones (<code>DEPLOY.md</code> §2.4). Pool ajustado para el cierre por inactividad del pooler de Supabase (PR #50).</p>
+
+  <h3>Desarrollo local</h3>
+<pre># base de datos (raíz del repo)
+docker compose up -d db
+
+# backend
+cd backend
+uv sync
+uv run alembic upgrade head
+uv run python scripts/seed.py
+uv run fastapi dev src/barb/main.py --port 9000
+uv run pytest            # contra Postgres real de backend/.env
+uv run ruff check
+
+# frontend
+cd frontend
+npm install
+npm start                # proxy /api → localhost:9000
+npm test                 # vitest</pre>
+
+  <h3>Limitaciones de escala conocidas</h3>
+  <ul>
+    <li><code>OtEventBroker</code>, <code>rate_limit</code> y <code>token_limit</code> viven en memoria: válidos solo con un proceso. Para escalar, mover a Redis (pub/sub y contadores).</li>
+    <li>Sin scheduler interno: depende de cron externo.</li>
+    <li>Redis y Storage opcionales; endpoints dependientes responden 503 sin configuración.</li>
+  </ul>
+
+  <h3>Documentación relacionada (<code>docs/</code>)</h3>
+  <p>
+    <code>MULTIEMPRESA.md</code> · <code>WORK_ORDERS.md</code> · <code>NOTIFICACIONES.md</code> · <code>HU-10-REALTIME_OT.md</code> · <code>AVISOS_FALLA.md</code> · <code>DASHBOARD_KPIS.md</code> · <code>TOPOLOGIA.md</code> · <code>RAG_ARCHITECTURE.md</code> · <code>AI_ARCHITECTURE.md</code> · <code>MULTIMODAL_ARCHITECTURE.md</code> · <code>MIGRACIONES.md</code> · <code>contrato_api_*.md</code>
+  </p>
+</section>
+
+</main>
+<footer>Documento generado a partir del estado del repositorio. Fuente de verdad: código, <code>CLAUDE.md</code>, <code>matriz_rol.md</code> y <code>docs/</code>.</footer>
+
+<script>
+(function(){
+  var DETAILS={
+    spa:['Angular 22 SPA','Rutas lazy por feature en app.routes.ts, protegidas por authGuard/roleGuard. Estado con signals. Servido desde Cloudflare Pages; en dev usa proxy /api → :9000.'],
+    sse:['Cliente SSE','ot-realtime.service consume GET /api/work-orders/stream (Bearer o ticket de un uso), reanuda con Last-Event-ID y reacciona a resync.'],
+    perm:['permissions.ts','Espejo de RUTAS/ACCIONES del backend para ocultar UI. Nunca es la autoridad: el backend re-valida cada request.'],
+    routers:['Routers','Un archivo por recurso (auth, users, empresas, documents, chat, catalog, topology, stats, work_orders, avisos, transacciones, notifications, realtime, preferences, health). Cada uno contiene su SQL con %(name)s.'],
+    rbac:['RBAC','Matrices RUTAS y ACCIONES por rol. Dependencias require_route / require_action / require_auth. Rol siempre re-resuelto desde la tabla sesion.'],
+    ot:['Máquina de estados OT','TRANSICIONES: pending/assigned/overdue → in_progress|cancelled; in_progress → por_validar|cancelled; por_validar → completed|in_progress|cancelled. Backend devuelve allowed_transitions por rol.'],
+    chat:['Motor de chat','LangGraph: gate_ot → retrieve → generate ⇄ tools → propuesta. Tools creadas por request con empresa fija; hard lock sobre escritura de OT.'],
+    rt:['Realtime','OtEventBroker en memoria con fan-out por empresa y buffer de 500 eventos. publish_safe tras commit. Un solo proceso.'],
+    jobs:['Jobs / email','overdue_report + email_service (SMTP stdlib). Disparado por POST /api/jobs/ot-atrasadas con X-Job-Token, idempotente por período.'],
+    pg:['PostgreSQL 17 + pgvector','Fuente única de datos. Pool AsyncConnectionPool (psycopg3). Esquema por Alembic. Triggers de auditoría. Imagen local: pgvector/pgvector:pg17.'],
+    redis:['Redis','Caché opcional con redis.asyncio. El sistema tolera su ausencia o caída.'],
+    storage:['Supabase Storage','Archivos de documentos para RAG. Sin credenciales, los endpoints de documentos devuelven 503.'],
+    disk:['Disco uploads/','Fotos de OT y avisos de falla (services/files.py, ruta desde settings.upload_dir). En Render free el disco es efímero.'],
+    llm:['Proveedores LLM','Vía LangChain: deepseek, openai, openrouter, groq, nvidia; cadena de fallback configurable.'],
+    emb:['Embeddings NVIDIA','nvidia/nemotron-3-embed-1b, 2048 dimensiones. Best-effort al subir; si falla se usa full-text.'],
+    smtp:['SMTP','Envío del reporte de OT atrasadas con smtplib; configuración por empresa en notificacion_config.'],
+    gha:['GitHub Actions','.github/workflows/overdue-report.yml llama al endpoint del job porque Render free no mantiene scheduler.']
+  };
+  var $=function(s,r){return (r||document).querySelector(s)}, $$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
+
+  /* Pestañas */
+  var tabs=$('#tabs'), secs=$$('section.tab');
+  secs.forEach(function(s,i){
+    var b=document.createElement('button');
+    b.type='button';b.textContent=s.dataset.title;b.setAttribute('role','tab');b.dataset.id=s.id;
+    b.addEventListener('click',function(){show(s.id,true)});
+    tabs.appendChild(b);
+  });
+  function show(id,push){
+    secs.forEach(function(s){s.classList.toggle('on',s.id===id)});
+    $$('#tabs button').forEach(function(b){b.setAttribute('aria-selected',b.dataset.id===id)});
+    if(push){try{history.replaceState(null,'','#'+id)}catch(e){}}
+    window.scrollTo({top:0});
+  }
+  var start=(location.hash||'').slice(1);
+  show(secs.some(function(s){return s.id===start})?start:secs[0].id,false);
+
+  /* Diagrama */
+  $$('#diagram .node').forEach(function(n){
+    n.setAttribute('aria-pressed','false');
+    n.addEventListener('click',function(){
+      $$('#diagram .node').forEach(function(x){x.setAttribute('aria-pressed','false')});
+      n.setAttribute('aria-pressed','true');
+      var d=DETAILS[n.dataset.k];
+      var box=$('#detail');box.innerHTML='';
+      var h=document.createElement('h4');h.textContent=d[0];
+      var p=document.createElement('div');p.textContent=d[1];
+      box.appendChild(h);box.appendChild(p);
+    });
+  });
+
+  /* Tema */
+  var root=document.documentElement;
+  try{var t=localStorage.getItem('barb-arq-theme');if(t)root.setAttribute('data-theme',t)}catch(e){}
+  $('#theme').addEventListener('click',function(){
+    var dark=root.getAttribute('data-theme')==='dark'||(!root.getAttribute('data-theme')&&matchMedia('(prefers-color-scheme: dark)').matches);
+    var next=dark?'light':'dark';
+    root.setAttribute('data-theme',next);
+    try{localStorage.setItem('barb-arq-theme',next)}catch(e){}
+  });
+
+  /* Búsqueda: resalta y muestra la primera sección con coincidencias */
+  var q=$('#q');
+  function clearMarks(){
+    $$('mark').forEach(function(m){var p=m.parentNode;p.replaceChild(document.createTextNode(m.textContent),m);p.normalize()});
+  }
+  function markIn(el,term){
+    var w=document.createTreeWalker(el,NodeFilter.SHOW_TEXT,{acceptNode:function(n){
+      return n.parentNode.closest('script,style,mark,svg')?NodeFilter.FILTER_REJECT:NodeFilter.FILTER_ACCEPT}});
+    var nodes=[],n;while((n=w.nextNode()))nodes.push(n);
+    var re=new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'gi'),count=0;
+    nodes.forEach(function(node){
+      var txt=node.nodeValue;if(!re.test(txt))return;re.lastIndex=0;
+      var frag=document.createDocumentFragment(),last=0,m;
+      while((m=re.exec(txt))){
+        frag.appendChild(document.createTextNode(txt.slice(last,m.index)));
+        var mk=document.createElement('mark');mk.textContent=m[0];frag.appendChild(mk);
+        last=m.index+m[0].length;count++;
+      }
+      frag.appendChild(document.createTextNode(txt.slice(last)));
+      node.parentNode.replaceChild(frag,node);
+    });
+    return count;
+  }
+  q.addEventListener('input',function(){
+    clearMarks();
+    var term=q.value.trim();
+    $$('#tabs button').forEach(function(b){b.textContent=b.textContent.replace(/ \(\d+\)$/,'')});
+    if(term.length<2)return;
+    var first=null;
+    secs.forEach(function(s){
+      var c=markIn(s,term);
+      if(c){
+        var b=$('#tabs button[data-id="'+s.id+'"]');b.textContent+=' ('+c+')';
+        if(!first)first=s.id;
+      }
+    });
+    var cur=$('section.tab.on');
+    if(first&&!(cur&&$('mark',cur)))show(first,false);
+  });
+})();
+
+(function(){
+  var DOMS=[['Acceso y tenant','d0'],['Infraestructura','d1'],['Topología','d2'],['Operación','d3'],['Documentos e IA','d4'],['Auditoría','d5']];
+  // columna: nombre|tipo|flags (pk, uq, nn, fk=tabla); texto entre paréntesis = nota
+  var T={
+   empresa:[0,['empresa_id|SERIAL|pk','nombre|VARCHAR(150)|nn','rut|VARCHAR(20)|uq','pais|VARCHAR(60)|nn','industria|VARCHAR(100)','contacto_nombre|VARCHAR(100)','contacto_email|VARCHAR(100)','contacto_telefono|VARCHAR(30)','logo_url|VARCHAR(500)','plan|plan_empresa|nn (sin uso)','estado|estado_empresa|nn','max_usuarios|INT|nn','max_plantas|INT|nn (sin uso)','licencia_inicio|DATE|(sin uso)','licencia_fin|DATE|(sin uso)','notas|TEXT','created_at|TIMESTAMP|nn','updated_at|TIMESTAMP|nn']],
+   usuario:[0,['usuario_id|SERIAL|pk','empresa_id|INT|fk=empresa (NULL = super_usuario)','nombre|VARCHAR(100)|nn','email|VARCHAR(100)|uq,nn','password_hash|VARCHAR(255)|nn','rol|VARCHAR(50)|nn (CHECK)','activo|BOOLEAN|nn','ultimo_login|TIMESTAMP','preferencias|JSONB','created_at|TIMESTAMP|nn']],
+   sesion:[0,['token|VARCHAR(64)|pk','usuario_id|INT|fk=usuario,nn','creado_en|TIMESTAMP|nn','expira_en|TIMESTAMP|nn']],
+   notificacion_config:[0,['empresa_id|INT|pk,fk=empresa','activo|BOOLEAN|nn','frecuencia|VARCHAR(10)|nn (diaria|semanal)','hora|SMALLINT|nn (0-23)','dia_semana|SMALLINT|(0-6)','destinatarios|TEXT[]|nn','ultimo_envio|TIMESTAMPTZ','updated_at|TIMESTAMPTZ|nn']],
+
+   planta:[1,['planta_id|SERIAL|pk','empresa_id|INT|fk=empresa,nn','nombre|VARCHAR(120)|nn','ubicacion|VARCHAR(255)']],
+   disciplina:[1,['disciplina_id|SERIAL|pk','empresa_id|INT|fk=empresa,nn','nombre|VARCHAR(50)|nn (único por empresa)','color|VARCHAR(20)']],
+   maquina:[1,['maquina_id|SERIAL|pk','planta_id|INT|fk=planta,nn','disciplina_id|INT|fk=disciplina','nombre|VARCHAR(100)|nn','codigo|VARCHAR(50)|nn (único por planta)','sla_horas|NUMERIC(6,2)|(NULL = SLA empresa)','costo_inactividad_minuto|NUMERIC(12,2)']],
+   sensor:[1,['sensor_id|SERIAL|pk','maquina_id|INT|fk=maquina,nn','nombre|VARCHAR(100)|nn','codigo|VARCHAR(50)|uq,nn']],
+   lectura_sensor:[1,['lectura_id|SERIAL|pk','sensor_id|INT|fk=sensor,nn','valor|DECIMAL(14,4)|nn','timestamp|TIMESTAMP|nn','estado|estado_lectura|nn']],
+   repuesto:[1,['repuesto_id|SERIAL|pk','empresa_id|INT|fk=empresa,nn','codigo|VARCHAR(50)|nn (único por empresa)','part_number|VARCHAR(80)','nombre|VARCHAR(150)|nn','descripcion|TEXT','tipo|VARCHAR(60)','categoria|VARCHAR(60)','unidad|VARCHAR(20)|nn','stock_actual|DECIMAL(12,2)|nn','stock_minimo|DECIMAL(12,2)|nn','stock_maximo|DECIMAL(12,2)','costo_unitario|DECIMAL(12,2)','proveedor|VARCHAR(120)','ubicacion_bodega|VARCHAR(80)','imagen_url|VARCHAR(255)','estado|estado_repuesto|nn','created_at|TIMESTAMP|nn','updated_at|TIMESTAMP|nn']],
+
+   topologia_zona:[2,['zona_id|SERIAL|pk','planta_id|INT|fk=planta,nn','nombre|VARCHAR(120)|nn','color|VARCHAR(20)','descripcion|VARCHAR(255)']],
+   topologia_nodo:[2,['nodo_id|SERIAL|pk','planta_id|INT|fk=planta,nn','maquina_id|INT|fk=maquina','sensor_id|INT|fk=sensor','tipo|tipo_nodo|nn','nombre|VARCHAR(120)|nn','categoria|VARCHAR(60)','position_x|DECIMAL(10,2)|nn','position_y|DECIMAL(10,2)|nn','position_z|DECIMAL(10,2)','estado|estado_nodo|nn','updated_at|TIMESTAMP|nn']],
+   zona_nodo:[2,['zona_id|INT|pk,fk=topologia_zona (CASCADE)','nodo_id|INT|pk,fk=topologia_nodo (CASCADE)']],
+   topologia_conexion:[2,['conexion_id|SERIAL|pk','nodo_origen_id|INT|fk=topologia_nodo,nn (CASCADE)','nodo_destino_id|INT|fk=topologia_nodo,nn (CASCADE)','tipo|tipo_conexion|nn','label|VARCHAR(120)','bidirectional|BOOLEAN|nn','bandwidth|VARCHAR(40)','strength|INT','estado|estado_conexion|nn']],
+
+   orden_trabajo:[3,['ot_id|SERIAL|pk','numero_ot|VARCHAR(40)|uq,nn','maquina_id|INT|fk=maquina,nn','tecnico_id|INT|fk=usuario,nn','creado_por|INT|fk=usuario,nn','diagnostico_id|INT|fk=diagnostico','reporte_id|INT|fk=reporte','aviso_falla_id|INT|fk=aviso_falla (SET NULL)','tipo|tipo_mantenimiento|nn','descripcion_problema|TEXT','descripcion_reparacion|TEXT','resolution|TEXT','priority|prioridad_ot|nn','severity|nivel_severidad','fecha_creacion|TIMESTAMP|nn','fecha_inicio|TIMESTAMP','fecha_cierre|TIMESTAMP','fecha_vencimiento|TIMESTAMP','tiempo_reparacion_min|INT','downtime_minutes|INT','costo_estimado|DECIMAL(12,2)','costo_real|DECIMAL(12,2)','estado|estado_ot|nn']],
+   ot_foto:[3,['ot_foto_id|SERIAL|pk','ot_id|INT|fk=orden_trabajo,nn (CASCADE)','file_name|VARCHAR(255)|nn','original_name|VARCHAR(255)|nn','content_type|VARCHAR(100)|nn','file_path|VARCHAR(500)|nn','created_at|TIMESTAMP|nn']],
+   ot_repuesto:[3,['ot_repuesto_id|SERIAL|pk','ot_id|INT|fk=orden_trabajo,nn (CASCADE)','repuesto_id|INT|fk=repuesto,nn','cantidad|DECIMAL(10,2)|nn','costo_unitario|DECIMAL(12,2)','notas|VARCHAR(255)','fecha_uso|TIMESTAMP|nn']],
+   ot_audit_log:[3,['audit_id|SERIAL|pk','ot_id|INT|fk=orden_trabajo,nn (CASCADE)','usuario_id|INT|fk=usuario,nn','estado_anterior|VARCHAR(40)','estado_nuevo|VARCHAR(40)|nn','comentario|VARCHAR(500)','timestamp|TIMESTAMP|nn']],
+   aviso_falla:[3,['aviso_falla_id|SERIAL|pk','numero_aviso|VARCHAR(40)|uq,nn (AV-año-id)','maquina_id|INT|fk=maquina,nn','reportado_por|INT|fk=usuario,nn','descripcion|TEXT|nn','severidad|nivel_severidad|nn','estado|VARCHAR(20)|nn (pendiente|con_ot|descartado)','foto_nombre|VARCHAR(255)','foto_archivo|VARCHAR(255)','foto_content_type|VARCHAR(50)','foto_ruta|VARCHAR(500)','resuelto_por|INT|fk=usuario','resuelto_en|TIMESTAMP','motivo_descarte|TEXT','created_at|TIMESTAMP|nn']],
+   sesion_debug:[3,['sesion_id|SERIAL|pk','empresa_id|INT|fk=empresa,nn','maquina_id|INT|fk=maquina,nn','tecnico_id|INT|fk=usuario,nn','titulo|VARCHAR(200)','observaciones|TEXT','created_at|TIMESTAMP|nn']],
+   diagnostico:[3,['diagnostico_id|SERIAL|pk','sesion_id|INT|fk=sesion_debug,nn','descripcion|TEXT|nn','severidad|nivel_severidad|nn']],
+   reporte:[3,['reporte_id|SERIAL|pk','report_number|VARCHAR(40)|uq,nn','sesion_id|INT|fk=sesion_debug','diagnostico_id|INT|fk=diagnostico','maquina_id|INT|fk=maquina,nn','tecnico_id|INT|fk=usuario,nn','summary|TEXT','issue_description|TEXT|nn','resolution|TEXT','actions_taken|JSONB','additional_notes|TEXT','severity|nivel_severidad|nn','downtime_minutes|INT','pdf_url|VARCHAR(500)','repository_url|VARCHAR(500)','estado|estado_reporte|nn','created_at|TIMESTAMP|nn','uploaded_at|TIMESTAMP','approved_by|INT|fk=usuario']],
+   programa_mantenimiento:[3,['programa_id|SERIAL|pk','maquina_id|INT|fk=maquina,nn','creado_por|INT|fk=usuario,nn','nombre|VARCHAR(150)|nn','descripcion|TEXT','instrucciones|TEXT','frecuencia|frecuencia_mant|nn','intervalo_dias|INT','priority|prioridad_mant|nn','duracion_estimada_min|INT','costo_estimado|DECIMAL(12,2)','fecha_inicio|DATE|nn','proxima_ejecucion|TIMESTAMP','ultima_ejecucion|TIMESTAMP','estado|estado_programa|nn','created_at|TIMESTAMP|nn']],
+   ejecucion_programa:[3,['ejecucion_id|SERIAL|pk','programa_id|INT|fk=programa_mantenimiento,nn (CASCADE)','ot_id|INT|fk=orden_trabajo','tecnico_id|INT|fk=usuario','fecha_programada|TIMESTAMP|nn','fecha_ejecutada|TIMESTAMP','estado|estado_ejecucion|nn','notes|TEXT']],
+
+   documento:[4,['documento_id|SERIAL|pk','empresa_id|INT|fk=empresa,nn (CASCADE)','usuario_id|INT|fk=usuario (SET NULL)','discipline_id|INT|fk=disciplina (SET NULL)','maquina_id|INT|fk=maquina (SET NULL)','title|VARCHAR(255)|nn','notes|TEXT','original_name|VARCHAR(255)|nn','stored_name|VARCHAR(255)|nn','file_id|VARCHAR(64)|nn','content_type|VARCHAR(100)','size_bytes|BIGINT|nn','chunks_indexed|INT|nn','activo|BOOLEAN|nn','created_at|TIMESTAMP|nn']],
+   documento_chunk:[4,['chunk_id|SERIAL|pk','documento_id|INT|fk=documento,nn (CASCADE)','empresa_id|INT|fk=empresa,nn (CASCADE)','orden|INT|nn','contenido|TEXT|nn','tsv|TSVECTOR|(generada, GIN, español)']],
+   documento_embedding:[4,['documento_embedding_id|SERIAL|pk','documento_id|INT|fk=documento,nn (CASCADE)','chunk_index|INT|nn (único con documento_id)','content|TEXT|nn','embedding|vector(2048)|nn (HNSW halfvec)','created_at|TIMESTAMP|nn']],
+   chat_session:[4,['session_id|UUID|pk','empresa_id|INT|fk=empresa,nn','usuario_id|INT|fk=usuario (SET NULL)','maquina_id|INT|fk=maquina (SET NULL)','titulo|VARCHAR(200)|nn','saved_by|VARCHAR(100)','discipline|VARCHAR(100)','plant_id|VARCHAR(40)','plant_name|VARCHAR(120)','machine_name|VARCHAR(120)','active_manual|VARCHAR(255)','messages|JSONB|nn (historial)','metadata|JSONB','saved_at|TIMESTAMPTZ|nn']],
+   chat_debug_attachment:[4,['attachment_id|SERIAL|pk','session_id|VARCHAR(64)','maquina_id|INT|fk=maquina (SET NULL)','original_name|VARCHAR(255)|nn','stored_name|VARCHAR(255)|nn','content_type|VARCHAR(50)|nn','created_at|TIMESTAMP|nn']],
+   chat_feedback:[4,['feedback_id|SERIAL|pk','message_content|TEXT','rating|VARCHAR(10)','context|VARCHAR(255)','created_at|TIMESTAMP']],
+
+   transacciones:[5,['transaccion_id|BIGSERIAL|pk','usuario_id|INT|fk=usuario (SET NULL)','empresa_id|INT|fk=empresa','perfil|VARCHAR(50)|nn','accion|VARCHAR(150)|nn','detalle|JSONB','fecha|TIMESTAMP|nn']],
+   auditoria_cambio:[5,['auditoria_id|BIGSERIAL|pk','tabla|VARCHAR(50)|nn','registro_id|INT|nn (lógico)','operacion|VARCHAR(6)|nn (INSERT|UPDATE|DELETE)','usuario_id|INT|(lógico)','datos_anteriores|JSONB','datos_nuevos|JSONB','cambios|JSONB','fecha|TIMESTAMPTZ|nn']],
+   system_audit_log:[5,['audit_id|BIGSERIAL|pk','empresa_id|INT|fk=empresa,nn','usuario_id|INT|fk=usuario (SET NULL)','usuario_nombre|VARCHAR(100)','usuario_rol|VARCHAR(50)','accion|accion_audit|nn','modulo|VARCHAR(60)|nn','entidad_tipo|VARCHAR(60)','entidad_id|VARCHAR(80)','descripcion|TEXT','datos_antes|JSONB','datos_despues|JSONB','ip_address|VARCHAR(45)','user_agent|TEXT','endpoint|VARCHAR(255)','duracion_ms|INT','exitoso|BOOLEAN|nn','error_detalle|TEXT','timestamp|TIMESTAMPTZ|nn']]
+  };
+  var svg=document.getElementById('er'); if(!svg) return;
+  var NS='http://www.w3.org/2000/svg',$=function(s,r){return (r||document).querySelector(s)};
+  function el(n,a,p){var e=document.createElementNS(NS,n);for(var k in a)e.setAttribute(k,a[k]);if(p)p.appendChild(e);return e}
+  function parse(c){var x=c.split('|');return {n:x[0],t:x[1]||'',f:x[2]||''}}
+  var rels=[];
+  Object.keys(T).forEach(function(t){T[t][1].forEach(function(c){var x=parse(c),m=/fk=([a-z_]+)/.exec(x.f);if(m)rels.push({from:t,col:x.n,to:m[1]})})});
+  var CW=200,TOP=44,RH=34,NW=172,PAD=14;
+  var cols=DOMS.map(function(){return []});
+  Object.keys(T).forEach(function(t){cols[T[t][0]].push(t)});
+  var maxn=Math.max.apply(null,cols.map(function(c){return c.length}));
+  var W=CW*DOMS.length+PAD*2, H=TOP+maxn*RH+30;
+  svg.setAttribute('viewBox','0 0 '+W+' '+H);
+  var gE=el('g',{},svg), gN=el('g',{},svg), pos={};
+  DOMS.forEach(function(d,i){
+    var x=PAD+i*CW;
+    el('rect',{x:x+2,y:8,width:CW-8,height:H-16,rx:12,'class':'dom-bg'},gN);
+    var tt=el('text',{x:x+12,y:28,'class':'dom-title'},gN);tt.textContent=d[0];
+    cols[i].forEach(function(t,j){pos[t]={x:x+(CW-8-NW)/2+2,y:TOP+j*RH,w:NW,h:26,c:i}});
+  });
+  var nodes={},paths=[];
+  rels.forEach(function(r){
+    var a=pos[r.from],b=pos[r.to];if(!a||!b)return;
+    var d,y1=a.y+a.h/2,y2=b.y+b.h/2;
+    if(a.c===b.c){
+      var x=a.x+a.w, bulge=26+Math.abs(y1-y2)/10;
+      d='M'+x+' '+y1+' C'+(x+bulge)+' '+y1+' '+(x+bulge)+' '+y2+' '+x+' '+y2;
+    }else{
+      var right=b.c>a.c, x1=right?a.x+a.w:a.x, x2=right?b.x:b.x+b.w, dx=(x2-x1)/2;
+      d='M'+x1+' '+y1+' C'+(x1+dx)+' '+y1+' '+(x2-dx)+' '+y2+' '+x2+' '+y2;
+    }
+    paths.push({p:el('path',{d:d,'class':'fk'},gE),r:r});
+  });
+  Object.keys(T).forEach(function(t){
+    var q=pos[t],g=el('g',{'class':'tbl',tabindex:0,role:'button','aria-label':'Tabla '+t},gN);
+    el('rect',{x:q.x,y:q.y,width:q.w,height:q.h,rx:6,'class':'d'+q.c},g);
+    var tx=el('text',{x:q.x+8,y:q.y+17},g);tx.textContent=t;
+    g.addEventListener('click',function(){sel(t)});
+    g.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();sel(t)}});
+    nodes[t]=g;
+  });
+  var lg=$('#er-legend'),bgs=['fe-soft','be-soft','db-soft','accent-soft','ext-soft','code'],bds=['fe','be','db','accent','ext','muted'];
+  DOMS.forEach(function(d,i){
+    var c=document.createElement('span');c.className='chip';
+    var sw=document.createElement('i');sw.style.background='var(--'+bgs[i]+')';sw.style.borderColor='var(--'+bds[i]+')';
+    c.appendChild(sw);c.appendChild(document.createTextNode(d[0]+' · '+cols[i].length));lg.appendChild(c);
+  });
+  function pill(cls,txt){var s=document.createElement('span');s.className='pill '+cls;s.textContent=txt;return s}
+  function sel(t){
+    var out={},inn={};
+    rels.forEach(function(r){if(r.from===t)out[r.to]=1;if(r.to===t)inn[r.from]=1});
+    Object.keys(nodes).forEach(function(k){
+      nodes[k].classList.toggle('sel',k===t);
+      nodes[k].classList.toggle('dim',!(k===t||out[k]||inn[k]));
+    });
+    paths.forEach(function(o){
+      var hi=o.r.from===t||o.r.to===t;
+      o.p.setAttribute('class','fk'+(hi?(' hi '+(o.r.from===t?'out':'in')):''));
+      if(hi)gE.appendChild(o.p);
+    });
+    detail(t,out,inn);
+  }
+  function detail(t,out,inn){
+    var box=$('#tdetail');box.innerHTML='';
+    var h=document.createElement('h3');h.style.marginTop='0';h.textContent=t+' · '+DOMS[T[t][0]][0];box.appendChild(h);
+    var sc=document.createElement('div');sc.className='scroll';
+    var tb=document.createElement('table');
+    tb.innerHTML='<thead><tr><th>Columna</th><th>Tipo</th><th>Restricciones</th></tr></thead>';
+    var bd=document.createElement('tbody');
+    T[t][1].forEach(function(c){
+      var x=parse(c),tr=document.createElement('tr'),a=document.createElement('td'),b=document.createElement('td'),d=document.createElement('td');
+      a.textContent=x.n;b.textContent=x.t;
+      var note='',f=x.f.replace(/\(([^)]*)\)/g,function(m){note+=' '+m;return ''});
+      f.split(',').forEach(function(fl){
+        fl=fl.trim();if(!fl)return;
+        var m=/^fk=([a-z_]+)$/.exec(fl);
+        if(fl==='pk')d.appendChild(pill('pk','PK'));
+        else if(fl==='uq')d.appendChild(pill('uq','UNIQUE'));
+        else if(fl==='nn')d.appendChild(pill('','NOT NULL'));
+        else if(m)d.appendChild(pill('fk','FK → '+m[1]));
+      });
+      if(note)d.appendChild(document.createTextNode(note.trim()));
+      tr.appendChild(a);tr.appendChild(b);tr.appendChild(d);bd.appendChild(tr);
+    });
+    tb.appendChild(bd);sc.appendChild(tb);box.appendChild(sc);
+    function relRow(label,map){
+      var ks=Object.keys(map),p=document.createElement('p'),b=document.createElement('b');p.className='rel';
+      b.textContent=label+': ';p.appendChild(b);
+      if(!ks.length)p.appendChild(document.createTextNode('—'));
+      ks.forEach(function(k){
+        var a=document.createElement('a');a.textContent=k;a.tabIndex=0;
+        a.addEventListener('click',function(){sel(k)});
+        a.addEventListener('keydown',function(e){if(e.key==='Enter')sel(k)});
+        p.appendChild(a);
+      });
+      box.appendChild(p);
+    }
+    relRow('Referencia a (FK salientes)',out);
+    relRow('Referenciada por (FK entrantes)',inn);
+  }
+  sel('orden_trabajo');
+})();
+</script>
+</body>
+</html>

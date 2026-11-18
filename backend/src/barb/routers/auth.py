@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Header, HTTPException
+from fastapi.responses import JSONResponse
 
 from barb.core.db import execute, fetch_one
 from barb.core.security import generate_session_token, verify_password
@@ -30,11 +31,19 @@ async def login(payload: LoginRequest):
         {"email": email},
     )
 
-    if not user or not user.get("activo", True):
+    if not user or not verify_password(password, str(user.get("password_hash") or "")):
         raise HTTPException(status_code=401, detail="Usuario o contraseña incorrecta")
 
-    if not verify_password(password, str(user.get("password_hash") or "")):
-        raise HTTPException(status_code=401, detail="Usuario o contraseña incorrecta")
+    # Credenciales válidas pero usuario desactivado: se avisa explícitamente
+    # (solo tras verificar la contraseña, para no revelar si el email existe).
+    if not user.get("activo", True):
+        return JSONResponse(
+            status_code=403,
+            content={
+                "detail": "Tu usuario está desactivado. Contacta a la administración.",
+                "activo": False,
+            },
+        )
 
     # Multi-empresa: los usuarios de una empresa suspendida/cancelada no pueden
     # iniciar sesión (el super_usuario no tiene empresa y siempre puede entrar).
@@ -56,6 +65,7 @@ async def login(payload: LoginRequest):
             "id": int(user["usuario_id"]),
             "name": str(user["nombre"]),
             "role": str(user["rol"]).lower(),
+            "activo": True,
             # Empresa a la que pertenece (None para el super_usuario).
             "empresa_id": int(user["empresa_id"]) if user.get("empresa_id") is not None else None,
             "empresa_nombre": user.get("empresa_nombre"),
