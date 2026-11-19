@@ -856,6 +856,43 @@ def _puede_gestionar(rol: str | None) -> bool:
 
 _MAX_PLANTAS = 10
 
+_CONSULTAS_TODAS_PLANTAS = frozenset(
+    {
+        "",
+        "todas",
+        "todas las plantas",
+        "plantas",
+        "empresa",
+        "de la empresa",
+        "topologia",
+        "topología",
+        "general",
+        "resumen",
+        "all",
+        "lista",
+        "listado",
+        "ver plantas",
+        "cuantas",
+        "cuántas",
+        "cuantas plantas",
+        "cuántas plantas",
+        "cantidad",
+        "total",
+    }
+)
+
+
+def _es_consulta_todas_plantas(texto: str) -> bool:
+    """True si el texto pide el catálogo o listado completo de plantas en vez de una en particular."""
+    limpio = (texto or "").strip().lower()
+    if not limpio or limpio in _CONSULTAS_TODAS_PLANTAS:
+        return True
+    if limpio.startswith("cuant") or limpio.startswith("cuánt"):
+        return True
+    if limpio in ("la topologia", "la topología", "topologia de la empresa", "topología de la empresa"):
+        return True
+    return False
+
 
 async def _buscar_plantas(empresa_id: int, consulta: str) -> list[dict]:
     """Plantas de la empresa que se parecen a la consulta (mismo criterio que máquinas)."""
@@ -1687,21 +1724,22 @@ def crear_tools(
 
     @tool("listar_maquinas_planta")
     async def listar_maquinas_planta(planta: str = "") -> str:
-        """Lista las máquinas de una planta, con su SLA, su costo de inactividad y sus
-        OTs abiertas.
+        """Consulta el catálogo de plantas de la empresa, su topología o las máquinas de una planta.
 
-        Úsala SIEMPRE antes de modificar o crear algo en el mantenedor: es la forma de
-        saber qué existe de verdad y no inventar nombres, códigos ni plantas.
+        Invoca esta función cuando el usuario consulte:
+        - Cuántas plantas tiene la empresa, cuántas plantas hay o cuántas sedes tiene.
+        - El listado general de plantas, ubicaciones y topología de la empresa (dejar planta="" o no pasar argumentos).
+        - Las máquinas, SLA, costo por minuto o fallas de una planta específica (pasando el nombre de la planta).
 
         Args:
-            planta: Nombre o parte del nombre de la planta. Si se omite, devuelve el
-                listado de plantas de la empresa con cuántas máquinas tiene cada una.
+            planta: Nombre de la planta a consultar. Si se omite, o si se pasa "", "todas", "plantas" o "topología",
+                devuelve la cantidad total y el listado de todas las plantas de la empresa.
         """
         # Sin `_puede_gestionar`: leer el catálogo lo puede hacer cualquier usuario
         # autenticado (es lo que hacen los GET del router). Ver spec §4.6.
         consulta = (planta or "").strip()
 
-        if not consulta:
+        if _es_consulta_todas_plantas(consulta):
             filas = await fetch_all(
                 """
                 SELECT p.nombre, p.ubicacion,
@@ -1713,9 +1751,10 @@ def crear_tools(
                 {"e": empresa_id},
             )
             if not filas:
-                return "Tu empresa todavía no tiene plantas en el mantenedor."
+                return "Tu empresa todavía no tiene plantas en el mantenedor (0 plantas)."
+            total = len(filas)
             lineas = [f"- {f['nombre']} ({f['n']} máquina(s), {f['ubicacion'] or 'sin ubicación'})" for f in filas]
-            return "Plantas de tu empresa:\n" + "\n".join(lineas)
+            return f"Plantas de tu empresa ({total} en total):\n" + "\n".join(lineas)
 
         objetivo, error = await _resolver_planta(empresa_id, consulta, "reviso sus máquinas")
         if error:

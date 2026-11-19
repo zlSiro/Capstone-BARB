@@ -17,6 +17,7 @@ script queda solo para documentos viejos que quedaron sin vectores.
 | `guia_electrica_motor_generador.md` | Motor con variador de frecuencia + grupo electrógeno de respaldo | MOTOR-D1, GEN-G1 |
 | `guia_sistemas_neumaticos_n2.md` | Compresor neumático + red de aire, FRL y actuadores | COMP-N2 |
 | `guia_gestion_sla_costo_inactividad.md` | Vocabulario de gestión: SLA, costo por minuto, kit de repuestos | transversal |
+| `manual_usuario_sistema_barb.md` | Guía de usuario y manual del sistema informático BARB | transversal |
 
 ## Reglas que respetan estos textos
 
