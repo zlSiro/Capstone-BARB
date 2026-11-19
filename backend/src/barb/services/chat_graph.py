@@ -190,6 +190,12 @@ REGLAS_CON_TOOLS_RESTO = (
     "dato, pide ese dato con una pregunta directa. Prohibido hablar de la persona en "
     "tercera persona («el usuario dijo…») o escribir meta-comentarios («necesito "
     "ampliar…», «la herramienta me pide…»).\n"
+    "\nESTADOS Y PRIORIDADES DE ÓRDENES DE TRABAJO (CGBIDA-551):\n"
+    "16. Al mencionar órdenes de trabajo (OTs), presenta SIEMPRE los estados y prioridades en español:\n"
+    "- Estados: Pendiente, Asignada, En curso, Por validar, Cerrada, Cancelada, Vencida.\n"
+    "- Prioridades: Baja, Media, Alta, Urgente.\n"
+    "- PROHIBIDO utilizar términos en inglés de la base de datos (como pending, assigned, in_progress, "
+    "por_validar, completed, cancelled, overdue, low, medium, high, urgent) al interactuar con el usuario.\n"
 )
 
 REGLAS_CON_TOOLS = REGLAS_CON_TOOLS_BASE + REGLAS_PROPONER_OT + REGLAS_CON_TOOLS_RESTO

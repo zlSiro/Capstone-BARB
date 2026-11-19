@@ -49,6 +49,24 @@ logger = logging.getLogger("barb.ai_tools")
 # conocimiento y se habría quedado desactualizada al agregar o retirar un estado.
 ESTADOS_ABIERTOS: tuple[str, ...] = tuple(sorted(estado for estado in TRANSICIONES if estado not in ESTADOS_FINALES))
 
+# CGBIDA-551: Mapeo de enums de base de datos a etiquetas legibles en español para presentación en chat.
+_ETIQUETA_ESTADO: dict[str, str] = {
+    "pending": "Pendiente",
+    "assigned": "Asignada",
+    "in_progress": "En curso",
+    "por_validar": "Por validar",
+    "completed": "Cerrada",
+    "cancelled": "Cancelada",
+    "overdue": "Vencida",
+}
+
+_ETIQUETA_PRIORIDAD_CAP: dict[str, str] = {
+    "low": "Baja",
+    "medium": "Media",
+    "high": "Alta",
+    "urgent": "Urgente",
+}
+
 _MAX_MAQUINAS = 5
 _MAX_OTS_LISTADAS = 10
 # Umbral de parecido para aceptar una coincidencia. Coincide con el `cutoff` estándar de
@@ -345,15 +363,37 @@ async def _resumen_maquina(empresa_id: int, maquina: dict) -> str:
         {"maquina": maquina["maquina_id"], "abiertos": list(ESTADOS_ABIERTOS), "limite": _MAX_OTS_LISTADAS},
     )
 
-    detalle = ", ".join(f"{e}={por_estado[e]}" for e in ESTADOS_ABIERTOS if por_estado.get(e)) or "ninguna"
+    detalle = (
+        ", ".join(
+            f"{_ETIQUETA_ESTADO.get(e, e)}={por_estado[e]}"
+            for e in ESTADOS_ABIERTOS
+            if por_estado.get(e)
+        )
+        or "ninguna"
+    )
     lineas = [
         f"Máquina: {maquina['nombre']} (código {maquina['codigo']}) — planta {maquina['planta']}.",
         f"Órdenes de trabajo abiertas: {abiertas} ({detalle}).",
         f"Total histórico de OTs de la máquina: {sum(por_estado.values())}.",
     ]
     if recientes:
-        listado = "; ".join(f"{o['numero_ot']} ({o['estado']}, prioridad {o['prioridad']})" for o in recientes)
+        listado = "; ".join(
+            f"{o['numero_ot']} ("
+            f"{_ETIQUETA_ESTADO.get(o['estado'], o['estado'])}, "
+            f"prioridad {_ETIQUETA_PRIORIDAD_CAP.get(o['prioridad'], o['prioridad'])})"
+            for o in recientes
+        )
         lineas.append(f"Abiertas más recientes: {listado}.")
+        filas_tabla = [
+            "| N° OT | Estado | Prioridad | Fecha de creación |",
+            "|---|---|---|---|",
+        ]
+        for o in recientes:
+            est = _ETIQUETA_ESTADO.get(o["estado"], o["estado"])
+            prio = _ETIQUETA_PRIORIDAD_CAP.get(o["prioridad"], o["prioridad"])
+            fecha = str(o["fecha_creacion"])[:10] if o.get("fecha_creacion") else "—"
+            filas_tabla.append(f"| {o['numero_ot']} | {est} | {prio} | {fecha} |")
+        lineas.append("\n" + "\n".join(filas_tabla))
     return " ".join(lineas)
 
 
@@ -730,9 +770,10 @@ async def crear_ot_aprobada(
             },
         )
         if repetida:
+            est_repetida = _ETIQUETA_ESTADO.get(repetida["estado"], repetida["estado"])
             return (
                 f"Esa OT ya estaba creada: **{repetida['numero_ot']}** "
-                f"({repetida['estado']}) para {objetivo['nombre']}. No creé otra igual."
+                f"({est_repetida}) para {objetivo['nombre']}. No creé otra igual."
             )
 
         fecha_vencimiento = await fetch_one(
@@ -770,13 +811,15 @@ async def crear_ot_aprobada(
         )
         return f"No pude crear la orden de trabajo ({type(e).__name__}). No se creó nada."
 
-    aviso_prioridad = "" if reconocida else " (no reconocí la prioridad que pediste, usé «medium»)"
+    aviso_prioridad = "" if reconocida else " (no reconocí la prioridad que pediste, usé «media»)"
+    est_creada = _ETIQUETA_ESTADO.get(creada["estado"], creada["estado"])
+    prio_creada = _ETIQUETA_PRIORIDAD_CAP.get(creada["priority"], creada["priority"])
     return (
         f"OT creada: **{creada['numero_ot']}**\n"
         f"- Equipo: {objetivo['nombre']} ({objetivo['codigo']}) — {objetivo.get('planta') or 'sin planta'}\n"
         f"- Problema: {problema}\n"
-        f"- Tipo: correctivo · Prioridad: {creada['priority']}{aviso_prioridad}\n"
-        f"- Estado: {creada['estado']} · Asignada a: {tecnico['nombre']}\n"
+        f"- Tipo: correctivo · Prioridad: {prio_creada}{aviso_prioridad}\n"
+        f"- Estado: {est_creada} · Asignada a: {tecnico['nombre']}\n"
         "Puedes verla en el tablero de órdenes de trabajo."
     )
 
