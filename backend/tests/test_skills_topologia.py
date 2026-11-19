@@ -665,7 +665,11 @@ async def test_el_grafo_cambia_parametros_con_confirmacion(db_pool, monkeypatch)
     sla_nuevo = sla_antes + 2
 
     try:
-        estado = await grafo.ainvoke(_entrada([AIMessage(content=_propuesta_parametros(sla_antes, sla_nuevo)), HumanMessage(content="sí")]))
+        mensajes = [
+            AIMessage(content=_propuesta_parametros(sla_antes, sla_nuevo)),
+            HumanMessage(content="sí"),
+        ]
+        estado = await grafo.ainvoke(_entrada(mensajes))
 
         final = estado["messages"][-1]
         assert "Actualicé «Bomba de pulpa KSB»" in final.content
@@ -782,3 +786,87 @@ async def test_la_tool_no_propone_ubicaciones_que_nadie_dijo(db_pool):
         {"nombre": "Nacional Places", "ubicacion": "Nacional Places", "maquinas": [{"nombre": "Turbina", "codigo": "INV-1"}]}
     )
     assert propuesta.startswith(_PREFIJO_PROPUESTA_PLANTA), "la ubicación dicha por el usuario sí pasa"
+
+
+# =============================================================================
+# Consultas de topología y cantidad de plantas (problema del conteo en el chat)
+# =============================================================================
+
+
+@pytest.mark.parametrize(
+    ("consulta", "es_general"),
+    [
+        ("", True),
+        ("todas", True),
+        ("todas las plantas", True),
+        ("plantas", True),
+        ("topologia", True),
+        ("topología", True),
+        ("la topologia", True),
+        ("topologia de la empresa", True),
+        ("cuantas plantas", True),
+        ("cuántas plantas tiene la empresa", True),
+        ("general", True),
+        ("resumen", True),
+        ("Chancado Primario", False),
+        ("Molienda SAG", False),
+        ("Planta de Vapor", False),
+        ("Planta Skill 123", False),
+    ],
+)
+def test_es_consulta_todas_plantas(consulta: str, es_general: bool):
+    """Detecta si el usuario/LLM pide la topología general o una planta específica."""
+    from barb.services.ai_tools import _es_consulta_todas_plantas
+
+    assert _es_consulta_todas_plantas(consulta) is es_general
+
+
+@pytest.mark.asyncio
+async def test_listar_maquinas_planta_retorna_total_exacto(monkeypatch):
+    """listar_maquinas_planta debe reportar el total exacto de plantas tanto con '' como con 'todas'/'plantas'."""
+    from barb.services import ai_tools
+
+    plantas_mock = [
+        {"nombre": "Chancado Primario", "ubicacion": "Calama", "n": 2},
+        {"nombre": "Molienda SAG", "ubicacion": "Calama", "n": 2},
+    ]
+
+    async def mock_fetch_all(sql, params=None):
+        return plantas_mock
+
+    monkeypatch.setattr(ai_tools, "fetch_all", mock_fetch_all)
+
+    tools = {t.name: t for t in crear_tools(empresa_id=1, usuario_id=ADMIN_ID, rol="gerente")}
+    tool = tools["listar_maquinas_planta"]
+
+    for arg in ["", "todas", "plantas", "topologia", "cuántas plantas"]:
+        salida = await tool.ainvoke({"planta": arg})
+        assert "Plantas de tu empresa (2 en total):" in salida
+        assert "Chancado Primario" in salida
+        assert "Molienda SAG" in salida
+
+
+@pytest.mark.asyncio
+async def test_listar_maquinas_planta_sin_plantas(monkeypatch):
+    """Con 0 plantas registradas debe indicarlo explícitamente."""
+    from barb.services import ai_tools
+
+    async def mock_fetch_all(sql, params=None):
+        return []
+
+    monkeypatch.setattr(ai_tools, "fetch_all", mock_fetch_all)
+
+    tools = {t.name: t for t in crear_tools(empresa_id=1, usuario_id=ADMIN_ID, rol="gerente")}
+    salida = await tools["listar_maquinas_planta"].ainvoke({"planta": ""})
+    assert "0 plantas" in salida
+
+
+def test_prompt_instruye_listar_maquinas_planta_para_topologia():
+    """El prompt del sistema debe instruir explícitamente usar listar_maquinas_planta para topología y conteo."""
+    from barb.services.chat_graph import _prompt_sistema
+
+    prompt = _prompt_sistema("(sin contexto)", puede_crear_ot=False)
+    assert "listar_maquinas_planta" in prompt
+    assert "cuántas plantas tiene la empresa" in prompt
+    assert "NUNCA inventes ni adivines la cantidad de plantas" in prompt
+
