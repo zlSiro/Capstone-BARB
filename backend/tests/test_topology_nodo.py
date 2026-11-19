@@ -35,7 +35,7 @@ PLANTA_E2 = "p_4"
 async def _disciplina_e2() -> str:
     fila = await fetch_one(
         """
-        SELECT d.disciplina_id
+        SELECT m.planta_id, d.disciplina_id
           FROM maquina m
           JOIN planta p ON p.planta_id = m.planta_id
           JOIN disciplina d ON d.disciplina_id = m.disciplina_id
@@ -44,7 +44,7 @@ async def _disciplina_e2() -> str:
          LIMIT 1
         """
     )
-    return f"d_{int(fila['disciplina_id'])}"
+    return f"d_{int(fila['planta_id'])}_{int(fila['disciplina_id'])}"
 
 # Maquina temporal para la prueba de "sin ordenes". El nombre lleva un prefijo propio
 # para poder identificarla sin ambiguedad.
@@ -207,7 +207,7 @@ async def test_nodo_inexistente_devuelve_404(client, nodo_id):
 # Aislamiento multi-empresa (CGBIDA-379)
 # =============================================================================
 
-@pytest.mark.parametrize("nodo_ajeno", [PLANTA_E1, MAQUINA_CON_OTS, "d_1"])
+@pytest.mark.parametrize("nodo_ajeno", [PLANTA_E1, MAQUINA_CON_OTS, "d_1_3"])
 async def test_empresa_no_ve_nodos_de_otra_empresa(client, nodo_ajeno):
     """Un usuario de la empresa 2 no puede abrir un nodo de la empresa 1: 404.
 

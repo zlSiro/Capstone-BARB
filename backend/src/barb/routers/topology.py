@@ -67,85 +67,135 @@ async def _cargar_grafo(scope: dict[str, Any]) -> dict[str, list[dict]]:
     nodos: list[dict] = []
     conexiones: list[dict] = []
 
-    # --- A-2 / A-3 (CGBIDA-355): el mapa solo muestra actividad real ---------
-    # Los nodos visibles se derivan de las MAQUINAS, no del catálogo completo:
+    # --- Jerarquía estricta por planta (Opción 1) ------------------------------
+    # Reglas de visualización:
     #   A-2: una planta sin máquinas no se dibuja (sugeriría actividad inexistente).
-    #   A-3: una disciplina pertenece a la EMPRESA, no a una planta, así que se dibuja
-    #        UNA vez y se conecta a cada planta donde tenga máquinas.
-    # Una disciplina sin máquinas en las plantas visibles tampoco se dibuja: sería un
-    # nodo huérfano, el mismo problema que A-2 evita en el nivel superior.
+    #   A-3: jerarquía estricta árbol Planta -> Disciplina -> Máquina.
+    #        Las disciplinas se instancian por planta (nodo `d_{planta_id}_{disciplina_id}`)
+    #        para que cada rama del árbol sea independiente y no contamine el conteo ni
+    #        el resaltado de máquinas entre plantas.
     ids_planta_visibles = {m["planta_id"] for m in maquinas}
+    disciplina_por_id = {d["disciplina_id"]: d for d in disciplinas}
 
-    x_offset_planta = 500
+    current_x = 100
+    STEP_MAQUINA = 200
+    GAP_ENTRE_PLANTAS = 160
+
+    plantas_nodos: list[dict] = []
+    disciplinas_nodos: list[dict] = []
+    maquinas_nodos: list[dict] = []
+
     for p in plantas:
-        if p["planta_id"] not in ids_planta_visibles:
+        planta_id = p["planta_id"]
+        if planta_id not in ids_planta_visibles:
             continue  # A-2: planta sin máquinas, no se dibuja
-        nodos.append({
-            "nodo_id": f"p_{p['planta_id']}",
+
+        maquinas_planta = [m for m in maquinas if m["planta_id"] == planta_id]
+        # Disciplinas presentes en esta planta, en el orden del catálogo
+        disciplinas_planta_ids = [
+            d["disciplina_id"]
+            for d in disciplinas
+            if any(m.get("disciplina_id") == d["disciplina_id"] for m in maquinas_planta)
+        ]
+
+        pos_x_disciplinas_planta: list[int] = []
+
+        for disc_id in disciplinas_planta_ids:
+            d_info = disciplina_por_id.get(disc_id, {"nombre": f"Disciplina {disc_id}"})
+            maquinas_disc = [m for m in maquinas_planta if m.get("disciplina_id") == disc_id]
+            pos_x_maquinas: list[int] = []
+
+            for m in maquinas_disc:
+                m_id = m["maquina_id"]
+                m_nodo_id = f"m_{m_id}"
+                m_x = current_x
+                pos_x_maquinas.append(m_x)
+                maquinas_nodos.append({
+                    "nodo_id": m_nodo_id,
+                    "maquina_id": m_id,
+                    "nombre_visual": m["nombre"],
+                    "tipo": "Máquina",
+                    "icono": "🤖",
+                    "pos_x": m_x,
+                    "pos_y": 500,
+                    "estado_actual": machine_status.get(m_id, "operativo"),
+                })
+                current_x += STEP_MAQUINA
+
+            disc_nodo_id = f"d_{planta_id}_{disc_id}"
+            disc_x = round(sum(pos_x_maquinas) / len(pos_x_maquinas)) if pos_x_maquinas else current_x
+            pos_x_disciplinas_planta.append(disc_x)
+
+            disciplinas_nodos.append({
+                "nodo_id": disc_nodo_id,
+                "nombre_visual": d_info["nombre"],
+                "tipo": "Disciplina",
+                "icono": "⚙️",
+                "pos_x": disc_x,
+                "pos_y": 300,
+                "estado_actual": "operativo",
+            })
+
+            # Conexión jerarquía Planta -> Disciplina
+            conexiones.append({
+                "conexion_id": f"conn_p{planta_id}_{disc_nodo_id}",
+                "origen_nodo_id": f"p_{planta_id}",
+                "destino_nodo_id": disc_nodo_id,
+                "tipo_relacion": "jerarquia",
+            })
+
+            # Conexiones pertenece Disciplina -> Máquinas
+            for m in maquinas_disc:
+                conexiones.append({
+                    "conexion_id": f"conn_{disc_nodo_id}_m{m['maquina_id']}",
+                    "origen_nodo_id": disc_nodo_id,
+                    "destino_nodo_id": f"m_{m['maquina_id']}",
+                    "tipo_relacion": "pertenece",
+                })
+
+        # Máquinas sin disciplina en esta planta (si las hubiera)
+        maquinas_sin_disc = [m for m in maquinas_planta if not m.get("disciplina_id")]
+        for m in maquinas_sin_disc:
+            m_id = m["maquina_id"]
+            m_nodo_id = f"m_{m_id}"
+            m_x = current_x
+            pos_x_disciplinas_planta.append(m_x)
+            maquinas_nodos.append({
+                "nodo_id": m_nodo_id,
+                "maquina_id": m_id,
+                "nombre_visual": m["nombre"],
+                "tipo": "Máquina",
+                "icono": "🤖",
+                "pos_x": m_x,
+                "pos_y": 500,
+                "estado_actual": machine_status.get(m_id, "operativo"),
+            })
+            conexiones.append({
+                "conexion_id": f"conn_p{planta_id}_{m_nodo_id}",
+                "origen_nodo_id": f"p_{planta_id}",
+                "destino_nodo_id": m_nodo_id,
+                "tipo_relacion": "pertenece",
+            })
+            current_x += STEP_MAQUINA
+
+        planta_x = (
+            round(sum(pos_x_disciplinas_planta) / len(pos_x_disciplinas_planta))
+            if pos_x_disciplinas_planta
+            else current_x
+        )
+        plantas_nodos.append({
+            "nodo_id": f"p_{planta_id}",
             "nombre_visual": p["nombre"],
             "tipo": "Planta",
             "icono": "🏭",
-            "pos_x": x_offset_planta,
+            "pos_x": planta_x,
             "pos_y": 100,
-            "estado_actual": "operativo"
+            "estado_actual": "operativo",
         })
-        x_offset_planta += 300
 
-    maquinas_por_disciplina: dict[int, list[dict]] = {}
-    for m in maquinas:
-        # `maquinas` ya viene acotada por empresa, así que toda planta aquí es visible.
-        if m.get("disciplina_id"):
-            maquinas_por_disciplina.setdefault(m["disciplina_id"], []).append(m)
+        current_x += GAP_ENTRE_PLANTAS
 
-    x_offset_disc = 200
-    for d in disciplinas:
-        disc_id = d["disciplina_id"]
-        maquinas_disc = maquinas_por_disciplina.get(disc_id)
-        if not maquinas_disc:
-            continue  # sin máquinas en las plantas visibles: no se dibuja
-
-        n_id = f"d_{disc_id}"
-        nodos.append({
-            "nodo_id": n_id,
-            "nombre_visual": d["nombre"],
-            "tipo": "Disciplina",
-            "icono": "⚙️",
-            "pos_x": x_offset_disc,
-            "pos_y": 300,
-            "estado_actual": "operativo"
-        })
-        # Una arista por cada planta donde esta disciplina tenga máquinas.
-        for planta_id in sorted({m["planta_id"] for m in maquinas_disc}):
-            conexiones.append({
-                "conexion_id": f"conn_p{planta_id}_{n_id}",
-                "origen_nodo_id": f"p_{planta_id}",
-                "destino_nodo_id": n_id,
-                "tipo_relacion": "jerarquia"
-            })
-        x_offset_disc += 250
-
-    x_offset_maq = 50
-    for m in maquinas:
-        n_id = f"m_{m['maquina_id']}"
-        nodos.append({
-            "nodo_id": n_id,
-            "maquina_id": m["maquina_id"],
-            "nombre_visual": m["nombre"],
-            "tipo": "Máquina",
-            "icono": "🤖",
-            "pos_x": x_offset_maq,
-            "pos_y": 500,
-            "estado_actual": machine_status.get(m["maquina_id"], "operativo")
-        })
-        if m.get("disciplina_id"):
-            conexiones.append({
-                "conexion_id": f"conn_d{m['disciplina_id']}_{n_id}",
-                "origen_nodo_id": f"d_{m['disciplina_id']}",
-                "destino_nodo_id": n_id,
-                "tipo_relacion": "pertenece"
-            })
-        x_offset_maq += 180
-
+    nodos = plantas_nodos + disciplinas_nodos + maquinas_nodos
     return {"nodos": nodos, "conexiones": conexiones}
 
 

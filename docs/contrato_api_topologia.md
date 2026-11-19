@@ -71,13 +71,12 @@ CGBIDA-376:
 | Regla | Comportamiento |
 |---|---|
 | **A-2** | Una **planta sin máquinas no aparece**. Mostrarla sugeriría actividad inexistente. |
-| **A-3** | Una **disciplina se dibuja una sola vez** y se conecta a **cada planta donde tenga máquinas**. Como `disciplina` pertenece a la empresa y no a una planta, una disciplina repartida en N plantas emite N aristas `jerarquia`, todas desde el mismo nodo `d_<disciplina_id>`. |
+| **A-3** | **Jerarquía estricta por planta**. Cada disciplina se instancia como un nodo propio bajo la planta donde tiene máquinas (`d_<planta_id>_<disciplina_id>`). Esto garantiza un árbol estricto sin ambigüedades: cada disciplina pertenece exclusivamente a su planta y cada máquina a la disciplina de su planta, sin cruce de máquinas entre plantas. |
 
 **Corolario:** tampoco aparece una disciplina que no tenga máquinas en las plantas visibles.
 Sería un nodo sin ninguna arista, el mismo problema que A-2 evita en el nivel superior.
 
-**Consecuencia:** el grafo ya no es un árbol estricto de tres niveles: un nodo de disciplina
-puede tener más de un padre. El cliente debe soportarlo.
+**Consecuencia:** el grafo es un árbol estricto de tres niveles: Planta -> Disciplinas de la planta -> Máquinas de esa disciplina. Cada disciplina tiene exactamente un padre.
 
 `backend/src/barb/routers/topology.py:67-150`
 
@@ -152,7 +151,7 @@ Devuelve la topología completa de la empresa del usuario como dos listas planas
 
 | Campo | Tipo | Presente en | Descripción |
 |---|---|---|---|
-| `nodo_id` | string | siempre | Identificador. Prefijo por nivel: `p_<planta_id>`, `d_<disciplina_id>`, `m_<maquina_id>` |
+| `nodo_id` | string | siempre | Identificador. Prefijo por nivel: `p_<planta_id>`, `d_<planta_id>_<disciplina_id>`, `m_<maquina_id>` |
 | `nombre_visual` | string | siempre | Nombre a mostrar |
 | `tipo` | string | siempre | `"Planta"` · `"Disciplina"` · `"Máquina"` |
 | `icono` | string | siempre | Emoji fijo por nivel: `🏭` · `⚙️` · `🤖` |

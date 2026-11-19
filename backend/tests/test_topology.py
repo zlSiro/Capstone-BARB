@@ -349,29 +349,31 @@ async def test_a2_no_devuelve_plantas_sin_maquinas(client):
     )
 
 
-async def test_a3_disciplina_con_maquinas_en_varias_plantas_se_conecta_a_todas(client):
-    """Una disciplina repartida en N plantas emite N aristas, no una sola a plantas[0]."""
-    # La disciplina repartida en dos plantas es «Mecánica» de Minera del Norte (Chancado y
-    # Molienda), así que el test mira la empresa 1.
+async def test_a3_jerarquia_estricta_cada_disciplina_pertenece_a_su_planta(client):
+    """Opción 1: Jerarquía estricta. Cada disciplina se instancia por planta (d_{planta}_{disciplina}).
+
+    Cada nodo disciplina tiene exactamente un padre (su planta), evitando que disciplinas
+    compartidas conecten máquinas entre plantas distintas y contaminen el conteo de la topología.
+    """
     h = await _login(client, ADMIN_E1)
     cuerpo = await _topologia(client, h)
 
     padres = _padres_de_disciplina(cuerpo)
-    multi = {d: ps for d, ps in padres.items() if len(ps) > 1}
-    assert multi, (
-        "la empresa 2 tiene una disciplina en 2 plantas; debería haber al menos una "
-        f"con 2 padres. Padres observados: {padres}"
-    )
-
-    # Cada padre debe ser un nodo Planta realmente presente y de la empresa 2.
+    assert padres, "debe haber disciplinas con padres en la empresa 1"
     ids_planta = {n["nodo_id"] for n in _por_tipo(cuerpo, "Planta")}
-    for disc, ps in multi.items():
-        assert ps <= ids_planta, f"{disc} apunta a plantas ausentes: {ps - ids_planta}"
-        assert len(ps) >= 2
+
+    # Cada disciplina tiene exactamente UN padre planta (árbol estricto)
+    for disc_id, ps in padres.items():
+        assert len(ps) == 1, f"{disc_id} tiene múltiples padres: {ps}"
+        assert ps <= ids_planta, f"{disc_id} apunta a plantas ausentes: {ps - ids_planta}"
+
+    # Verificamos que la disciplina «Mecánica» (id 3) exista tanto en Planta 1 como en Planta 2
+    assert "d_1_3" in padres and padres["d_1_3"] == {"p_1"}
+    assert "d_2_3" in padres and padres["d_2_3"] == {"p_2"}
 
 
-async def test_a3_una_disciplina_se_dibuja_una_sola_vez(client):
-    """Aunque tenga máquinas en varias plantas, el nodo de disciplina es único."""
+async def test_a3_nodos_disciplina_son_unicos(client):
+    """Cada nodo de disciplina generado tiene un nodo_id único."""
     h = await _login(client, ADMIN_E2)
     cuerpo = await _topologia(client, h)
     ids = [n["nodo_id"] for n in _por_tipo(cuerpo, "Disciplina")]
@@ -403,3 +405,34 @@ async def test_toda_planta_tiene_al_menos_una_disciplina_conectada(client):
     assert plantas <= plantas_conectadas, (
         f"plantas sin ninguna disciplina conectada: {plantas - plantas_conectadas}"
     )
+
+
+async def test_conteo_exacto_de_maquinas_por_rama_planta(client):
+    """Verifica que cada planta tenga exactamente sus máquinas y no se contaminen entre ramas.
+
+    En Minera del Norte (Empresa 1):
+    - Chancado Primario (p_1): exactamente 2 máquinas (Correa Overland, Chancador de cono).
+    - Molienda SAG (p_2): exactamente 2 máquinas (Bomba de pulpa, Molino SAG).
+    """
+    h = await _login(client, ADMIN_E1)
+    cuerpo = await _topologia(client, h)
+
+    hijos: dict[str, list[str]] = {}
+    for c in cuerpo["conexiones"]:
+        hijos.setdefault(c["origen_nodo_id"], []).append(c["destino_nodo_id"])
+
+    def maquinas_de_planta(planta_nodo_id: str) -> set[str]:
+        disciplinas = hijos.get(planta_nodo_id, [])
+        maquinas_rama: set[str] = set()
+        for d in disciplinas:
+            maquinas_rama.update(hijos.get(d, []))
+        return maquinas_rama
+
+    maquinas_p1 = maquinas_de_planta("p_1")
+    maquinas_p2 = maquinas_de_planta("p_2")
+
+    assert len(maquinas_p1) == 2, f"Chancado Primario debería tener 2 máquinas: {maquinas_p1}"
+    assert len(maquinas_p2) == 2, f"Molienda SAG debería tener 2 máquinas: {maquinas_p2}"
+    assert maquinas_p1.isdisjoint(maquinas_p2), f"Ramas comparten máquinas: {maquinas_p1 & maquinas_p2}"
+    assert maquinas_p1 == {"m_1", "m_2"}
+    assert maquinas_p2 == {"m_3", "m_4"}
