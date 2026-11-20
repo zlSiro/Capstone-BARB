@@ -24,6 +24,8 @@ export interface ChatRequest {
   empresa_id?: number | null;
   /** HU-23. Ausente = conserva la máquina de la sesión; número = fija/cambia; `null` = desvincula. */
   maquina_id?: number | null;
+  /** CGBIDA-551: Idioma elegido por el usuario ('es' | 'en'). */
+  locale?: string;
 }
 
 // --- Chat multimodal (HU-05, CGBIDA-276): docs/contrato_api_chat_multimedia.md ---
@@ -38,6 +40,8 @@ export interface MultimediaRequest {
   empresa_id?: number | null;
   /** HU-23: misma semántica que en `ChatRequest`. */
   maquina_id?: number | null;
+  /** CGBIDA-551: Idioma elegido por el usuario ('es' | 'en'). */
+  locale?: string;
 }
 
 // --- Eventos SSE ---

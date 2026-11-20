@@ -363,9 +363,15 @@ export class DocChatComponent {
           session_id: this.sessionId(),
           message: text,
           image_base64: image,
+          locale: this.i18n.lang(),
           ...cambioMaquina,
         })
-      : this.chatService.streamChat({ session_id: this.sessionId(), message: text, ...cambioMaquina });
+      : this.chatService.streamChat({
+          session_id: this.sessionId(),
+          message: text,
+          locale: this.i18n.lang(),
+          ...cambioMaquina,
+        });
 
     stream.subscribe({
         next: (event) => {

@@ -73,6 +73,8 @@ class ChatRequest(BaseModel):
     # HU-23. Ausente = conserva la máquina de la sesión; int = fija/cambia; null = desvincula.
     # La diferencia entre ausente y null se lee con `model_fields_set`.
     maquina_id: int | None = None
+    # CGBIDA-551: Idioma del usuario ('es' | 'en')
+    locale: str = "es"
 
 
 async def _resolver_maquina_pedida(request, empresa_id: int) -> tuple[bool, dict | None]:
@@ -275,6 +277,8 @@ class MultimediaRequest(BaseModel):
     )
     # HU-23: misma semántica que en `ChatRequest` (ausente = conserva, int = fija/cambia, null = desvincula).
     maquina_id: int | None = None
+    # CGBIDA-551: Idioma del usuario ('es' | 'en')
+    locale: str = "es"
     image_base64: str = Field(
         ...,
         description="Imagen como data URL: data:image/{jpeg|png|webp};base64,... (≤ 5 MB decodificada).",
