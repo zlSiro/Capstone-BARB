@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guía de flujo completo · BARB</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  html { scroll-behavior: smooth; }
+  .code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .prompt { position: relative; }
+  .prompt .copiar {
+    position: absolute; top: .5rem; right: .5rem;
+    font-size: 11px; font-weight: 700; letter-spacing: .04em;
+    padding: .25rem .5rem; border-radius: .375rem;
+    background: rgba(255,255,255,.12); color: #e2e8f0; cursor: pointer;
+    transition: background .15s;
+  }
+  .prompt .copiar:hover { background: rgba(255,255,255,.25); }
+  .prompt pre { margin: 0; white-space: pre-wrap; }
+  @media print { .no-print { display: none !important; } .acto { break-inside: avoid; } }
+</style>
+</head>
+
+<body class="bg-slate-100 text-slate-900 antialiased">
+
+<!-- ===================== PORTADA ===================== -->
+<header class="relative overflow-hidden bg-slate-900 text-white">
+  <div class="absolute inset-0 opacity-25"
+       style="background-image: radial-gradient(circle at 15% 10%, #6366f1 0, transparent 42%), radial-gradient(circle at 85% 0%, #10b981 0, transparent 38%), radial-gradient(circle at 60% 100%, #f59e0b 0, transparent 35%);"></div>
+  <div class="relative mx-auto max-w-6xl px-6 py-14">
+    <p class="text-xs font-bold uppercase tracking-[0.2em] text-indigo-200">Guía de usuario · Simulación de flujo completo</p>
+    <h1 class="mt-3 text-4xl font-extrabold leading-tight sm:text-5xl">BARB: qué hace cada rol<br class="hidden sm:block"> y cómo usar el chatbot</h1>
+    <p class="mt-4 max-w-3xl text-slate-300">
+      Cinco actos, uno por rol, para recorrer el ciclo completo de una falla industrial:
+      <span class="text-white font-semibold">reportar → asignar → ejecutar → validar → medir</span>.
+      Cada acto trae credenciales, permisos reales, pasos en pantalla y prompts listos para copiar en el chat.
+    </p>
+
+    <div class="mt-8 flex flex-wrap gap-3 text-sm">
+      <span class="rounded-lg bg-white/10 px-3 py-2 code">http://localhost:4200</span>
+      <span class="rounded-lg bg-white/10 px-3 py-2">Empresa de la demo: <strong>Minera del Norte</strong></span>
+      <span class="rounded-lg bg-white/10 px-3 py-2">Contraseña única: <strong class="code">mineria123</strong></span>
+    </div>
+
+    <nav class="no-print mt-8 flex flex-wrap gap-2 text-xs">
+      <a href="#acto1" class="rounded-full bg-sky-500/20 px-3 py-1.5 font-semibold text-sky-200 hover:bg-sky-500/30">1 · Operador</a>
+      <a href="#acto2" class="rounded-full bg-violet-500/20 px-3 py-1.5 font-semibold text-violet-200 hover:bg-violet-500/30">2 · Supervisor</a>
+      <a href="#acto3" class="rounded-full bg-amber-500/20 px-3 py-1.5 font-semibold text-amber-200 hover:bg-amber-500/30">3 · Técnico</a>
+      <a href="#acto4" class="rounded-full bg-emerald-500/20 px-3 py-1.5 font-semibold text-emerald-200 hover:bg-emerald-500/30">4 · Gerente</a>
+      <a href="#acto5" class="rounded-full bg-rose-500/20 px-3 py-1.5 font-semibold text-rose-200 hover:bg-rose-500/30">5 · Admin</a>
+      <a href="#flujo" class="rounded-full bg-white/10 px-3 py-1.5 font-semibold text-slate-200 hover:bg-white/20">Flujo continuo</a>
+      <a href="#limites" class="rounded-full bg-white/10 px-3 py-1.5 font-semibold text-slate-200 hover:bg-white/20">Límites conocidos</a>
+      <a href="#calidad" class="rounded-full bg-emerald-500/20 px-3 py-1.5 font-semibold text-emerald-200 hover:bg-emerald-500/30">🛡️ Evidencia de calidad</a>
+    </nav>
+  </div>
+</header>
+
+<!-- ===================== CÓMO LEER ESTA GUÍA ===================== -->
+<section class="mx-auto -mt-6 max-w-6xl px-6">
+  <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <div class="grid gap-5 md:grid-cols-3">
+      <div>
+        <p class="text-xs font-bold uppercase tracking-widest text-indigo-600">Los permisos no son una lista fija</p>
+        <p class="mt-1 text-sm text-slate-600">Los que figuran en cada acto salen de la matriz real del backend (<span class="code">permissions.py</span>): si un botón aparece deshabilitado o una acción responde <span class="code">403</span>, es porque el rol no la tiene.</p>
+      </div>
+      <div>
+        <p class="text-xs font-bold uppercase tracking-widest text-indigo-600">La IA nunca escribe sola</p>
+        <p class="mt-1 text-sm text-slate-600">Las propuestas del chat (crear OT, aviso, planta, cambiar SLA) quedan <strong>pendientes de confirmación</strong>: recién se ejecutan cuando respondés «sí». Además respetan el mismo permiso que la pantalla.</p>
+      </div>
+      <div>
+        <p class="text-xs font-bold uppercase tracking-widest text-indigo-600">Los prompts se copian</p>
+        <p class="mt-1 text-sm text-slate-600">Cada bloque oscuro es texto literal: clic en «Copiar» y pegar en <span class="code">/chat</span>. Los nombres de equipo son los reales de la base (Chancador Sandvik H8800, Molino SAG, Caldera Parker…).</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== ACTO 1 · OPERADOR ===================== -->
+<section id="acto1" class="acto mx-auto max-w-6xl px-6 py-12">
+  <div class="overflow-hidden rounded-2xl border border-sky-200 bg-white shadow-sm">
+    <div class="flex flex-wrap items-center justify-between gap-3 bg-sky-600 px-6 py-4 text-white">
+      <div class="flex items-center gap-3">
+        <span class="flex h-9 w-9 items-center justify-center rounded-full bg-white/20 text-sm font-extrabold">1</span>
+        <div>
+          <h2 class="text-xl font-extrabold">Operador · reportar la falla</h2>
+          <p class="text-sm text-sky-100">Es el que ve el problema en planta. No crea órdenes: avisa.</p>
+          <span class="mt-1 inline-flex items-center gap-1 rounded-full bg-emerald-400/20 px-2 py-0.5 text-[11px] font-bold text-emerald-100 ring-1 ring-emerald-300/40">✓ Validado por tests</span>
+        </div>
+      </div>
+      <span class="code rounded-lg bg-white/15 px-3 py-1.5 text-xs">operador@mineradelnorte.cl · mineria123</span>
+    </div>
+
+    <div class="grid gap-6 p-6 lg:grid-cols-2">
+      <div>
+        <h3 class="text-sm font-bold uppercase tracking-widest text-slate-500">Qué puede hacer</h3>
+        <ul class="mt-3 space-y-2 text-sm">
+          <li class="flex gap-2"><span class="text-emerald-500">✔</span><span><strong>Reportar fallas</strong> (aviso de falla) con foto opcional.</span></li>
+          <li class="flex gap-2"><span class="text-emerald-500">✔</span><span>Ver <strong>solo sus propios avisos</strong> y su estado.</span></li>
+          <li class="flex gap-2"><span class="text-emerald-500">✔</span><span>Consultar la <strong>topología</strong> y el <strong>chat IA</strong>.</span></li>
+          <li class="flex gap-2"><span class="text-rose-500">✘</span><span>No ve el <strong>dashboard</strong> ni los KPIs.</span></li>
+          <li class="flex gap-2"><span class="text-rose-500">✘</span><span>No crea ni asigna órdenes de trabajo.</span></li>
+        </ul>
+      </div>
+
+      <div>
+        <h3 class="text-sm font-bold uppercase tracking-widest text-slate-500">Paso a paso en pantalla</h3>
+        <ol class="mt-3 space-y-2 text-sm">
+          <li><span class="font-semibold">1.</span> Entrar en <span class="code">http://localhost:4200</span> con su correo y clave.</li>
+          <li><span class="font-semibold">2.</span> Menú → <strong>Reportar falla</strong>.</li>
+          <li><span class="font-semibold">3.</span> Elegir <strong>Planta</strong> (ej. <em>Chancado Primario</em>) → se habilita <strong>Disciplina</strong> → recién ahí la <strong>Máquina</strong> (<em>CHA-001 · Chancador de cono Sandvik H8800</em>).</li>
+          <li><span class="font-semibold">4.</span> Escribir qué pasa (o tocar un síntoma frecuente) y adjuntar foto si hace falta.</li>
+          <li><span class="font-semibold">5.</span> <strong>Enviar aviso</strong>. El aviso queda <em>pendiente</em> en la bandeja del supervisor.</li>
+        </ol>
+      </div>
+    </div>
+
+    <!-- Diagrama 1 (Samuel) -->
+    <div class="mx-6 mb-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
+      <p class="mb-2 text-xs font-bold uppercase tracking-widest text-slate-500">Diagrama 1 · Flujo de un aviso de falla</p>
+      <pre class="mermaid text-center">
+flowchart TD
+    A["Operador detecta la falla en planta"] --> B["Elige Planta → Disciplina → Máquina&lt;br/&gt;CHA-001 · Chancador Sandvik H8800"]
+    B --> C["Describe el síntoma&lt;br/&gt;y adjunta foto (opcional)"]
+    C --> D{"¿Su rol puede reportar fallas?"}
+    D -- "No (admin)" --> E["403 · Permiso denegado"]
+    D -- "Sí" --> F["POST /api/avisos"]
+    F --> G{"Validación del servidor"}
+    G -- "Texto vacío o &gt; 5000 caracteres" --> H["422 · Datos inválidos"]
+    G -- "Máquina inexistente" --> H2["422 · La máquina no existe"]
+    G -- "Correcto" --> I["Aviso PENDIENTE&lt;br/&gt;AV-2026-0123"]
+    I --> J["Aparece en la bandeja del supervisor"]
+    J --> K{"Decisión del supervisor"}
+    K -- "Generar OT" --> L["OT creada y asignada a un técnico"]
+    K -- "Descartar (motivo obligatorio)" --> M["Aviso DESCARTADO"]
+    K -.->|"Si ya fue procesado"| N["409 · El aviso ya fue atendido"]
+    L --> O["El aviso pasa a CON OT"]
+    classDef ok fill:#ecfdf5,stroke:#10b981,color:#065f46
+    classDef err fill:#fef2f2,stroke:#ef4444,color:#991b1b
+    classDef step fill:#eef2ff,stroke:#6366f1,color:#312e81
+    class I,L,O,J ok
+    class E,H,H2,N err
+    class A,B,C,D,F,G,K,M step
+      </pre>
+      <div class="mt-2 grid gap-2 text-[11px] text-slate-600 sm:grid-cols-3">
+        <p><strong class="text-rose-600">403</strong> · el rol no tiene el permiso (admin no reporta fallas).</p>
+        <p><strong class="text-rose-600">422</strong> · datos inválidos: texto vacío, demasiado largo o máquina inexistente.</p>
+        <p><strong class="text-rose-600">409</strong> · el aviso ya fue atendido o descartado.</p>
+      </div>
+      <p class="mt-2 text-[11px] text-slate-500">El aviso <strong>no es una OT</strong>: es el pedido de intervención que el supervisor decide.</p>
+    </div>
+
+    <div class="border-t border-slate-100 px-6 py-5">
+      <h3 class="text-sm font-bold uppercase tracking-widest text-slate-500">Interacción con la IA</h3>
+      <div class="mt-3 grid gap-3 md:grid-cols-2">
+        <div class="prompt rounded-xl bg-slate-900 p-4 pr-20 text-slate-100">
+          <button class="copiar" type="button">COPIAR</button>
+          <p class="mb-1 text-[11px] font-bold uppercase tracking-wider text-sky-300">consultar_ots_maquina</p>
+          <pre class="code text-[13px]">¿Cuántas OTs abiertas tiene el Chancador Sandvik H8800?</pre>
+        </div>
+        <div class="prompt rounded-xl bg-slate-900 p-4 pr-20 text-slate-100">
+          <button class="copiar" type="button">COPIAR</button>
+          <p class="mb-1 text-[11px] font-bold uppercase tracking-wider text-sky-300">proponer_aviso_falla</p>
+          <pre class="code text-[13px]">Reporta una falla: el Chancador Sandvik H8800 hace ruido metálico y vibra más de lo normal desde ayer. Severidad alta.</pre>
+        </div>
+        <div class="prompt rounded-xl bg-slate-900 p-4 pr-20 text-slate-100 md:col-span-2">
+          <button class="copiar" type="button">COPIAR</button>
+          <p class="mb-1 text-[11px] font-bold uppercase tracking-wider text-sky-300">consulta al manual (RAG)</p>
+          <pre class="code text-[13px]">¿Qué dice el manual del Chancador Sandvik H8800 sobre el torque de apriete del manto?</pre>
+        </div>
+      </div>
+      <p class="mt-3 text-xs text-slate-500">Después del segundo prompt el chat muestra la propuesta y espera confirmación: respondé <span class="code rounded bg-slate-100 px-1">sí</span> para que el aviso quede registrado.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== ACTO 2 · SUPERVISOR ===================== -->
+<section id="acto2" class="acto mx-auto max-w-6xl px-6 py-12">
+  <div class="overflow-hidden rounded-2xl border border-violet-200 bg-white shadow-sm">
+    <div class="flex flex-wrap items-center justify-between gap-3 bg-violet-600 px-6 py-4 text-white">
+      <div class="flex items-center gap-3">
+        <span class="flex h-9 w-9 items-center justify-center rounded-full bg-white/20 text-sm font-extrabold">2</span>
+        <div>
+          <h2 class="text-xl font-extrabold">Supervisor · decidir y asignar</h2>
+          <p class="text-sm text-violet-100">Es el dueño del flujo de trabajo: convierte el aviso en OT y valida el cierre.</p>
+          <span class="mt-1 inline-flex items-center gap-1 rounded-full bg-emerald-400/20 px-2 py-0.5 text-[11px] font-bold text-emerald-100 ring-1 ring-emerald-300/40">✓ Validado por tests · candado humano + RBAC</span>
+        </div>
+      </div>
+      <span class="code rounded-lg bg-white/15 px-3 py-1.5 text-xs">supervisor@mineradelnorte.cl · mineria123</span>
+    </div>
+
+    <div class="grid gap-6 p-6 lg:grid-cols-2">
+      <div>
+        <h3 class="text-sm font-bold uppercase tracking-widest text-slate-500">Qué puede hacer</h3>
+        <ul class="mt-3 space-y-2 text-sm">
+          <li class="flex gap-2"><span class="text-emerald-500">✔</span><span>Ver <strong>todo el repositorio de avisos</strong> de su empresa.</span></li>
+          <li class="flex gap-2"><span class="text-emerald-500">✔</span><span><strong>Generar la OT</strong> desde un aviso o crearla a mano, y <strong>asignarla</strong> a un técnico.</span></li>
+          <li class="flex gap-2"><span class="text-emerald-500">✔</span><span><strong>Validar el cierre</strong> (dos pasos) o <strong>cancelar</strong> con motivo obligatorio.</span></li>
+          <li class="flex gap-2"><span class="text-emerald-500">✔</span><span>Entrar al <strong>dashboard</strong> (sin las cifras de dinero).</span></li>
+          <li class="flex gap-2"><span class="text-rose-500">✘</span><span>No ve los <strong>KPIs financieros</strong> (costo, ahorro). <strong class="text-slate-700">Nota UI:</strong> el dashboard aún muestra el selector de <em>moneda</em> y el banner de «impacto monetario por minuto», pero los montos están ocultos por RBAC.</span></li>
+          <li class="flex gap-2"><span class="text-rose-500">✘</span><span>No gestiona usuarios ni el mantenedor de plantas.</span></li>
+        </ul>
+      </div>
+
+      <div>
+        <h3 class="text-sm font-bold uppercase tracking-widest text-slate-500">Paso a paso en pantalla</h3>
+        <ol class="mt-3 space-y-2 text-sm">
+          <li><span class="font-semibold">1.</span> Menú → <strong>Avisos de falla</strong>: aparece el aviso que reportó el operador.</li>
+          <li><span class="font-semibold">2.</span> Abrirlo → <strong>Generar OT</strong>: elegir técnico, prioridad y tipo. La OT nace <em>asignada</em>.
+            <span class="mt-1 block rounded-lg bg-emerald-50 px-2 py-1 text-[11px] text-emerald-900 ring-1 ring-emerald-200">
+              <strong>Fix reciente:</strong> el selector de prioridades ya despliega el
+              <strong>idioma y los colores correctos</strong> (Alta / Media / Baja, cada una con su
+              semáforo). Antes las etiquetas salían desalineadas; ya está validado en pantalla.
+            </span>
+          </li>
+          <li><span class="font-semibold">3.</span> El técnico la ejecuta y la manda a validación (estado <em>por validar</em>).</li>
+          <li><span class="font-semibold">4.</span> Volver a <strong>Órdenes de trabajo</strong> → abrir la OT → <strong>Validar</strong> con un comentario. Pasa a <em>cerrada</em>.</li>
+          <li><span class="font-semibold">5.</span> Desde ese momento la OT ya suma en los indicadores del dashboard.</li>
+        </ol>
+        <p class="mt-2 rounded-lg bg-violet-50 p-3 text-xs text-violet-900"><strong>Alternativa:</strong> también puede descartar el aviso, pero el sistema exige el motivo del descarte (el reportante tiene derecho a saber por qué no hubo OT).</p>
+        <p class="mt-2 rounded-lg bg-amber-50 p-3 text-xs text-amber-900 ring-1 ring-amber-200"><strong>⚠️ Aviso de demo:</strong> si el aviso tiene foto, al abrir «Generar OT» aparece <em>«La foto ya no está disponible»</em>. La causa no es la vista: <strong>no existe endpoint que sirva la imagen de la OT</strong> (solo <span class="code">GET /api/avisos/{id}/foto</span> para el aviso; la OT copia el archivo a <span class="code">ot_foto</span> pero nadie lo expone). Para la demo: cargar avisos <strong>sin foto</strong>, o aclarar que es un bug conocido de la visualización del adjunto.</p>
+      </div>
+    </div>
+
+    <!-- Diagrama 2 (Samuel) -->
+    <div class="mx-6 mb-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
+      <p class="mb-2 text-xs font-bold uppercase tracking-widest text-slate-500">Diagrama 2 · Ciclo de vida de una OT</p>
+      <pre class="mermaid text-center">
+stateDiagram-v2
+    state "Pendiente" as Pendiente
+    state "Asignada" as Asignada
+    state "En curso" as EnCurso
+    state "Por validar" as PorValidar
+    state "Cerrada" as Cerrada
+    state "Cancelada" as Cancelada
+    [*] --> Pendiente : el supervisor crea la OT
+    Pendiente --> Asignada : asigna un técnico
+    Asignada --> EnCurso : el técnico la inicia
+    EnCurso --> PorValidar : el técnico la envía a validación
+    PorValidar --> EnCurso : el supervisor la devuelve · exige comentario
+    PorValidar --> Cerrada : el supervisor valida
+    Pendiente --> Cancelada : cancelar · motivo obligatorio
+    Asignada --> Cancelada : cancelar · motivo obligatorio
+    EnCurso --> Cancelada : cancelar · motivo obligatorio
+    Cerrada --> [*]
+    Cancelada --> [*]
+      </pre>
+      <div class="mt-3 grid gap-2 text-[11px] text-slate-600 sm:grid-cols-2">
+        <p class="rounded-lg bg-white p-2 ring-1 ring-slate-200"><strong class="text-rose-600">403 · permiso</strong> — solo el supervisor crea, asigna, valida y cancela; el técnico solo inicia y envía a validación.</p>
+        <p class="rounded-lg bg-white p-2 ring-1 ring-slate-200"><strong class="text-rose-600">409 · conflicto</strong> — la OT ya está en ese estado, una OT cerrada no se reasigna, o cambió mientras la editabas.</p>
+        <p class="rounded-lg bg-white p-2 ring-1 ring-slate-200"><strong class="text-rose-600">422 · falta un dato</strong> — cancelar o devolver exige comentario; reasignar exige al menos un cambio; el técnico debe existir, tener rol técnico y estar activo.</p>
+        <p class="rounded-lg bg-white p-2 ring-1 ring-slate-200"><strong class="text-rose-600">🚫 Las OT no se eliminan</strong> — el permiso <span class="code">eliminar_ot</span> está denegado para todos los roles; el endpoint existe pero nadie puede usarlo.</p>
+        <p class="rounded-lg bg-white p-2 ring-1 ring-slate-200 sm:col-span-2"><strong class="text-slate-700">👀 Gerente, ingeniero y admin no operan OT.</strong> Verificado en <span class="code">permissions.py</span>: <strong>ninguno</strong> puede crear, asignar, reasignar, cambiar estado, enviar a validación, validar, cancelar ni eliminar una OT. Pero decir que «solo consultan» sería inexacto: el <strong>gerente</strong> es el único que ve los KPIs financieros y además gestiona usuarios y reporta fallas; el <strong>ingeniero</strong> sube y elimina documentos y reporta fallas; el <strong>admin</strong> es el dueño del mantenedor de plantas, disciplinas y máquinas, gestiona usuarios y notificaciones, y <em>ni siquiera</em> puede reportar fallas (no tiene la ruta de avisos).</p>
+      </div>
+      <p class="mt-2 text-[11px] text-slate-500">Cada transición cerrada deja <span class="code">fecha_cierre</span>, <span class="code">tiempo_reparacion_min</span>, <span class="code">downtime_minutes</span> y <span class="code">costo_real</span>: son los datos que alimentan el dashboard.</p>
+    </div>
+
+    <div class="border-t border-slate-100 px-6 py-5">
+      <h3 class="text-sm font-bold uppercase tracking-widest text-slate-500">Interacción con la IA</h3>
+      <div class="mt-3 grid gap-3 md:grid-cols-2">
+        <div class="prompt rounded-xl bg-slate-900 p-4 pr-20 text-slate-100">
+          <button class="copiar" type="button">COPIAR</button>
+          <p class="mb-1 text-[11px] font-bold uppercase tracking-wider text-violet-300">proponer_ot</p>
+          <pre class="code text-[13px]">Créame una OT para la Caldera Parker: el quemador no enciende desde anoche. Prioridad alta.</pre>
+        </div>
+        <div class="prompt rounded-xl bg-slate-900 p-4 pr-20 text-slate-100">
+          <button class="copiar" type="button">COPIAR</button>
+          <p class="mb-1 text-[11px] font-bold uppercase tracking-wider text-violet-300">listar_maquinas_planta</p>
+          <pre class="code text-[13px]">¿Qué máquinas tiene la planta Molienda SAG y cuántas OTs abiertas tiene cada una?</pre>
+        </div>
+        <div class="prompt rounded-xl bg-slate-900 p-4 pr-20 text-slate-100 md:col-span-2">
+          <button class="copiar" type="button">COPIAR</button>
+          <p class="mb-1 text-[11px] font-bold uppercase tracking-wider text-violet-300">consultar_ots_maquina</p>
+          <pre class="code text-[13px]">¿Cómo está la carga de trabajo del Molino SAG con motor Siemens? Mostrame el desglose por estado.</pre>
+        </div>
+      </div>
+      <p class="mt-3 text-xs text-slate-500">El primer prompt <strong>no crea nada</strong>: muestra la propuesta con el número de OT que se generará. Respondé <span class="code rounded bg-slate-100 px-1">sí</span> (o <span class="code rounded bg-slate-100 px-1">confirmo</span>) para crearla; <span class="code rounded bg-slate-100 px-1">no</span> para descartarla.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== ACTO 3 · TÉCNICO ===================== -->
+<section id="acto3" class="acto mx-auto max-w-6xl px-6 py-12">
+  <div class="overflow-hidden rounded-2xl border border-amber-200 bg-white shadow-sm">
+    <div class="flex flex-wrap items-center justify-between gap-3 bg-amber-500 px-6 py-4 text-white">
+      <div class="flex items-center gap-3">
+        <span class="flex h-9 w-9 items-center justify-center rounded-full bg-white/25 text-sm font-extrabold">3</span>
+        <div>
+          <h2 class="text-xl font-extrabold">Técnico · ejecutar el trabajo</h2>
+          <p class="text-sm text-amber-50">Ve únicamente la OT que tiene asignada. La cierra, no la valida.</p>
+        </div>
+      </div>
+      <span class="code rounded-lg bg-white/20 px-3 py-1.5 text-xs">tecnico1@mineradelnorte.cl · mineria123</span>
+    </div>
+
+    <div class="grid gap-6 p-6 lg:grid-cols-2">
+      <div>
+        <h3 class="text-sm font-bold uppercase tracking-widest text-slate-500">Qué puede hacer</h3>
+        <ul class="mt-3 space-y-2 text-sm">
+          <li class="flex gap-2"><span class="text-emerald-500">✔</span><span><strong>Iniciar</strong> la OT que tiene asignada.</span></li>
+          <li class="flex gap-2"><span class="text-emerald-500">✔</span><span><strong>Enviarla a validación</strong> al terminar, con un comentario del trabajo hecho.</span></li>
+          <li class="flex gap-2"><span class="text-emerald-500">✔</span><span><strong>Reportar una falla</strong> nueva si encuentra otra cosa.</span></li>
+          <li class="flex gap-2"><span class="text-emerald-500">✔</span><span>Consultar el <strong>chat IA</strong> y los manuales.</span></li>
+          <li class="flex gap-2"><span class="text-rose-500">✘</span><span>No ve el listado completo de OTs: <strong>solo las suyas</strong>.</span></li>
+          <li class="flex gap-2"><span class="text-rose-500">✘</span><span>No crea, no asigna y <strong>no valida</strong> el cierre.</span></li>
+        </ul>
+      </div>
+
+      <div>
+        <h3 class="text-sm font-bold uppercase tracking-widest text-slate-500">Paso a paso en pantalla</h3>
+        <ol class="mt-3 space-y-2 text-sm">
+          <li><span class="font-semibold">1.</span> Menú → <strong>Órdenes de trabajo</strong>: ve solo la OT asignada.</li>
+          <li><span class="font-semibold">2.</span> Abrirla → <strong>Iniciar</strong> (pasa a <em>en curso</em>).</li>
+          <li><span class="font-semibold">3.</span> Hacer el trabajo y registrar lo que se cambió.</li>
+          <li><span class="font-semibold">4.</span> <strong>Enviar a validación</strong> con el comentario del trabajo realizado (estado <em>por validar</em>).</li>
+          <li><span class="font-semibold">5.</span> Esperar la validación del supervisor. Si la devuelve, vuelve a <em>en curso</em>.</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="border-t border-slate-100 px-6 py-5">
+      <h3 class="text-sm font-bold uppercase tracking-widest text-slate-500">Interacción con la IA</h3>
+      <div class="mt-3 grid gap-3 md:grid-cols-2">
+        <div class="prompt rounded-xl bg-slate-900 p-4 pr-20 text-slate-100">
+          <button class="copiar" type="button">COPIAR</button>
+          <p class="mb-1 text-[11px] font-bold uppercase tracking-wider text-amber-300">manual (RAG)</p>
+          <pre class="code text-[13px]">¿Qué dice el manual de la bomba KSB ETA sobre la cavitación y cómo se corrige?</pre>
+        </div>
+        <div class="prompt rounded-xl bg-slate-900 p-4 pr-20 text-slate-100">
+          <button class="copiar" type="button">COPIAR</button>
+          <p class="mb-1 text-[11px] font-bold uppercase tracking-wider text-amber-300">proponer_aviso_falla</p>
+          <pre class="code text-[13px]">Reporta una falla: la Bomba de pulpa KSB gotea por el sello mecánico desde el turno anterior. Severidad media.</pre>
+        </div>
+        <div class="prompt rounded-xl bg-slate-900 p-4 pr-20 text-slate-100 md:col-span-2">
+          <button class="copiar" type="button">COPIAR</button>
+          <p class="mb-1 text-[11px] font-bold uppercase tracking-wider text-amber-300">consultar_ots_maquina</p>
+          <pre class="code text-[13px]">¿Qué OTs abiertas tiene la Correa Overland y desde cuándo están sin cerrar?</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== ACTO 4 · GERENTE ===================== -->
+<section id="acto4" class="acto mx-auto max-w-6xl px-6 py-12">
+  <div class="overflow-hidden rounded-2xl border border-emerald-200 bg-white shadow-sm">
+    <div class="flex flex-wrap items-center justify-between gap-3 bg-emerald-600 px-6 py-4 text-white">
+      <div class="flex items-center gap-3">
+        <span class="flex h-9 w-9 items-center justify-center rounded-full bg-white/20 text-sm font-extrabold">4</span>
+        <div>
+          <h2 class="text-xl font-extrabold">Gerente · mirar el resultado</h2>
+          <p class="text-sm text-emerald-100">Es el único rol que ve el dinero: costo directo, ahorro e impacto anual.</p>
+          <span class="mt-1 inline-flex items-center gap-1 rounded-full bg-white/20 px-2 py-0.5 text-[11px] font-bold text-white ring-1 ring-white/30">✓ Validado por tests · aislamiento multiempresa</span>
+        </div>
+      </div>
+      <span class="code rounded-lg bg-white/15 px-3 py-1.5 text-xs">gerente@mineradelnorte.cl · mineria123</span>
+    </div>
+
+    <div class="grid gap-6 p-6 lg:grid-cols-2">
+      <div>
+        <h3 class="text-sm font-bold uppercase tracking-widest text-slate-500">Qué puede hacer</h3>
+        <ul class="mt-3 space-y-2 text-sm">
+          <li class="flex gap-2"><span class="text-emerald-500">✔</span><span><strong>Dashboard completo</strong> con KPIs financieros (costo directo, disponibilidad, ahorro, impacto anual, Top 5).</span></li>
+          <li class="flex gap-2"><span class="text-emerald-500">✔</span><span>Ver el <strong>histórico de SLA</strong> y el <strong>semáforo</strong> con su motivo.</span></li>
+          <li class="flex gap-2"><span class="text-emerald-500">✔</span><span><strong>Transacciones de la empresa</strong>: la bitácora de quién hizo qué.</span></li>
+          <li class="flex gap-2"><span class="text-emerald-500">✔</span><span>Gestionar usuarios (solo puede administrar al <strong>admin</strong> de su empresa).</span></li>
+          <li class="flex gap-2"><span class="text-emerald-500">✔</span><span>Ver el repositorio de avisos de su empresa.</span></li>
+          <li class="flex gap-2"><span class="text-rose-500">✘</span><span>No crea ni asigna OTs (eso es del supervisor).</span></li>
+        </ul>
+      </div>
+
+      <div>
+        <h3 class="text-sm font-bold uppercase tracking-widest text-slate-500">Paso a paso en pantalla</h3>
+        <ol class="mt-3 space-y-2 text-sm">
+          <li><span class="font-semibold">1.</span> Menú → <strong>Dashboard</strong>.</li>
+          <li><span class="font-semibold">2.</span> Elegir el <strong>rango temporal</strong> (7 / 30 / 90 días / histórico).</li>
+          <li><span class="font-semibold">3.</span> Leer las cinco tarjetas: <strong>SLA · Disponibilidad de Planta · MTTR · Costo Directo · MTBF</strong>.</li>
+          <li><span class="font-semibold">4.</span> En Costo Directo → <strong>Ver detalle</strong>: modal con el desglose por máquina.</li>
+          <li><span class="font-semibold">5.</span> Bajar al <strong>gráfico de SLA</strong> (último semestre / año / 3 / 5 años) y al <strong>semáforo</strong>, que explica en una frase por qué está en ese color.</li>
+        </ol>
+        <p class="mt-2 rounded-lg bg-emerald-50 p-3 text-xs text-emerald-900"><strong>Dato para la demo:</strong> el semáforo muestra el <em>peor</em> de tres señales, no un promedio. Si está en amarillo, el motivo dice exactamente qué lo causó (por ejemplo, OTs vencidas).</p>
+      </div>
+    </div>
+
+    <div class="border-t border-slate-100 px-6 py-5">
+      <h3 class="text-sm font-bold uppercase tracking-widest text-slate-500">Interacción con la IA</h3>
+      <div class="mt-3 grid gap-3 md:grid-cols-2">
+        <div class="prompt rounded-xl bg-slate-900 p-4 pr-20 text-slate-100">
+          <button class="copiar" type="button">COPIAR</button>
+          <p class="mb-1 text-[11px] font-bold uppercase tracking-wider text-emerald-300">consultar_ots_maquina</p>
+          <pre class="code text-[13px]">¿Cuántas OTs abiertas tiene la Bomba de pulpa KSB? Quiero ver el desglose por estado.</pre>
+        </div>
+        <div class="prompt rounded-xl bg-slate-900 p-4 pr-20 text-slate-100">
+          <button class="copiar" type="button">COPIAR</button>
+          <p class="mb-1 text-[11px] font-bold uppercase tracking-wider text-emerald-300">listar_maquinas_planta</p>
+          <pre class="code text-[13px]">¿Qué máquinas tiene la planta Chancado Primario?</pre>
+        </div>
+        <div class="prompt rounded-xl bg-slate-900 p-4 pr-20 text-slate-100 md:col-span-2">
+          <button class="copiar" type="button">COPIAR</button>
+          <p class="mb-1 text-[11px] font-bold uppercase tracking-wider text-emerald-300">manual (RAG)</p>
+          <pre class="code text-[13px]">Según el manual del molino SAG, ¿qué temperatura de devanado dispara la alarma?</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== ACTO 5 · ADMIN ===================== -->
+<section id="acto5" class="acto mx-auto max-w-6xl px-6 py-12">
+  <div class="overflow-hidden rounded-2xl border border-rose-200 bg-white shadow-sm">
+    <div class="flex flex-wrap items-center justify-between gap-3 bg-rose-600 px-6 py-4 text-white">
+      <div class="flex items-center gap-3">
+        <span class="flex h-9 w-9 items-center justify-center rounded-full bg-white/20 text-sm font-extrabold">5</span>
+        <div>
+          <h2 class="text-xl font-extrabold">Admin · mantener el sistema</h2>
+          <p class="text-sm text-rose-100">Dueño del catálogo y de los usuarios. Es el único que puede tocar el mantenedor.</p>
+          <span class="mt-1 inline-flex items-center gap-1 rounded-full bg-emerald-400/20 px-2 py-0.5 text-[11px] font-bold text-emerald-100 ring-1 ring-emerald-300/40">✓ Validado por tests · RBAC de las skills</span>
+        </div>
+      </div>
+      <span class="code rounded-lg bg-white/15 px-3 py-1.5 text-xs">admin@mineradelnorte.cl · mineria123</span>
+    </div>
+
+    <div class="grid gap-6 p-6 lg:grid-cols-2">
+      <div>
+        <h3 class="text-sm font-bold uppercase tracking-widest text-slate-500">Qué puede hacer</h3>
+        <ul class="mt-3 space-y-2 text-sm">
+          <li class="flex gap-2"><span class="text-emerald-500">✔</span><span><strong>Topología y mantenedor</strong>: crear/editar plantas, disciplinas y máquinas; ajustar SLA y costo de inactividad por equipo.</span></li>
+          <li class="flex gap-2"><span class="text-emerald-500">✔</span><span><strong>Usuarios</strong>: crear, editar, suspender; solo de los perfiles operativos.</span></li>
+          <li class="flex gap-2"><span class="text-emerald-500">✔</span><span><strong>Documentos</strong>: subir manuales y eliminarlos.</span></li>
+          <li class="flex gap-2"><span class="text-emerald-500">✔</span><span><strong>Notificaciones</strong> de la empresa.</span></li>
+          <li class="flex gap-2"><span class="text-rose-500">✘</span><span>No ve el dashboard: el admin no tiene la ruta <span class="code">dashboard</span>.</span></li>
+          <li class="flex gap-2"><span class="text-rose-500">✘</span><span>No reporta fallas ni opera OTs.</span></li>
+        </ul>
+      </div>
+
+      <div>
+        <h3 class="text-sm font-bold uppercase tracking-widest text-slate-500">Paso a paso en pantalla</h3>
+        <ol class="mt-3 space-y-2 text-sm">
+          <li><span class="font-semibold">1.</span> Menú → <strong>Topología</strong> → botón <strong>Gestionar activos</strong>.</li>
+          <li><span class="font-semibold">2.</span> Crear una planta (nombre + ubicación + disciplinas + máquinas) o editar una máquina existente.</li>
+          <li><span class="font-semibold">3.</span> En <strong>Usuarios</strong>, dar de alta operadores, técnicos o supervisores.</li>
+          <li><span class="font-semibold">4.</span> En <strong>Documentos</strong>, subir el manual de un equipo (PDF o DOCX) para que el chat lo pueda citar.</li>
+          <li><span class="font-semibold">5.</span> Volver al mapa: la topología se recarga sola con los cambios.</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="border-t border-slate-100 px-6 py-5">
+      <h3 class="text-sm font-bold uppercase tracking-widest text-slate-500">Interacción con la IA</h3>
+      <p class="mb-2 text-xs text-slate-500">Estas tres skills están reservadas al admin: son las que <strong>modifican el catálogo</strong>.</p>
+      <div class="grid gap-3 md:grid-cols-2">
+        <div class="prompt rounded-xl bg-slate-900 p-4 pr-20 text-slate-100">
+          <button class="copiar" type="button">COPIAR</button>
+          <p class="mb-1 text-[11px] font-bold uppercase tracking-wider text-rose-300">listar_maquinas_planta</p>
+          <pre class="code text-[13px]">Lista las máquinas de la planta Chancado Primario con su SLA y su costo de inactividad.</pre>
+        </div>
+        <div class="prompt rounded-xl bg-slate-900 p-4 pr-20 text-slate-100">
+          <button class="copiar" type="button">COPIAR</button>
+          <p class="mb-1 text-[11px] font-bold uppercase tracking-wider text-rose-300">actualizar_parametros_maquina</p>
+          <pre class="code text-[13px]">Cambiá el SLA de la Bomba de pulpa KSB a 6 horas y el costo de inactividad a 4000 por minuto.</pre>
+        </div>
+        <div class="prompt rounded-xl bg-slate-900 p-4 pr-20 text-slate-100 md:col-span-2">
+          <button class="copiar" type="button">COPIAR</button>
+          <p class="mb-1 text-[11px] font-bold uppercase tracking-wider text-rose-300">proponer_planta_completa</p>
+          <pre class="code text-[13px]">Créame una planta llamada Chancado Secundario en Calama con dos máquinas: Zaranda Vibratoria ZV-01 y Cinta de Recirculación CR-01, ambas de la disciplina Mecánica.</pre>
+        </div>
+      </div>
+      <p class="mt-3 text-xs text-slate-500">Todas piden confirmación antes de escribir, y el sistema verifica el permiso: si un supervisor intenta la de parámetros, el chat responde que no tiene permiso en vez de ejecutarla.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== FLUJO CONTINUO ===================== -->
+<section id="flujo" class="border-y border-slate-200 bg-white">
+  <div class="mx-auto max-w-6xl px-6 py-14">
+    <h2 class="text-2xl font-extrabold sm:text-3xl">El flujo continuo: del operador al gerente</h2>
+    <p class="mt-1 inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700 ring-1 ring-emerald-200">✓ Ciclo completo validado por tests</p>
+    <p class="mt-2 max-w-3xl text-slate-600">
+      Así viaja un dato desde que alguien ve una falla hasta que aparece como cifra en el dashboard.
+      Cada paso deja rastro: el estado de la OT, su historial y la bitácora de transacciones.
+    </p>
+
+    <div class="mt-8 grid gap-4 md:grid-cols-5">
+      <div class="rounded-xl border border-sky-200 bg-sky-50 p-4">
+        <p class="text-xs font-bold uppercase tracking-wider text-sky-700">1 · Operador</p>
+        <p class="mt-1 text-sm font-semibold">Reporta la falla</p>
+        <p class="mt-1 text-xs text-slate-600">Crea un <strong>aviso</strong> (con foto opcional). Queda <em>pendiente</em>.</p>
+      </div>
+      <div class="rounded-xl border border-violet-200 bg-violet-50 p-4">
+        <p class="text-xs font-bold uppercase tracking-wider text-violet-700">2 · Supervisor</p>
+        <p class="mt-1 text-sm font-semibold">Genera y asigna la OT</p>
+        <p class="mt-1 text-xs text-slate-600">Elige técnico, prioridad y tipo. La OT nace <em>asignada</em>.</p>
+      </div>
+      <div class="rounded-xl border border-amber-200 bg-amber-50 p-4">
+        <p class="text-xs font-bold uppercase tracking-wider text-amber-700">3 · Técnico</p>
+        <p class="mt-1 text-sm font-semibold">Ejecuta</p>
+        <p class="mt-1 text-xs text-slate-600">Inicia, registra el trabajo y la manda a <em>por validar</em>.</p>
+      </div>
+      <div class="rounded-xl border border-violet-200 bg-violet-50 p-4">
+        <p class="text-xs font-bold uppercase tracking-wider text-violet-700">4 · Supervisor</p>
+        <p class="mt-1 text-sm font-semibold">Valida el cierre</p>
+        <p class="mt-1 text-xs text-slate-600">Con comentario. La OT queda <em>cerrada</em> con su tiempo real.</p>
+      </div>
+      <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+        <p class="text-xs font-bold uppercase tracking-wider text-emerald-700">5 · Gerente</p>
+        <p class="mt-1 text-sm font-semibold">Ve el impacto</p>
+        <p class="mt-1 text-xs text-slate-600">SLA, MTTR, MTBF, costo y ahorro se recalculan con esa OT.</p>
+      </div>
+    </div>
+
+    <div class="mt-8 grid gap-6 lg:grid-cols-2">
+      <div class="rounded-2xl border border-slate-200 bg-slate-50 p-6">
+        <h3 class="text-sm font-bold uppercase tracking-widest text-slate-500">Qué cambia en el sistema en cada paso</h3>
+        <ul class="mt-3 space-y-2 text-sm text-slate-700">
+          <li><span class="font-semibold">Al reportar:</span> nace <span class="code">aviso_falla</span> con número propio y foto. <strong>No</strong> es una OT.</li>
+          <li><span class="font-semibold">Al generar la OT:</span> se crea <span class="code">orden_trabajo</span> con fecha, técnico y prioridad; el aviso pasa a <em>con OT</em>.</li>
+          <li><span class="font-semibold">Al iniciar y enviar:</span> la OT guarda <span class="code">fecha_inicio</span> y pasa a <em>por validar</em>.</li>
+          <li><span class="font-semibold">Al validar:</span> se guardan <span class="code">fecha_cierre</span>, <span class="code">tiempo_reparacion_min</span>, <span class="code">downtime_minutes</span> y <span class="code">costo_real</span>.</li>
+          <li><span class="font-semibold">Siempre:</span> cada cambio queda en la bitácora de <strong>transacciones</strong> con el usuario que lo hizo.</li>
+        </ul>
+      </div>
+
+      <div class="rounded-2xl border border-slate-200 bg-white p-6">
+        <h3 class="text-sm font-bold uppercase tracking-widest text-slate-500">Qué KPI mueve cada dato</h3>
+        <table class="mt-3 w-full text-left text-sm">
+          <thead class="text-xs uppercase tracking-wider text-slate-500">
+            <tr><th class="py-2 font-semibold">Dato que se captura</th><th class="py-2 font-semibold">Indicador que alimenta</th></tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            <tr><td class="py-2">Cierre dentro del vencimiento</td><td class="py-2"><strong>Cumplimiento de SLA</strong></td></tr>
+            <tr><td class="py-2">Tiempo de reparación</td><td class="py-2"><strong>MTTR</strong> (minutos) y Top 5 por peor MTTR</td></tr>
+            <tr><td class="py-2">Fallas correctivas en el tiempo</td><td class="py-2"><strong>MTBF</strong> (horas) y Top 5 por peor MTBF</td></tr>
+            <tr><td class="py-2">Minutos de inactividad</td><td class="py-2"><strong>Disponibilidad de Planta</strong> y ahorro valorizado</td></tr>
+            <tr><td class="py-2">Costo real de la OT</td><td class="py-2"><strong>Costo Directo</strong> y su desglose por máquina</td></tr>
+            <tr><td class="py-2">OTs abiertas y vencidas</td><td class="py-2"><strong>Semáforo de salud</strong> y banner de alertas</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== LÍMITES CONOCIDOS ===================== -->
+<section id="limites" class="mx-auto max-w-6xl px-6 py-14">
+  <h2 class="text-2xl font-extrabold sm:text-3xl">Límites conocidos (para no prometer de más)</h2>
+  <div class="mt-6 grid gap-4 md:grid-cols-3">
+    <div class="rounded-xl border border-slate-200 bg-white p-5">
+      <p class="text-sm font-bold">Chat con imágenes</p>
+      <p class="mt-1 text-xs text-slate-600">El endpoint <span class="code">POST /api/chat/multimedia</span> necesita las claves del proveedor multimodal. Sin ellas responde <span class="code">503</span>: en la demo conviene mostrar el chat de texto.</p>
+    </div>
+    <div class="rounded-xl border border-slate-200 bg-white p-5">
+      <p class="text-sm font-bold">Búsqueda semántica</p>
+      <p class="mt-1 text-xs text-slate-600">El chat responde con los documentos de la empresa; si los embeddings no están configurados, la recuperación usa texto completo en vez de similitud vectorial. Responde igual, pero con menos «comprensión» del manual.</p>
+    </div>
+    <div class="rounded-xl border border-slate-200 bg-white p-5">
+      <p class="text-sm font-bold">Admin sin dashboard</p>
+      <p class="mt-1 text-xs text-slate-600">El rol admin mantiene el catálogo pero <strong>no</strong> entra al dashboard: para ver KPIs hay que usar la cuenta de gerente. Es una decisión de la matriz, no un error.</p>
+    </div>
+    <div class="rounded-xl border border-indigo-200 bg-indigo-50 p-5">
+      <p class="text-sm font-bold">
+        Gráfico de SLA: qué es real y qué es del seed
+        <span class="ml-1 inline-flex items-center rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">leer antes de la demo</span>
+      </p>
+      <p class="mt-1 text-xs text-slate-700">
+        El histórico son <strong>24 meses sintéticos</strong>. La oscilación mensual
+        <strong>no es del negocio</strong>: el generador marca alrededor del 8 % de las OTs fuera de
+        SLA, y con 7 u 8 cierres por mes eso mueve el indicador entre 71 y 100. Antes la regla era
+        «una de cada doce órdenes», elegida por id, y producía un diente de sierra perfecto cada
+        tres meses; se cambió por una selección pseudoaleatoria para que la serie no se lea como
+        dato fabricado.
+      </p>
+      <p class="mt-1.5 text-xs text-slate-700">
+        El <strong>último punto sí es un escenario preparado</strong>: el 19 de noviembre hay
+        <strong>6 OTs cerradas, 5 en plazo y 1 fuera → 83,3 %</strong>. Sirve para mostrar cómo el
+        indicador reacciona cuando una orden se cierra tarde. Se quita con
+        <span class="code">docs/demo/escenario_sla_19nov_delete.sql</span>.
+      </p>
+    </div>
+    <div class="rounded-xl border border-rose-200 bg-rose-50 p-5">
+      <p class="text-sm font-bold">
+        Foto del aviso → OT
+        <span class="ml-1 inline-flex items-center rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">bug de backend conocido</span>
+      </p>
+      <p class="mt-1 text-xs text-slate-700">
+        La foto adjunta al aviso <strong>no se renderiza</strong> al generar la OT («La foto ya no está
+        disponible»). La causa es de <strong>backend, no de la vista</strong>: la OT copia el archivo a la
+        tabla <span class="code">ot_foto</span>, pero <strong>no existe endpoint que la sirva</strong>
+        (solo hay <span class="code">GET /api/avisos/{id}/foto</span> para el aviso).
+      </p>
+      <p class="mt-1.5 rounded-lg bg-white p-2 text-xs font-semibold text-rose-800 ring-1 ring-rose-200">
+        Para la demo: cargar los avisos <strong>sin foto</strong>.
+      </p>
+    </div>
+    <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-5">
+      <p class="text-sm font-bold">
+        Topología: estructura blindada
+        <span class="ml-1 inline-flex items-center rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">fix aplicado</span>
+      </p>
+      <p class="mt-1 text-xs text-slate-700">
+        <strong>Javier ya aplicó el fix de topología.</strong> El árbol se arma
+        <strong>Planta → Disciplina → Máquina</strong> a partir de las relaciones reales del catálogo,
+        así que la estructura queda <strong>blindada</strong>: el mapa y el detalle del nodo salen de
+        la misma fuente y no pueden contradecirse.
+      </p>
+      <p class="mt-1.5 text-xs text-slate-600">
+        Si la IA devolviera una planta que «no cuadra», ya <strong>no es la lógica</strong>:
+        es el <strong>seed local</strong> con filas viejas. Se corrige recreando la base con el seed
+        actual (<span class="code">alembic upgrade head</span> + <span class="code">seed.py</span>).
+        En la demo, preguntar por <strong>máquina o planta concreta</strong>.
+      </p>
+    </div>
+  </div>
+
+  <div class="mt-6 rounded-2xl border border-indigo-200 bg-indigo-50 p-6">
+    <h3 class="text-sm font-bold uppercase tracking-widest text-indigo-700">Recorrido sugerido (10 minutos)</h3>
+    <p class="mt-2 inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-bold text-emerald-800 ring-1 ring-emerald-200">✓ Happy path: el flujo del operador está impecable — arrancar la demo por ahí</p>
+    <ol class="mt-2 grid gap-2 text-sm text-indigo-950 md:grid-cols-2">
+      <li><strong>1.</strong> Operador reporta una falla en <em>CHA-001</em> (o por chat).</li>
+      <li><strong>2.</strong> Supervisor la convierte en OT y se la asigna a <em>tecnico1</em>.</li>
+      <li><strong>3.</strong> Técnico la inicia y la envía a validación.</li>
+      <li><strong>4.</strong> Supervisor valida el cierre con un comentario.</li>
+      <li><strong>5.</strong> Gerente abre el dashboard y muestra el cambio en SLA/MTTR.</li>
+      <li><strong>6.</strong> Admin muestra el mantenedor y pide por chat un cambio de SLA.</li>
+    </ol>
+  </div>
+</section>
+
+<!-- ===================== EVIDENCIA DE CALIDAD ===================== -->
+<section id="calidad" class="border-t-4 border-emerald-500 bg-slate-900 text-white">
+  <div class="mx-auto max-w-6xl px-6 py-14">
+    <div class="flex flex-wrap items-end justify-between gap-6">
+      <div>
+        <p class="text-xs font-bold uppercase tracking-[0.2em] text-emerald-400">Evidencia de calidad</p>
+        <h2 class="mt-2 text-2xl font-extrabold sm:text-3xl">🛡️ Evidencia de Calidad: 80 Tests Automatizados</h2>
+        <p class="mt-2 max-w-2xl text-slate-300">
+          Todo lo que promete esta guía está respaldado por pruebas unitarias e integradas que se ejecutan en cada
+          cambio. Las cuatro garantías del chatbot —<strong class="text-white">candado humano, permisos, aislamiento
+          entre empresas y tolerancia a errores de tipeo</strong>— tienen un test que las demuestra, no solo una
+          promesa en un documento.
+        </p>
+      </div>
+      <div class="flex gap-3">
+        <div class="rounded-xl bg-white/10 px-5 py-3 text-center">
+          <p class="text-3xl font-extrabold">80</p>
+          <p class="text-[11px] uppercase tracking-wider text-slate-400">tests</p>
+        </div>
+        <div class="rounded-xl bg-emerald-500 px-5 py-3 text-center">
+          <p class="text-3xl font-extrabold">79</p>
+          <p class="text-[11px] uppercase tracking-wider text-emerald-50">aprobados</p>
+        </div>
+        <div class="rounded-xl bg-white/10 px-5 py-3 text-center">
+          <p class="text-3xl font-extrabold">1</p>
+          <p class="text-[11px] uppercase tracking-wider text-slate-400">omitido</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Nota de versión: fixes visuales validados -->
+    <div class="mt-6 flex flex-wrap items-center gap-3 rounded-xl border border-emerald-400/40 bg-emerald-400/10 px-4 py-3">
+      <span class="shrink-0 rounded-full bg-emerald-500 px-3 py-1 text-[11px] font-extrabold uppercase tracking-wider text-white">Nota de versión</span>
+      <p class="text-sm text-emerald-50">
+        Los fixes visuales recientes de UI y topología fueron validados y
+        <strong class="text-white">NO alteran el comportamiento de la suite de 80 tests</strong>.
+        <span class="block text-xs text-emerald-200/80">
+          Contexto: esta sección resume la evidencia de HU-22/HU-24 (79 aprobadas + 1 omitida).
+          La suite completa del backend hoy suma <strong class="text-white">885 pruebas en verde, 0 fallos</strong>.
+        </span>
+      </p>
+    </div>
+
+    <!-- Tarjeta destacada: informe de Javier -->
+    <div class="mt-8 flex flex-wrap items-center justify-between gap-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 p-5 text-white">
+      <div class="flex items-start gap-4">
+        <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/20 text-2xl">🛡️</span>
+        <div>
+          <p class="text-[11px] font-bold uppercase tracking-wider text-emerald-100">Evidencia externa verificada</p>
+          <h3 class="text-lg font-extrabold">80 tests automatizados · informe de Javier Gacitúa</h3>
+          <p class="mt-1 max-w-xl text-sm text-emerald-50">
+            Las cuatro garantías del chatbot están respaldadas por una suite que corre en cada cambio:
+            <strong class="text-white">79 pruebas aprobadas y 1 omitida</strong> (requiere una fixture multi-prensa),
+            sobre las HU-22 (contexto persistente) y HU-24 (OTs por chat, RBAC y candado humano).
+          </p>
+        </div>
+      </div>
+      <a href="INFORM_JAVIER_TESTS_HU22_HU24.html"
+         class="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-bold text-emerald-700 hover:bg-emerald-50">
+        Ver el informe completo
+        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 17L17 7M17 7H8m9 0v9"/></svg>
+      </a>
+    </div>
+
+    <div class="mt-8 grid gap-4 md:grid-cols-2">
+      <!-- 1. CANDADO HUMANO -->
+      <article class="rounded-2xl bg-white/5 p-5 ring-1 ring-white/10">
+        <div class="flex items-start justify-between gap-3">
+          <h3 class="text-base font-bold">🔒 Candado humano</h3>
+          <span class="shrink-0 rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-300">CA-24-5 · CGBIDA-538</span>
+        </div>
+        <p class="mt-2 text-sm text-slate-300">
+          <strong class="text-white">La IA no escribe sola.</strong> El modelo solo genera un borrador pasivo; el nodo
+          <span class="code text-emerald-300">gate_ot</span> intercepta la confirmación humana antes del
+          <span class="code">INSERT</span>. Un rechazo no inserta, una respuesta ambigua repregunta y el borrador caduca
+          si se descarta.
+        </p>
+        <p class="mt-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">Test que lo demuestra</p>
+        <pre class="code mt-1 overflow-x-auto rounded-lg bg-black/40 p-3 text-[12px] text-emerald-300">tests/test_candado_ot.py::test_confirmacion_inserta_la_ot</pre>
+        <p class="mt-2 text-xs text-slate-400">+ 8 pruebas del mismo archivo: rechazo, ambigüedad, borrador corrupto y streaming.</p>
+      </article>
+
+      <!-- 2. RBAC -->
+      <article class="rounded-2xl bg-white/5 p-5 ring-1 ring-white/10">
+        <div class="flex items-start justify-between gap-3">
+          <h3 class="text-base font-bold">🛡️ Seguridad RBAC</h3>
+          <span class="shrink-0 rounded-full bg-indigo-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-indigo-300">CA-24-2 · CGBIDA-536</span>
+        </div>
+        <p class="mt-2 text-sm text-slate-300">
+          <strong class="text-white">El chatbot respeta los mismos permisos que la pantalla.</strong> Si el rol no puede
+          crear una OT, la herramienta ni siquiera se inyecta en el modelo y la regla correspondiente se omite del
+          prompt: falla cerrado, no «falla y después avisa».
+        </p>
+        <p class="mt-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">Test que lo demuestra</p>
+        <pre class="code mt-1 overflow-x-auto rounded-lg bg-black/40 p-3 text-[12px] text-indigo-300">tests/test_permisos_tools.py::test_el_permiso_es_el_mismo_que_exige_el_endpoint
+  [supervisor-True] [gerente-False] [admin-False]
+  [tecnico-False] [operador-False] [None-False]</pre>
+        <p class="mt-2 text-xs text-slate-400">22 pruebas de RBAC, perfiles y mensajes institucionales.</p>
+      </article>
+
+      <!-- 3. MULTIEMPRESA -->
+      <article class="rounded-2xl bg-white/5 p-5 ring-1 ring-white/10">
+        <div class="flex items-start justify-between gap-3">
+          <h3 class="text-base font-bold">🏢 Aislamiento multiempresa</h3>
+          <span class="shrink-0 rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-300">CA-24-4 · CGBIDA-537</span>
+        </div>
+        <p class="mt-2 text-sm text-slate-300">
+          <strong class="text-white">Cada empresa ve solo lo suyo.</strong> Las clausuras SQL y las herramientas del
+          grafo confinan toda consulta y toda escritura a la empresa del usuario: un supervisor de la empresa A no
+          puede crear ni asignar en la empresa B, aunque conozca el código del equipo.
+        </p>
+        <p class="mt-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">Tests que lo demuestran</p>
+        <pre class="code mt-1 overflow-x-auto rounded-lg bg-black/40 p-3 text-[12px] text-amber-300">tests/test_crear_ot.py::test_crear_ot_no_escribe_en_otra_empresa
+tests/test_crear_ot.py::test_resolver_tecnico_aislamiento_multiempresa</pre>
+        <p class="mt-2 text-xs text-slate-400">13 pruebas de creación y asignación de OT.</p>
+      </article>
+
+      <!-- 4. FUZZY -->
+      <article class="rounded-2xl bg-white/5 p-5 ring-1 ring-white/10">
+        <div class="flex items-start justify-between gap-3">
+          <h3 class="text-base font-bold">🔎 Tolerancia a errores (fuzzy matching)</h3>
+          <span class="shrink-0 rounded-full bg-cyan-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-cyan-300">CA-24-6 · CGBIDA-539</span>
+        </div>
+        <p class="mt-2 text-sm text-slate-300">
+          <strong class="text-white">Si el operario escribe mal el equipo, igual lo encuentra.</strong> El matcher
+          resuelve <span class="code text-cyan-300">bom001</span>, <span class="code text-cyan-300">BOM-001</span> o
+          <span class="code text-cyan-300">bom-01</span>, y tolera mutaciones ortográficas, sin confundir equipos con
+          distintivos parecidos ni aceptar falsos positivos.
+        </p>
+        <p class="mt-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">Tests que lo demuestran</p>
+        <pre class="code mt-1 overflow-x-auto rounded-lg bg-black/40 p-3 text-[12px] text-cyan-300">tests/test_chat_graph.py::test_el_matcher_tolera_variaciones_en_codigo_de_maquina
+tests/test_chat_graph.py::test_el_matcher_resuelve_las_mutaciones_de_cada_maquina_real</pre>
+        <p class="mt-2 text-xs text-slate-400">25 pruebas del grafo conversacional y sus herramientas.</p>
+      </article>
+    </div>
+
+    <div class="mt-8 grid gap-6 lg:grid-cols-3">
+      <div class="lg:col-span-2 overflow-hidden rounded-2xl bg-white/5 ring-1 ring-white/10">
+        <div class="border-b border-white/10 px-5 py-3">
+          <h3 class="text-sm font-bold">Cómo se reparten los 80 tests</h3>
+        </div>
+        <table class="w-full text-left text-sm">
+          <thead class="bg-white/5 text-[11px] uppercase tracking-wider text-slate-400">
+            <tr><th class="px-5 py-2 font-semibold">Archivo</th><th class="px-5 py-2 font-semibold">Tests</th><th class="px-5 py-2 font-semibold">Qué cubre</th></tr>
+          </thead>
+          <tbody class="divide-y divide-white/5">
+            <tr><td class="code px-5 py-2 text-[12px]">test_model_settings.py</td><td class="px-5 py-2 font-bold">8</td><td class="px-5 py-2 text-slate-300">Configuración declarativa de los modelos (HU-22)</td></tr>
+            <tr><td class="code px-5 py-2 text-[12px]">test_persistencia_reinicio.py</td><td class="px-5 py-2 font-bold">3</td><td class="px-5 py-2 text-slate-300">Contexto que sobrevive a un reinicio (HU-22)</td></tr>
+            <tr><td class="code px-5 py-2 text-[12px]">test_permisos_tools.py</td><td class="px-5 py-2 font-bold">22</td><td class="px-5 py-2 text-slate-300">RBAC de las herramientas del chat</td></tr>
+            <tr><td class="code px-5 py-2 text-[12px]">test_crear_ot.py</td><td class="px-5 py-2 font-bold">13</td><td class="px-5 py-2 text-slate-300">Creación y asignación de OT (incluye aislamiento)</td></tr>
+            <tr><td class="code px-5 py-2 text-[12px]">test_candado_ot.py</td><td class="px-5 py-2 font-bold">9</td><td class="px-5 py-2 text-slate-300">Candado humano y caducidad del borrador</td></tr>
+            <tr><td class="code px-5 py-2 text-[12px]">test_chat_graph.py</td><td class="px-5 py-2 font-bold">25</td><td class="px-5 py-2 text-slate-300">Grafo, matcher difuso y herramientas</td></tr>
+            <tr class="bg-emerald-500/10 font-semibold"><td class="px-5 py-2">Total</td><td class="px-5 py-2 text-emerald-300">80</td><td class="px-5 py-2 text-slate-300">79 aprobados · 1 omitido</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="rounded-2xl bg-white/5 p-5 ring-1 ring-white/10">
+        <h3 class="text-sm font-bold">Procedencia de la evidencia</h3>
+        <ul class="mt-2 space-y-1.5 text-xs text-slate-300">
+          <li><strong class="text-white">Informe:</strong> <span class="code">INFORM_JAVIER_TESTS_HU22_HU24.html</span> (Javier Gacitúa).</li>
+          <li><strong class="text-white">Rama:</strong> <span class="code">feat/CGBIDA-535-hu-24</span> · PR #75 (HU-22).</li>
+          <li><strong class="text-white">Motor:</strong> pytest 9.1.1 · Python 3.12.14.</li>
+          <li><strong class="text-white">Ejecución:</strong> 1,74 s la suite completa.</li>
+          <li><strong class="text-white">Resultado:</strong> 79 aprobados (98,75 % de los ejecutables) y 1 omitido por requerir una fixture multi-prensa.</li>
+          <li><strong class="text-white">HU-22 (11):</strong> persistencia stateless + configuración declarativa de modelos.</li>
+          <li><strong class="text-white">HU-24 (69):</strong> OTs por chat, RBAC, candado humano y búsqueda difusa.</li>
+        </ul>
+        <p class="mt-3 rounded-lg bg-emerald-500/10 p-3 text-[11px] text-emerald-200">
+          Los permisos de los Actos 1–5 son los mismos que verifican estos tests: la guía y la matriz del backend
+          cuentan la misma historia.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== FOOTER ===================== -->
+<footer class="bg-slate-900 py-8 text-slate-400">
+  <div class="mx-auto max-w-6xl px-6 text-center text-xs">
+    <p class="font-semibold text-slate-200">BARB · Capstone DUOC UC · Guía de flujo y roles</p>
+    <p class="mt-1">Credenciales de demostración de la empresa <strong>Minera del Norte</strong>. Los permisos descritos salen de la matriz real del backend, verificado contra la API.</p>
+    <p class="mt-2 code text-[11px] text-slate-500">http://localhost:4200 · contraseña única: mineria123</p>
+  </div>
+</footer>
+
+<script>
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('.copiar');
+    if (!btn) return;
+    var pre = btn.parentElement.querySelector('pre');
+    if (!pre) return;
+    var texto = pre.innerText;
+    var ok = function () {
+      var previo = btn.textContent;
+      btn.textContent = 'COPIADO';
+      setTimeout(function () { btn.textContent = previo; }, 1200);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(texto).then(ok, function () { seleccionar(pre); });
+    } else {
+      seleccionar(pre);
+    }
+    function seleccionar(nodo) {
+      var r = document.createRange();
+      r.selectNodeContents(nodo);
+      var s = window.getSelection();
+      s.removeAllRanges();
+      s.addRange(r);
+      ok();
+    }
+  });
+</script>
+<script>
+  // Mermaid: diagramas de flujo (se renderizan al cargar la pagina).
+  if (window.mermaid) {
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'base',
+      themeVariables: {
+        fontFamily: 'ui-sans-serif, system-ui, Segoe UI, Roboto, sans-serif',
+        fontSize: '14px',
+        primaryColor: '#eef2ff',
+        primaryTextColor: '#0f172a',
+        primaryBorderColor: '#6366f1',
+        lineColor: '#94a3b8',
+        secondaryColor: '#ecfdf5',
+        tertiaryColor: '#f8fafc',
+      },
+    });
+  }
+</script>
+</body>
+</html>

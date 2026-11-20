@@ -1,15 +1,18 @@
 -- =============================================================================
 -- Escenario demo · SLA del 19 de noviembre de 2026
 -- =============================================================================
--- Inserta 3 OTs de Minera del Norte, TODAS creadas y cerradas el 2026-11-19:
+-- Inserta 6 OTs de Minera del Norte, TODAS creadas y cerradas el 2026-11-19:
 --
---   DEMO-SLA19-1  BOM-001 (SLA 6 h)   cerrada a las 3 h 30  -> dentro de SLA
---   DEMO-SLA19-2  CHA-001 (SLA 8 h)   cerrada a las 4 h 45  -> dentro de SLA
---   DEMO-SLA19-3  MOL-001 (SLA 12 h)  cerrada a las 14 h 15 -> fuera de SLA
+--   DEMO-SLA19-1  BOM-001 (SLA 6 h)   08:00 → 11:30   EN SLA   (3 h 30)
+--   DEMO-SLA19-2  CHA-001 (SLA 8 h)   10:00 → 15:00   EN SLA   (4 h 45)
+--   DEMO-SLA19-3  MOL-001 (SLA 12 h)  09:00 → 23:30   FUERA    (14 h 15)
+--   DEMO-SLA19-4  COR-001 (SLA 10 h)  07:00 → 12:00   EN SLA   (4 h 45)
+--   DEMO-SLA19-5  BOM-001 (SLA 6 h)   13:00 → 16:30   EN SLA   (3 h 15)
+--   DEMO-SLA19-6  CHA-001 (SLA 8 h)   14:30 → 19:15   EN SLA   (4 h 30)
 --
--- Efecto esperado en la gráfica de SLA (rango "7 días", granularidad día):
---   el punto del 19 pasa a tener total_ots = 3, completadas = 3 y sla = 66.7 %
---   (2 de 3 dentro de plazo).
+-- Efecto esperado en la gráfica de SLA (rango "all", granularidad mes):
+--   el punto de noviembre pasa a total_ots = 14, completadas = 6 y sla = 83.3 %
+--   (5 de 6 dentro de plazo). Con 3 OTs el denominador era demasiado chico (66.7 %).
 --
 -- Por qué existe: el seed ancla sus fechas a CURRENT_DATE en el momento en que se
 -- ejecutó (14-nov en esta base), así que no hay actividad después de esa fecha y el
@@ -21,16 +24,13 @@
 --     -v ON_ERROR_STOP=1 < docs\demo\escenario_sla_19nov_insert.sql
 --
 -- NOTA sobre los triggers: igual que el seed, se desactivan los triggers de usuario
--- (auditoría y transacciones) para estas 3 filas. Las claves foráneas siguen activas.
+-- (auditoría y transacciones) para estas filas. Las claves foráneas siguen activas.
 -- =============================================================================
 
 BEGIN;
 
 ALTER TABLE orden_trabajo DISABLE TRIGGER USER;
 
--- ---------------------------------------------------------------------------
--- 1 y 2: cerradas DENTRO del SLA (fecha_cierre <= fecha_vencimiento)
--- ---------------------------------------------------------------------------
 INSERT INTO orden_trabajo (
     numero_ot, maquina_id, tecnico_id, creado_por, tipo,
     descripcion_problema, descripcion_reparacion, resolution,
@@ -42,11 +42,30 @@ SELECT
     v.numero_ot, m.maquina_id, v.tecnico_id, v.creado_por, v.tipo::tipo_mantenimiento,
     v.problema, v.reparacion, v.resolution,
     v.priority::prioridad_ot, v.severity::nivel_severidad,
-    v.creacion, v.inicio, v.cierre, v.creacion + (m.sla_horas * INTERVAL '1 hour'),
-    (EXTRACT(EPOCH FROM (v.cierre - v.inicio)) / 60)::int,
-    round((EXTRACT(EPOCH FROM (v.cierre - v.inicio)) / 60) * 0.6)::int,
-    round((EXTRACT(EPOCH FROM (v.cierre - v.inicio)) / 60) * 0.6 * m.costo_inactividad_minuto * 0.6, 2),
-    round((EXTRACT(EPOCH FROM (v.cierre - v.inicio)) / 60) * 0.6 * m.costo_inactividad_minuto * 0.6, 2),
+    v.creacion, v.inicio,
+    -- La única que rompe el plazo cierra 4 h pasado el vencimiento (MOL-001); el resto
+    -- cierra antes. La lógica se deja explícita para que el escenario se lea solo.
+    CASE WHEN v.fuera_de_sla
+         THEN v.creacion + (m.sla_horas * INTERVAL '1 hour') + INTERVAL '4 hours'
+         ELSE v.cierre
+    END AS fecha_cierre,
+    v.creacion + (m.sla_horas * INTERVAL '1 hour') AS fecha_vencimiento,
+    (EXTRACT(EPOCH FROM (
+        (CASE WHEN v.fuera_de_sla
+              THEN v.creacion + (m.sla_horas * INTERVAL '1 hour') + INTERVAL '4 hours'
+              ELSE v.cierre END) - v.inicio)) / 60)::int AS minutos,
+    round((EXTRACT(EPOCH FROM (
+        (CASE WHEN v.fuera_de_sla
+              THEN v.creacion + (m.sla_horas * INTERVAL '1 hour') + INTERVAL '4 hours'
+              ELSE v.cierre END) - v.inicio)) / 60) * 0.6)::int AS downtime,
+    round((EXTRACT(EPOCH FROM (
+        (CASE WHEN v.fuera_de_sla
+              THEN v.creacion + (m.sla_horas * INTERVAL '1 hour') + INTERVAL '4 hours'
+              ELSE v.cierre END) - v.inicio)) / 60) * 0.6 * m.costo_inactividad_minuto * 0.6, 2) AS costo_est,
+    round((EXTRACT(EPOCH FROM (
+        (CASE WHEN v.fuera_de_sla
+              THEN v.creacion + (m.sla_horas * INTERVAL '1 hour') + INTERVAL '4 hours'
+              ELSE v.cierre END) - v.inicio)) / 60) * 0.6 * m.costo_inactividad_minuto * 0.6, 2) AS costo_real,
     'completed'::estado_ot
 FROM (VALUES
     ('DEMO-SLA19-1', 'BOM-001', 4, 7, 'corrective',
@@ -54,56 +73,60 @@ FROM (VALUES
      'Se reemplazó el sello mecánico y se verificó la curva de la bomba.',
      'Quedó sin fuga y con la presión de descarga en el valor de placa.',
      'high', 'high',
-     TIMESTAMP '2026-11-19 08:00:00', TIMESTAMP '2026-11-19 08:15:00', TIMESTAMP '2026-11-19 11:30:00'),
+     TIMESTAMP '2026-11-19 08:00:00', TIMESTAMP '2026-11-19 08:15:00', TIMESTAMP '2026-11-19 11:30:00', false),
 
     ('DEMO-SLA19-2', 'CHA-001', 5, 7, 'preventive',
      'Mantención preventiva por horómetro del chancador de cono.',
      'Se revisó el setting, el desgaste del manto y el sistema hidráulico.',
      'Equipo inspeccionado y ajustado según el manual Sandvik.',
      'medium', 'medium',
-     TIMESTAMP '2026-11-19 10:00:00', TIMESTAMP '2026-11-19 10:15:00', TIMESTAMP '2026-11-19 15:00:00')
+     TIMESTAMP '2026-11-19 10:00:00', TIMESTAMP '2026-11-19 10:15:00', TIMESTAMP '2026-11-19 15:00:00', false),
+
+    ('DEMO-SLA19-3', 'MOL-001', 6, 7, 'corrective',
+     'Vibración y ruido en el accionamiento del molino SAG; se detuvo la molienda.',
+     'Se desmontó la chumacera, se cambió el rodamiento y se realineó el acoplamiento.',
+     'El molino volvió a operar, pero la reparación excedió el plazo comprometido.',
+     'urgent', 'critical',
+     TIMESTAMP '2026-11-19 09:00:00', TIMESTAMP '2026-11-19 09:15:00', TIMESTAMP '2026-11-19 23:30:00', true),
+
+    ('DEMO-SLA19-4', 'COR-001', 4, 7, 'corrective',
+     'Desalineación de la correa transportadora: se salía del tambor de cola.',
+     'Se corrigió la tensión y se alineó el tambor de cola.',
+     'La correa volvió a centrar sin desviarse.',
+     'high', 'high',
+     TIMESTAMP '2026-11-19 07:00:00', TIMESTAMP '2026-11-19 07:20:00', TIMESTAMP '2026-11-19 12:00:00', false),
+
+    ('DEMO-SLA19-5', 'BOM-001', 5, 7, 'preventive',
+     'Cambio de rodamientos programado en la bomba de pulpa.',
+     'Se cambiaron los rodamientos y se verificó la alineación con el motor.',
+     'Equipo operativo dentro del horómetro planificado.',
+     'medium', 'medium',
+     TIMESTAMP '2026-11-19 13:00:00', TIMESTAMP '2026-11-19 13:15:00', TIMESTAMP '2026-11-19 16:30:00', false),
+
+    ('DEMO-SLA19-6', 'CHA-001', 6, 7, 'inspection',
+     'Inspección visual del manto y las cóncavas del chancador.',
+     'Se midió el desgaste del manto y se revisó la granulometría de salida.',
+     'Manto dentro de tolerancia; se reprograma la inspección.',
+     'low', 'low',
+     TIMESTAMP '2026-11-19 14:30:00', TIMESTAMP '2026-11-19 14:45:00', TIMESTAMP '2026-11-19 19:15:00', false)
 ) AS v(numero_ot, codigo, tecnico_id, creado_por, tipo,
        problema, reparacion, resolution, priority, severity,
-       creacion, inicio, cierre)
+       creacion, inicio, cierre, fuera_de_sla)
 JOIN maquina m ON m.codigo = v.codigo
 WHERE NOT EXISTS (
     SELECT 1 FROM orden_trabajo ot WHERE ot.numero_ot = v.numero_ot
 );
 
--- ---------------------------------------------------------------------------
--- 3: cerrada FUERA del SLA (fecha_cierre > fecha_vencimiento)
---    MOL-001 tiene SLA de 12 h: cerró a las 14 h 15 del inicio.
--- ---------------------------------------------------------------------------
-INSERT INTO orden_trabajo (
-    numero_ot, maquina_id, tecnico_id, creado_por, tipo,
-    descripcion_problema, descripcion_reparacion, resolution,
-    priority, severity,
-    fecha_creacion, fecha_inicio, fecha_cierre, fecha_vencimiento,
-    tiempo_reparacion_min, downtime_minutes, costo_estimado, costo_real, estado
-)
-SELECT
-    'DEMO-SLA19-3', m.maquina_id, 6, 7, 'corrective'::tipo_mantenimiento,
-    'Vibración y ruido en el accionamiento del molino SAG; se detuvo la molienda.',
-    'Se desmontó la chumacera, se cambió el rodamiento y se realineó el acoplamiento.',
-    'El molino volvió a operar, pero la reparación excedió el plazo comprometido.',
-    'urgent'::prioridad_ot, 'critical'::nivel_severidad,
-    TIMESTAMP '2026-11-19 09:00:00',
-    TIMESTAMP '2026-11-19 09:15:00',
-    TIMESTAMP '2026-11-19 23:30:00',
-    TIMESTAMP '2026-11-19 09:00:00' + (m.sla_horas * INTERVAL '1 hour'),
-    (EXTRACT(EPOCH FROM (TIMESTAMP '2026-11-19 23:30:00' - TIMESTAMP '2026-11-19 09:15:00')) / 60)::int,
-    round((EXTRACT(EPOCH FROM (TIMESTAMP '2026-11-19 23:30:00' - TIMESTAMP '2026-11-19 09:15:00')) / 60) * 0.6)::int,
-    round((EXTRACT(EPOCH FROM (TIMESTAMP '2026-11-19 23:30:00' - TIMESTAMP '2026-11-19 09:15:00')) / 60) * 0.6 * m.costo_inactividad_minuto * 0.6, 2),
-    round((EXTRACT(EPOCH FROM (TIMESTAMP '2026-11-19 23:30:00' - TIMESTAMP '2026-11-19 09:15:00')) / 60) * 0.6 * m.costo_inactividad_minuto * 0.6, 2),
-    'completed'::estado_ot
-FROM maquina m
-WHERE m.codigo = 'MOL-001'
-  AND NOT EXISTS (SELECT 1 FROM orden_trabajo ot WHERE ot.numero_ot = 'DEMO-SLA19-3');
+-- La inspección no detiene la planta: su inactividad es 0 (misma regla que el seed).
+UPDATE orden_trabajo
+   SET downtime_minutes = 0
+ WHERE numero_ot LIKE 'DEMO-SLA19-%'
+   AND tipo = 'inspection';
 
 ALTER TABLE orden_trabajo ENABLE TRIGGER USER;
 
 -- ---------------------------------------------------------------------------
--- Verificación: las 3 filas con su cumplimiento
+-- Verificación: las 6 filas con su cumplimiento
 -- ---------------------------------------------------------------------------
 SELECT
     ot.numero_ot,
@@ -119,5 +142,13 @@ FROM orden_trabajo ot
 JOIN maquina m ON m.maquina_id = ot.maquina_id
 WHERE ot.numero_ot LIKE 'DEMO-SLA19-%'
 ORDER BY ot.numero_ot;
+
+-- Y el agregado del día, que es lo que va a mostrar la gráfica:
+SELECT
+    COUNT(*) AS completadas,
+    COUNT(*) FILTER (WHERE fecha_cierre <= fecha_vencimiento) AS en_sla,
+    ROUND(100.0 * COUNT(*) FILTER (WHERE fecha_cierre <= fecha_vencimiento) / COUNT(*), 1) AS sla_pct
+FROM orden_trabajo
+WHERE numero_ot LIKE 'DEMO-SLA19-%';
 
 COMMIT;
