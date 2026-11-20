@@ -493,15 +493,84 @@ UPDATE orden_trabajo
    AND tipo = 'inspection'
    AND estado = 'completed'
    AND COALESCE(downtime_minutes, 0) <> 0;
--- Un 8% de las OTs cerradas incumple el SLA (1 de cada 12). Sin esto el cumplimiento
--- queda plano en 100% y el KPI del dashboard no dice nada: una planta real tiene
--- incumplimientos, y el semáforo de salud necesita esa señal para no pintar siempre verde.
-UPDATE orden_trabajo
-   SET fecha_cierre = fecha_vencimiento + interval '4 hours'
- WHERE numero_ot LIKE 'REAL-%'
-   AND estado = 'completed'
-   AND fecha_vencimiento IS NOT NULL
-   AND mod(ot_id, 12) = 0;
+-- Un 8 % de las OTs cerradas incumple el SLA. Sin esto el cumplimiento queda plano en
+-- 100 % y el KPI del dashboard no dice nada: una planta real tiene incumplimientos, y el
+-- semáforo de salud necesita esa señal para no pintar siempre verde.
+--
+-- OJO con CÓMO se eligen las incumplidas. Antes era `mod(ot_id, 12) = 0`: como el seed
+-- inserta por máquina y mes, cada 12ª fila caía siempre en los mismos meses y el gráfico de
+-- SLA de 24 meses salía con un diente de sierra perfecto (100 → 75 → 100 → 75). Eso no era
+-- estacionalidad del negocio, era la aritmética de la regla, y en una demo se lee como
+-- dato sintético. Ahora se elige con `md5(numero_ot)`, que es:
+--   * estable: la misma OT queda tarde en cualquier base, aunque se recree;
+--   * repartida: no depende del orden de inserción ni del id, así que rompe la simetría.
+-- El umbral (`% 100 < 9`) deja ~8 % de incumplimientos sobre este catálogo.
+--
+-- La regla tiene que ser idempotente y reversible, porque el seed se puede correr sobre una
+-- base que ya trae los incumplimientos de la regla anterior. Por eso primero RESTAURA las
+-- que ya no corresponden y después MARCA las nuevas.
+--
+-- CUIDADO con la restauración: no se puede reusar `tiempo_reparacion_min` para reconstruir
+-- el cierre, porque en las filas marcadas por la regla anterior ese valor ya fue recalculado
+-- hasta el vencimiento + 4 h. Restaurar con él devuelve exactamente la misma fecha tardía y
+-- la fila se queda incumpliendo (pasó: la base quedó con 57 en vez de 36). La duración de
+-- las restauradas se deriva del propio hash: entre el 30 % y el 74 % de la ventana de SLA,
+-- siempre en plazo y con variación realista.
+
+-- 1. Restaurar: cierre coherente con una duración derivada del hash (30-74 % de la ventana).
+--    El costo por minuto se trae de la máquina DENTRO de la subconsulta: PostgreSQL no deja
+--    referenciar la tabla destino (`ot`) desde el ON de un JOIN en el FROM del UPDATE.
+UPDATE orden_trabajo ot
+   SET fecha_cierre = r.cierre,
+       tiempo_reparacion_min = r.minutos,
+       downtime_minutes = CASE WHEN ot.tipo = 'inspection' THEN 0
+                               ELSE round(r.minutos * 0.6)::int END,
+       costo_real = round(r.minutos * 0.6 * r.costo_minuto * 0.6, 2)
+  FROM (
+      SELECT s.ot_id, s.costo_minuto,
+             (EXTRACT(EPOCH FROM (s.cierre - s.inicio)) / 60)::int AS minutos,
+             s.cierre
+        FROM (
+            SELECT ot2.ot_id,
+                   ot2.fecha_inicio AS inicio,
+                   m2.costo_inactividad_minuto AS costo_minuto,
+                   ot2.fecha_inicio
+                     + ((ot2.fecha_vencimiento - ot2.fecha_inicio)
+                        * (0.30 + (('x' || substr(md5(ot2.numero_ot), 9, 2))::bit(16)::int % 45) / 100.0)) AS cierre
+              FROM orden_trabajo ot2
+              JOIN maquina m2 ON m2.maquina_id = ot2.maquina_id
+             WHERE ot2.numero_ot LIKE 'REAL-%'
+               AND ot2.estado = 'completed'
+               AND ot2.fecha_vencimiento IS NOT NULL
+               AND ot2.fecha_inicio IS NOT NULL
+               AND ot2.fecha_cierre > ot2.fecha_vencimiento
+               AND NOT ((('x' || substr(md5(ot2.numero_ot), 1, 8))::bit(32)::bigint % 100) < 9)
+        ) AS s
+  ) AS r
+ WHERE ot.ot_id = r.ot_id;
+
+-- 2. Marcar las que la regla nueva indica y hoy están en plazo: se cierran 4 h después del
+--    vencimiento, y la duración/inactividad/costo se recalculan sobre ese cierre real.
+UPDATE orden_trabajo ot
+   SET fecha_cierre = ot.fecha_vencimiento + interval '4 hours',
+       tiempo_reparacion_min = GREATEST(1,
+           (EXTRACT(EPOCH FROM ((ot.fecha_vencimiento + interval '4 hours') - ot.fecha_inicio)) / 60)::int),
+       downtime_minutes = CASE
+           WHEN ot.tipo = 'inspection' THEN 0
+           ELSE round(GREATEST(1,
+               (EXTRACT(EPOCH FROM ((ot.fecha_vencimiento + interval '4 hours') - ot.fecha_inicio)) / 60)::int) * 0.6)::int
+       END,
+       costo_real = round(GREATEST(1,
+           (EXTRACT(EPOCH FROM ((ot.fecha_vencimiento + interval '4 hours') - ot.fecha_inicio)) / 60)::int) * 0.6
+           * COALESCE(m.costo_inactividad_minuto, 3000) * 0.6, 2)
+  FROM maquina m
+ WHERE m.maquina_id = ot.maquina_id
+   AND ot.numero_ot LIKE 'REAL-%'
+   AND ot.estado = 'completed'
+   AND ot.fecha_vencimiento IS NOT NULL
+   AND ot.fecha_inicio IS NOT NULL
+   AND ot.fecha_cierre <= ot.fecha_vencimiento
+   AND (('x' || substr(md5(ot.numero_ot), 1, 8))::bit(32)::bigint % 100) < 9;
 -- -----------------------------------------------------------------------------
 -- 7. Lecturas de sensores — 6 por sensor, en los últimos 6 meses
 -- -----------------------------------------------------------------------------

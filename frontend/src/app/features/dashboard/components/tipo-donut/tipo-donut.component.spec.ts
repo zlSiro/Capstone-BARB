@@ -61,28 +61,29 @@ function anguloDe(x: number, y: number): number {
 
 describe('TipoDonutComponent', () => {
   describe('estructura', () => {
-    it('dibuja un segmento por cada tipo VISIBLE: predictivo se oculta', () => {
+    it('dibuja un segmento por cada tipo que envía el backend', () => {
       const { el } = setup(REAL);
-      // CGBIDA-435: «predictivo» se filtra, quedan 3.
-      expect(el.querySelectorAll('[data-testid^="segmento-"]').length).toBe(3);
-      expect(el.querySelector('[data-testid="segmento-predictive"]')).toBeNull();
+      // Los cuatro tipos se dibujan: el total de la dona tiene que ser el del alcance
+      // para poder cuadrar con la tarjeta de Salud Operacional.
+      expect(el.querySelectorAll('[data-testid^="segmento-"]').length).toBe(4);
+      expect(el.querySelector('[data-testid="segmento-predictive"]')).not.toBeNull();
     });
 
-    it('muestra el total de los tipos visibles en el centro', () => {
+    it('muestra el total del alcance en el centro', () => {
       const { el } = setup(REAL);
-      // 70 + 30 + 25 = 125 (ya sin los 21 predictivos).
-      expect(el.querySelector('[data-testid="dona-total"]')!.textContent!.trim()).toBe('125');
+      // 70 + 30 + 25 + 21 = 146: la dona cuenta todos los tipos.
+      expect(el.querySelector('[data-testid="dona-total"]')!.textContent!.trim()).toBe('146');
     });
 
-    it('la leyenda lista los tres tipos visibles con su valor y porcentaje', () => {
+    it('la leyenda lista los cuatro tipos con su valor y porcentaje', () => {
       const { el } = setup(REAL);
-      expect(el.querySelectorAll('[data-testid^="leyenda-"]').length).toBe(3);
-      expect(el.querySelector('[data-testid="leyenda-predictive"]')).toBeNull();
+      expect(el.querySelectorAll('[data-testid^="leyenda-"]').length).toBe(4);
+      expect(el.querySelector('[data-testid="leyenda-predictive"]')).not.toBeNull();
 
       const corr = el.querySelector('[data-testid="leyenda-corrective"]')!.textContent ?? '';
       expect(corr).toContain('Correctivo');
       expect(corr).toContain('70');
-      expect(corr).toContain('56'); // 70/125 = 56 %
+      expect(corr).toContain('48'); // 70/146 = 48 %
     });
 
     it('el tooltip aparece al pasar el cursor y desaparece al salir', () => {
@@ -245,10 +246,10 @@ describe('TipoDonutComponent', () => {
       expect(porcentajes(el).reduce((a, b) => a + b, 0)).toBe(100);
     });
 
-    it('los porcentajes de la serie real son 56, 24 y 20', () => {
-      // 70/125, 30/125 y 25/125 sobre los tres tipos visibles (CGBIDA-435).
+    it('los porcentajes de la serie real son 48, 21, 17 y 14', () => {
+      // 70/146, 30/146, 25/146 y 21/146: la dona cuenta los cuatro tipos.
       const { el } = setup(REAL);
-      expect(porcentajes(el)).toEqual([56, 24, 20]);
+      expect(porcentajes(el)).toEqual([48, 21, 17, 14]);
     });
 
     it('CASO BORDE: tres partes iguales suman 100, no 99', () => {
@@ -311,7 +312,7 @@ describe('TipoDonutComponent', () => {
       const orden = [...el.querySelectorAll('[data-testid^="segmento-"]')].map((n) =>
         (n as SVGPathElement).dataset['testid']!.replace('segmento-', '')
       );
-      expect(orden).toEqual(['corrective', 'preventive', 'inspection']);
+      expect(orden).toEqual(['corrective', 'preventive', 'inspection', 'predictive']);
     });
   });
 
@@ -352,7 +353,7 @@ describe('TipoDonutComponent', () => {
       // color, y esa variable no estaba definida en el tema claro, asi que la sexta barra
       // salia sin color. Aca la paleta es hex, y el sexto tipo debe tener color propio y
       // distinto de los cinco anteriores.
-      // CGBIDA-435 filtra «predictivo», así que con seis filas se dibujan cinco.
+      // Ya no se filtra ningún tipo, así que con seis filas se dibujan seis.
       const seis = [
         { tipo: 'corrective', total: 10 },
         { tipo: 'preventive', total: 9 },
@@ -361,9 +362,8 @@ describe('TipoDonutComponent', () => {
         { tipo: 'extra1', total: 6 },
         { tipo: 'extra2', total: 5 },
       ];
-      const visibles = seis.filter((d) => d.tipo !== 'predictive');
       const { el } = setup(seis);
-      const colores = visibles.map((d) => segmento(el, d.tipo).getAttribute('fill')!);
+      const colores = seis.map((d) => segmento(el, d.tipo).getAttribute('fill')!);
 
       // Todos son hex de 6 digitos y ninguno es un var().
       colores.forEach((c) => {
@@ -371,7 +371,7 @@ describe('TipoDonutComponent', () => {
         expect(c).not.toContain('var(');
       });
       // Y todos son distintos entre si.
-      expect(new Set(colores).size).toBe(visibles.length);
+      expect(new Set(colores).size).toBe(seis.length);
     });
   });
 });

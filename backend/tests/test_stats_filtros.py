@@ -285,13 +285,14 @@ async def test_los_tres_filtros_juntos(client, db_pool):
 
 @pytest.mark.asyncio
 async def test_el_semaforo_trae_el_desglose_de_ots(client, db_pool):
-    """Completadas + en curso + pendientes + canceladas = total del alcance."""
+    """Los cinco estados del alcance suman exactamente el total de OTs."""
     h = await _login(client, GERENTE_E2)
 
     datos = (await client.get("/api/stats/financial-impact", headers=h)).json()
     desglose = datos["salud_operacional"]["desglose"]
 
-    assert set(desglose) == {"completadas", "en_curso", "pendientes"}
+    estados = ("completadas", "en_curso", "pendientes", "por_validar", "canceladas")
+    assert set(desglose) == {*estados, "total"}, sorted(desglose)
     for clave, valor in desglose.items():
         assert isinstance(valor, int) and valor >= 0, (clave, valor)
 
@@ -301,10 +302,8 @@ async def test_el_semaforo_trae_el_desglose_de_ots(client, db_pool):
           COUNT(*) FILTER (WHERE ot.estado = 'completed') AS completadas,
           COUNT(*) FILTER (WHERE ot.estado = 'in_progress') AS en_curso,
           COUNT(*) FILTER (WHERE ot.estado IN ('pending', 'assigned', 'overdue')) AS pendientes,
-          COUNT(*) FILTER (WHERE ot.estado = 'cancelled') AS canceladas,
-          -- `por_validar` (migración 0014) todavía no tiene bucket en el desglose de
-          -- stats.py: se cuenta aparte para poder verificar el total.
           COUNT(*) FILTER (WHERE ot.estado = 'por_validar') AS por_validar,
+          COUNT(*) FILTER (WHERE ot.estado = 'cancelled') AS canceladas,
           COUNT(*) AS total
           FROM orden_trabajo ot
           JOIN maquina m ON m.maquina_id = ot.maquina_id
@@ -314,20 +313,17 @@ async def test_el_semaforo_trae_el_desglose_de_ots(client, db_pool):
         {"e": EMPRESA_E2},
     )
 
-    assert desglose["completadas"] == int(esperado["completadas"])
-    assert desglose["en_curso"] == int(esperado["en_curso"])
-    assert desglose["pendientes"] == int(esperado["pendientes"])
-    # Los estados cubren todas las OTs del alcance. `por_validar` se suma aparte porque
-    # el desglose de la API aún no lo ubica: cuando stats.py lo cuente (el lugar natural
-    # es `pendientes`), este sumando debe quitarse y exigir la igualdad estricta sin él.
-    suma = (
-        desglose["completadas"]
-        + desglose["en_curso"]
-        + desglose["pendientes"]
-        + int(esperado["canceladas"])
-        + int(esperado["por_validar"])
-    )
+    for clave in estados:
+        assert desglose[clave] == int(esperado[clave]), clave
+
+    # La suma de los cinco estados es el total del alcance, y `total` lo declara.
+    suma = sum(desglose[c] for c in estados)
     assert suma == int(esperado["total"])
+    assert desglose["total"] == suma
+
+    # Y la dona por tipo cuenta el MISMO universo: si el backend dejara de enviar un tipo
+    # (o el frontend lo escondiera), el total dejaría de cuadrar con la tarjeta.
+    assert sum(t["total"] for t in datos["por_tipo"]) == desglose["total"]
 
 
 @pytest.mark.asyncio

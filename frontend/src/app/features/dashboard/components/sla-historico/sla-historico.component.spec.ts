@@ -52,6 +52,70 @@ function setup(res: HistoricoRespuesta | Error = respuesta()) {
   return { fixture, el: fixture.nativeElement as HTMLElement, getHistorical };
 }
 
+describe('sla-historico: períodos sin cierres y eje', () => {
+  /** Período sin cierres: el backend manda `sla: 0.0` y eso NO es un 0 % real. */
+  function periodoVacio(etiqueta: string): PeriodoHistorico {
+    return { ...periodo(etiqueta, 0), completadas: 0, total_ots: 1 };
+  }
+
+  it('un período sin cierres no se dibuja como 0 %: deja un hueco en la línea', () => {
+    // Serie: 3 días con datos, uno vacío en el medio y 2 con datos al final.
+    const conHueco: HistoricoRespuesta = {
+      granularity: 'day',
+      periods: [
+        periodo('2026-11-10', 96),
+        periodo('2026-11-11', 94),
+        periodo('2026-11-12', 92),
+        periodoVacio('2026-11-13'),
+        periodo('2026-11-14', 90),
+        periodo('2026-11-15', 88),
+      ],
+    };
+    const { el } = setup(conHueco);
+
+    // Cinco puntos reales, no seis: el vacío no es un dato.
+    expect(el.querySelectorAll('[data-testid="hist-punto"]')).toHaveLength(5);
+
+    // Y la línea se corta en dos tramos en vez de caer a 0 % y volver a subir.
+    const lineas = el.querySelectorAll('[data-testid="hist-linea"]');
+    expect(lineas).toHaveLength(2);
+    const primero = (lineas[0] as SVGElement).getAttribute('points')!.trim().split(/\s+/);
+    const segundo = (lineas[1] as SVGElement).getAttribute('points')!.trim().split(/\s+/);
+    expect(primero).toHaveLength(3);
+    expect(segundo).toHaveLength(2);
+  });
+
+  it('si ningún período tiene cierres, avisa que no hay datos', () => {
+    const { el } = setup({
+      granularity: 'day',
+      periods: [periodoVacio('2026-11-13'), periodoVacio('2026-11-14')],
+    });
+    expect(el.querySelector('[data-testid="hist-svg"]')).toBeNull();
+    expect(el.querySelector('[data-testid="hist-vacio"]')).not.toBeNull();
+  });
+
+  it('el piso del eje se calcula con los datos reales, no con los vacíos', () => {
+    // Con un vacío (0 %) el mínimo real es 90: el eje no debe arrancar en 0.
+    const { el } = setup({
+      granularity: 'day',
+      periods: [periodoVacio('2026-11-13'), periodo('2026-11-14', 95), periodo('2026-11-15', 92)],
+    });
+    const rotulos = [...el.querySelectorAll('svg text')].map((t) => (t.textContent ?? '').trim());
+    expect(rotulos).toContain('90');
+    expect(rotulos).not.toContain('0');
+  });
+
+  it('la primera y la última etiqueta se anclan al borde para no cortarse', () => {
+    const { el } = setup(respuesta(6));
+    const etiquetas = [...el.querySelectorAll('svg text')].filter((t) =>
+      /^2026-0\d$/.test((t.textContent ?? '').trim())
+    );
+    expect(etiquetas.length).toBeGreaterThanOrEqual(2);
+    expect(etiquetas[0].getAttribute('text-anchor')).toBe('start');
+    expect(etiquetas[etiquetas.length - 1].getAttribute('text-anchor')).toBe('end');
+  });
+});
+
 describe('sla-historico: carga inicial', () => {
   it('pide la ventana del panel al arrancar (por defecto, histórico)', () => {
     const { getHistorical } = setup();

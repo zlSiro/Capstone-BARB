@@ -154,6 +154,34 @@ describe('salud-operacional: desglose de OTs (CGBIDA-550)', () => {
     expect(texto(el, "desglose-pendientes")).toContain("13");
   });
 
+  it('muestra el total que informa el backend, sin recalcularlo', () => {
+    const { el } = setup({
+      ...datos(),
+      desglose: {
+        completadas: 171, en_curso: 4, pendientes: 4,
+        por_validar: 6, canceladas: 7, total: 192,
+      },
+    });
+
+    expect(texto(el, 'desglose-total')).toContain('192');
+    expect(texto(el, 'desglose-total')).toContain('6');
+    expect(texto(el, 'desglose-total')).toContain('7');
+    expect(el.querySelector('[data-testid="desglose-desincronizado"]')).toBeNull();
+  });
+
+  it('sin `total` del backend muestra — y avisa del desincronizado', () => {
+    // Backend viejo: manda el desglose de tres claves. La tarjeta NO debe inventar
+    // 171+4+4 = 179 (el bug que mostró 179 mientras la dona sumaba 192).
+    const { el } = setup({
+      ...datos(),
+      desglose: { completadas: 171, en_curso: 4, pendientes: 4 },
+    });
+
+    expect(texto(el, 'desglose-total')).toContain('—');
+    expect(texto(el, 'desglose-total')).not.toContain('179');
+    expect(el.querySelector('[data-testid="desglose-desincronizado"]')).not.toBeNull();
+  });
+
   it('los rotula en el idioma activo', () => {
     const { el } = setup({
       ...datos(),

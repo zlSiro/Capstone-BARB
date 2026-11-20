@@ -22,6 +22,14 @@ interface Punto {
   y: number;
   etiqueta: string;
   valor: number;
+  /**
+   * `false` cuando el período no tuvo cierres (`completadas === 0`).
+   *
+   * El backend manda `sla: 0.0` en esos períodos, pero un 0 no significa "cumplió 0 %":
+   * significa "no hubo nada que medir". Dibujarlos como 0 hunde la línea y produce la
+   * caída en diagonal hacia el último valor. Se tratan como hueco.
+   */
+  valido: boolean;
 }
 
 /**
@@ -62,7 +70,7 @@ interface Punto {
         <p class="py-10 text-center text-sm text-peligro " data-testid="hist-error">
           {{ t().historyError }}
         </p>
-      } @else if (puntos().length < 2) {
+      } @else if (puntos().length < 2 || !hayDatos()) {
         <p class="py-10 text-center text-sm text-tinta-suave " data-testid="hist-vacio">
           {{ t().historyEmpty }}
         </p>
@@ -94,35 +102,50 @@ interface Punto {
             >{{ g.valor }}</text>
           }
 
-          <!-- Serie del SLA. -->
-          <polyline
-            [attr.points]="linea()"
-            fill="none"
-            class="stroke-accion "
-            stroke-width="2.5"
-            stroke-linejoin="round"
-            stroke-linecap="round"
-            data-testid="hist-linea"
-          />
+          <!--
+            Serie del SLA: línea para TODAS las granularidades (es lo estándar para leer una
+            tendencia). Los períodos sin cierres no se dibujan como 0 %: cortan la línea y
+            dejan un hueco (spanGaps: false), así el trazo no cae en diagonal hasta el
+            último valor. Por eso puede haber más de una polilínea: una por tramo continuo.
+          -->
+          @for (seg of segmentos(); track $index) {
+            <polyline
+              [attr.points]="seg"
+              fill="none"
+              class="stroke-accion "
+              stroke-width="2.5"
+              stroke-linejoin="round"
+              stroke-linecap="round"
+              data-testid="hist-linea"
+            />
+          }
 
-          @for (p of puntos(); track p.etiqueta) {
+          @for (p of puntosConDatos(); track p.etiqueta) {
             <!-- Sin el elemento title del SVG: el tooltip nativo del navegador es un cuadro
                  blanco que rompe el tema oscuro. El de abajo usa los tokens del tema. -->
             <circle
               [attr.cx]="p.x"
               [attr.cy]="p.y"
-              [attr.r]="indiceActivo() === $index ? 5 : 3.5"
+              [attr.r]="indiceActivo() === p.i ? 5 : 3.5"
               class="fill-accion cursor-pointer "
               data-testid="hist-punto"
-              (mouseenter)="entrar($index, $event)"
+              (mouseenter)="entrar(p.i, $event)"
               (mousemove)="mover($event)"
               (mouseleave)="salir()"
             />
-            @if (mostrarEtiqueta($index)) {
+          }
+
+          <!--
+            Etiquetas del eje X. La primera y la última se anclan al inicio y al final para
+            que no se corten contra el borde del SVG («2025-20…»): con un anclaje centrado el texto se
+            salía del viewBox en los dos extremos.
+          -->
+          @for (p of puntos(); track p.etiqueta; let i = $index) {
+            @if (mostrarEtiqueta(i)) {
               <text
                 [attr.x]="p.x"
                 [attr.y]="ALTO - 6"
-                text-anchor="middle"
+                [attr.text-anchor]="anclaEtiqueta(i)"
                 font-size="10"
                 class="fill-tinta-suave "
               >{{ p.etiqueta }}</text>
@@ -277,7 +300,9 @@ export class SlaHistoricoComponent {
    *     99-100 no se dibuje como una catástrofe. El techo queda siempre en 100.
    */
   protected readonly piso = computed(() => {
-    const valores = this.periodos().map((p) => p.sla);
+    // Solo los períodos con cierres: incluir los `sla: 0.0` de los vacíos hundía el eje a 0
+    // y dejaba la serie pegada arriba, sin variación visible.
+    const valores = this.periodos().filter((p) => p.completadas > 0).map((p) => p.sla);
     if (valores.length === 0) return 0;
     const minimo = Math.min(...valores);
     return Math.min(90, Math.max(0, Math.floor((minimo - 5) / 5) * 5));
@@ -306,15 +331,55 @@ export class SlaHistoricoComponent {
       y: this.yDe(p.sla),
       etiqueta: p.etiqueta,
       valor: p.sla,
+      valido: p.completadas > 0,
     }));
   });
 
-  /** Cadena de `points` para la polilínea. */
-  protected readonly linea = computed(() =>
-    this.puntos()
-      .map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`)
-      .join(' ')
+  /** ¿Hay al menos un período con cierres? Si no, no hay nada que dibujar. */
+  protected readonly hayDatos = computed(() =>
+    this.periodos().some((p) => p.completadas > 0)
   );
+
+  /**
+   * Tramos continuos de la serie, ya como cadenas de `points`.
+   *
+   * Cada período sin cierres corta el trazo (equivalente a `spanGaps: false`): la línea no
+   * une el último dato bueno con el siguiente salvando el hueco, porque ese hueco no es un
+   * valor. Un tramo de un solo punto no se dibuja (el punto queda como círculo).
+   */
+  protected readonly segmentos = computed(() => {
+    const tramos: string[] = [];
+    let actual: string[] = [];
+    for (const p of this.puntos()) {
+      if (!p.valido) {
+        if (actual.length >= 2) tramos.push(actual.join(' '));
+        actual = [];
+        continue;
+      }
+      actual.push(`${p.x.toFixed(1)},${p.y.toFixed(1)}`);
+    }
+    if (actual.length >= 2) tramos.push(actual.join(' '));
+    return tramos;
+  });
+
+  /** Puntos reales (con cierres) y su índice dentro de la serie completa, para el hover. */
+  protected readonly puntosConDatos = computed(() =>
+    this.puntos()
+      .map((p, i) => ({ ...p, i }))
+      .filter((p) => p.valido)
+  );
+
+  /**
+   * Anclaje del rótulo del eje X.
+   *
+   * El primero y el último se pegan a su borde en vez de centrarse: centrados, el texto se
+   * salía del viewBox y el navegador lo recortaba («2025-20…»).
+   */
+  protected anclaEtiqueta(i: number): 'start' | 'middle' | 'end' {
+    if (i === 0) return 'start';
+    if (i === this.puntos().length - 1) return 'end';
+    return 'middle';
+  }
 
   /** Se rotulan todas si son pocas; si no, se saltean para que no se pisen. */
   protected mostrarEtiqueta(i: number): boolean {

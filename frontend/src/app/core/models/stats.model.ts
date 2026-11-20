@@ -158,6 +158,15 @@ export interface SaludOperacionalData {
     completadas: number;
     en_curso: number;
     pendientes: number;
+    /**
+     * OTs terminadas que esperan la validación del supervisor. Antes quedaban fuera del
+     * desglose, y por eso la suma de la tarjeta no cerraba contra el total del alcance.
+     */
+    por_validar?: number;
+    /** OTs canceladas: estado final, pero cuentan en el total del período. */
+    canceladas?: number;
+    /** Suma de los cinco estados: el total del alcance, para cuadrar con la dona. */
+    total?: number;
   };
 }
 
@@ -203,7 +212,8 @@ export interface PeriodoHistorico {
 
 /** Respuesta de `GET /api/stats/historical`. */
 export interface HistoricoRespuesta {
-  granularity: 'month' | 'semester' | 'year';
+  /** Las seis granularidades que acepta el backend (`GRANULARIDADES` en stats.py). */
+  granularity: 'day' | 'week' | 'month' | 'semester' | 'year' | '5year';
   periods: PeriodoHistorico[];
 }
 
