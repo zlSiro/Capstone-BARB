@@ -212,7 +212,8 @@ export interface PeriodoHistorico {
 
 /** Respuesta de `GET /api/stats/historical`. */
 export interface HistoricoRespuesta {
-  granularity: 'month' | 'semester' | 'year';
+  /** Las seis granularidades que acepta el backend (`GRANULARIDADES` en stats.py). */
+  granularity: 'day' | 'week' | 'month' | 'semester' | 'year' | '5year';
   periods: PeriodoHistorico[];
 }
 
