@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Modelo de Datos BARB</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: empresa (raíz de tenant) a la izquierda; sus tablas hijas en una columna; el dominio planta/máquina y mantenimiento a la derecha. */
+:root {
+  --bg: #f6f7f8;
+  --surface: #ffffff;
+  --fg: #1c2126;
+  --muted: #5d6772;
+  --line: #9aa4ae;
+  --border: #c9d0d7;
+  --d-tenant: #0f766e;
+  --d-planta: #2b5797;
+  --d-mant: #a8470a;
+  --d-conoc: #6340a8;
+  --pk: #a8470a;
+  --fk: #2b5797;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14181c; --surface: #1c2227; --fg: #e6eaee; --muted: #94a0ab; --line: #6b7782; --border: #323b43;
+    --pk: #f0a066; --fk: #8db4ee; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14181c; --surface: #1c2227; --fg: #e6eaee; --muted: #94a0ab; --line: #6b7782; --border: #323b43;
+  --pk: #f0a066; --fk: #8db4ee; color-scheme: dark;
+}
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--sans); font-size: 15px; line-height: 1.5; }
+.wrap { max-width: 1520px; margin: 0 auto; padding-block: 28px 40px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+h1 { font-size: 1.75rem; line-height: 1.2; margin: 0 0 6px; font-weight: 600; text-wrap: balance; }
+.sub { margin: 0; color: var(--muted); max-width: 70ch; }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 22px; margin: 22px 0 14px; padding: 0; list-style: none; font-size: 0.8125rem; color: var(--muted); }
+.legend li { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.sw { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+.ln { width: 26px; height: 0; border-top: 2px solid var(--line); flex: none; }
+.ln.t { border-top-color: var(--d-tenant); }
+.hint { margin: 0 0 10px; font-size: 0.8125rem; color: var(--muted); }
+.scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+svg#er { display: block; height: auto; min-width: 1100px; max-width: none; }
+figure { margin: 0; }
+figcaption { margin-top: 14px; max-width: 78ch; color: var(--muted); font-size: 0.875rem; }
+.notes { margin-top: 26px; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px 32px; font-size: 0.875rem; }
+.notes h2 { font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0 0 6px; font-weight: 600; }
+.notes p { margin: 0; min-width: 0; }
+code { font-family: var(--mono); font-size: 0.85em; }
+
+/* diagrama */
+.edge { fill: none; stroke: var(--line); stroke-width: 1.4; stroke-linejoin: round; transition: opacity .15s; }
+.edge.ten { stroke: var(--d-tenant); opacity: .55; }
+.mk { fill: var(--line); }
+.mkt { fill: var(--d-tenant); }
+.tbl { cursor: pointer; transition: opacity .15s; outline: none; }
+.tb { fill: var(--surface); stroke: var(--border); stroke-width: 1; }
+.tbl:focus-visible .tb { stroke: var(--fg); stroke-width: 2; }
+.th { fill: var(--d-tenant); }
+.d-planta .th { fill: var(--d-planta); }
+.d-mant .th { fill: var(--d-mant); }
+.d-conoc .th { fill: var(--d-conoc); }
+.tn { font-family: var(--mono); font-size: 13px; font-weight: 500; fill: #fff; }
+.cn { font-family: var(--mono); font-size: 12px; fill: var(--fg); }
+.cpk { font-weight: 500; }
+.ct { font-family: var(--mono); font-size: 10.5px; fill: var(--muted); }
+.k { font-family: var(--mono); font-size: 9.5px; font-weight: 500; }
+.k-PK { fill: var(--pk); }
+.k-FK { fill: var(--fk); }
+svg.dim .edge { opacity: .08; }
+svg.dim .edge.on { opacity: 1; stroke-width: 2.2; }
+svg.dim .tbl { opacity: .3; }
+svg.dim .tbl.on { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .edge, .tbl { transition: none; } }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <h1>Modelo de Datos BARB</h1>
+  <p class="sub">14 tablas núcleo de la base Postgres, con sus 28 claves foráneas. Salen de <code>pg_dump</code>; se omiten auditoría, transacciones, sesiones, embeddings, reportes y tablas de debug.</p>
+
+  <ul class="legend" aria-label="Leyenda">
+    <li><span class="sw" style="background:var(--d-tenant)"></span>Empresa y usuarios</li>
+    <li><span class="sw" style="background:var(--d-planta)"></span>Planta, máquina, sensores, topología</li>
+    <li><span class="sw" style="background:var(--d-mant)"></span>Mantenimiento: avisos, OT, repuestos</li>
+    <li><span class="sw" style="background:var(--d-conoc)"></span>Documentos y chat IA</li>
+    <li><span class="ln t"></span>FK <code>empresa_id</code> (aislamiento multi-tenant)</li>
+    <li><span class="ln"></span>Otras FK (la flecha apunta a la PK)</li>
+  </ul>
+  <p class="hint">Pasa el cursor, enfoca o toca una tabla para resaltar sus relaciones. Toca de nuevo para soltar. En pantallas angostas el diagrama se desplaza de lado.</p>
+
+  <figure>
+    <div class="scroll">
+<svg id="er" viewBox="0 0 1520 1222" width="1520" role="img" aria-label="Diagrama entidad-relación de BARB: 14 tablas núcleo agrupadas por dominio. Empresa es la raíz multi-tenant de la que cuelgan plantas, disciplinas, usuarios, documentos, chats y repuestos; máquina conecta planta, avisos, órdenes de trabajo, sensores y topología." xmlns="http://www.w3.org/2000/svg">
+<defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M1 1 L9 5 L1 9 z" class="mk"/></marker><marker id="at" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M1 1 L9 5 L1 9 z" class="mkt"/></marker></defs>
+<path class="edge ten" data-a="planta" data-b="empresa" d="M380.0,97.0 C315.0,97.0 315.0,559.0 250.0,559.0" marker-end="url(#at)"><title>planta.empresa_id → empresa</title></path>
+<path class="edge ten" data-a="disciplina" data-b="empresa" d="M380.0,233.0 C315.0,233.0 315.0,559.0 250.0,559.0" marker-end="url(#at)"><title>disciplina.empresa_id → empresa</title></path>
+<path class="edge ten" data-a="documento_chunk" data-b="empresa" d="M380.0,387.0 C315.0,387.0 315.0,559.0 250.0,559.0" marker-end="url(#at)"><title>documento_chunk.empresa_id → empresa</title></path>
+<path class="edge ten" data-a="documento" data-b="empresa" d="M380.0,523.0 C315.0,523.0 315.0,559.0 250.0,559.0" marker-end="url(#at)"><title>documento.empresa_id → empresa</title></path>
+<path class="edge ten" data-a="usuario" data-b="empresa" d="M380.0,713.0 C315.0,713.0 315.0,559.0 250.0,559.0" marker-end="url(#at)"><title>usuario.empresa_id → empresa</title></path>
+<path class="edge ten" data-a="chat_session" data-b="empresa" d="M380.0,885.0 C315.0,885.0 315.0,559.0 250.0,559.0" marker-end="url(#at)"><title>chat_session.empresa_id → empresa</title></path>
+<path class="edge ten" data-a="repuesto" data-b="empresa" d="M380.0,1075.0 C315.0,1075.0 315.0,559.0 250.0,559.0" marker-end="url(#at)"><title>repuesto.empresa_id → empresa</title></path>
+<path class="edge" data-a="maquina" data-b="planta" d="M830.0,387.0 C730.0,387.0 730.0,79.0 630.0,79.0" marker-end="url(#ar)"><title>maquina.planta_id → planta</title></path>
+<path class="edge" data-a="maquina" data-b="disciplina" d="M830.0,405.0 C730.0,405.0 730.0,215.0 630.0,215.0" marker-end="url(#ar)"><title>maquina.disciplina_id → disciplina</title></path>
+<path class="edge" data-a="topologia_nodo" data-b="planta" d="M830.0,117.0 C730.0,117.0 730.0,79.0 630.0,79.0" marker-end="url(#ar)"><title>topologia_nodo.planta_id → planta</title></path>
+<path class="edge" data-a="topologia_nodo" data-b="maquina" d="M955.0,224.0 L955.0,330.0" marker-end="url(#ar)"><title>topologia_nodo.maquina_id → maquina</title></path>
+<path class="edge" data-a="topologia_nodo" data-b="sensor" d="M1080.0,153.0 C1160.0,153.0 1160.0,369.0 1240.0,369.0" marker-end="url(#ar)"><title>topologia_nodo.sensor_id → sensor</title></path>
+<path class="edge" data-a="sensor" data-b="maquina" d="M1240.0,387.0 C1160.0,387.0 1160.0,369.0 1080.0,369.0" marker-end="url(#ar)"><title>sensor.maquina_id → maquina</title></path>
+<path class="edge" data-a="documento" data-b="maquina" d="M630.0,541.0 C730.0,541.0 730.0,369.0 830.0,369.0" marker-end="url(#ar)"><title>documento.maquina_id → maquina</title></path>
+<path class="edge" data-a="documento" data-b="disciplina" d="M630.0,559.0 L660.0,559.0 L660.0,215.0 L630.0,215.0" marker-end="url(#ar)"><title>documento.discipline_id → disciplina</title></path>
+<path class="edge" data-a="documento" data-b="usuario" d="M505.0,630.0 L505.0,656.0" marker-end="url(#ar)"><title>documento.usuario_id → usuario</title></path>
+<path class="edge" data-a="documento_chunk" data-b="documento" d="M505.0,440.0 L505.0,466.0" marker-end="url(#ar)"><title>documento_chunk.documento_id → documento</title></path>
+<path class="edge" data-a="chat_session" data-b="usuario" d="M505.0,828.0 L505.0,802.0" marker-end="url(#ar)"><title>chat_session.usuario_id → usuario</title></path>
+<path class="edge" data-a="chat_session" data-b="maquina" d="M630.0,921.0 C730.0,921.0 730.0,369.0 830.0,369.0" marker-end="url(#ar)"><title>chat_session.maquina_id → maquina</title></path>
+<path class="edge" data-a="orden_trabajo" data-b="maquina" d="M1080.0,815.0 L1110.0,815.0 L1110.0,369.0 L1080.0,369.0" marker-end="url(#ar)"><title>orden_trabajo.maquina_id → maquina</title></path>
+<path class="edge" data-a="orden_trabajo" data-b="usuario" d="M830.0,833.0 C730.0,833.0 730.0,695.0 630.0,695.0" marker-end="url(#ar)"><title>orden_trabajo.tecnico_id → usuario</title></path>
+<path class="edge" data-a="orden_trabajo" data-b="usuario" d="M830.0,851.0 C730.0,851.0 730.0,695.0 630.0,695.0" marker-end="url(#ar)"><title>orden_trabajo.creado_por → usuario</title></path>
+<path class="edge" data-a="orden_trabajo" data-b="aviso_falla" d="M955.0,740.0 L955.0,704.0" marker-end="url(#ar)"><title>orden_trabajo.aviso_falla_id → aviso_falla</title></path>
+<path class="edge" data-a="aviso_falla" data-b="maquina" d="M955.0,540.0 L955.0,494.0" marker-end="url(#ar)"><title>aviso_falla.maquina_id → maquina</title></path>
+<path class="edge" data-a="aviso_falla" data-b="usuario" d="M830.0,615.0 C730.0,615.0 730.0,695.0 630.0,695.0" marker-end="url(#ar)"><title>aviso_falla.reportado_por → usuario</title></path>
+<path class="edge" data-a="aviso_falla" data-b="usuario" d="M830.0,633.0 C730.0,633.0 730.0,695.0 630.0,695.0" marker-end="url(#ar)"><title>aviso_falla.resuelto_por → usuario</title></path>
+<path class="edge" data-a="ot_repuesto" data-b="orden_trabajo" d="M955.0,990.0 L955.0,958.0" marker-end="url(#ar)"><title>ot_repuesto.ot_id → orden_trabajo</title></path>
+<path class="edge" data-a="ot_repuesto" data-b="repuesto" d="M830.0,1065.0 C730.0,1065.0 730.0,1057.0 630.0,1057.0" marker-end="url(#ar)"><title>ot_repuesto.repuesto_id → repuesto</title></path>
+<g class="tbl d-tenant" data-t="empresa" tabindex="0" role="group" aria-label="Tabla empresa"><rect class="tb" x="30" y="520" width="220" height="146" rx="6"/><path class="th" d="M30 550 V526 Q30 520 36 520 H244 Q250 520 250 526 V550 Z"/><text class="tn" x="42" y="540">empresa</text><text class="k k-PK" x="40" y="563.0">PK</text><text class="cn cpk" x="66" y="563.0">empresa_id</text><text class="ct" x="240" y="563.0" text-anchor="end">int</text><text class="cn" x="66" y="581.0">nombre</text><text class="ct" x="240" y="581.0" text-anchor="end">varchar</text><text class="cn" x="66" y="599.0">rut</text><text class="ct" x="240" y="599.0" text-anchor="end">varchar</text><text class="cn" x="66" y="617.0">estado</text><text class="ct" x="240" y="617.0" text-anchor="end">estado_empresa</text><text class="cn" x="66" y="635.0">max_usuarios</text><text class="ct" x="240" y="635.0" text-anchor="end">int</text><text class="cn" x="66" y="653.0">created_at</text><text class="ct" x="240" y="653.0" text-anchor="end">timestamp</text></g>
+<g class="tbl d-planta" data-t="planta" tabindex="0" role="group" aria-label="Tabla planta"><rect class="tb" x="380" y="40" width="250" height="110" rx="6"/><path class="th" d="M380 70 V46 Q380 40 386 40 H624 Q630 40 630 46 V70 Z"/><text class="tn" x="392" y="60">planta</text><text class="k k-PK" x="390" y="83.0">PK</text><text class="cn cpk" x="416" y="83.0">planta_id</text><text class="ct" x="620" y="83.0" text-anchor="end">int</text><text class="k k-FK" x="390" y="101.0">FK</text><text class="cn" x="416" y="101.0">empresa_id</text><text class="ct" x="620" y="101.0" text-anchor="end">int</text><text class="cn" x="416" y="119.0">nombre</text><text class="ct" x="620" y="119.0" text-anchor="end">varchar</text><text class="cn" x="416" y="137.0">ubicacion</text><text class="ct" x="620" y="137.0" text-anchor="end">varchar</text></g>
+<g class="tbl d-planta" data-t="disciplina" tabindex="0" role="group" aria-label="Tabla disciplina"><rect class="tb" x="380" y="176" width="250" height="110" rx="6"/><path class="th" d="M380 206 V182 Q380 176 386 176 H624 Q630 176 630 182 V206 Z"/><text class="tn" x="392" y="196">disciplina</text><text class="k k-PK" x="390" y="219.0">PK</text><text class="cn cpk" x="416" y="219.0">disciplina_id</text><text class="ct" x="620" y="219.0" text-anchor="end">int</text><text class="k k-FK" x="390" y="237.0">FK</text><text class="cn" x="416" y="237.0">empresa_id</text><text class="ct" x="620" y="237.0" text-anchor="end">int</text><text class="cn" x="416" y="255.0">nombre</text><text class="ct" x="620" y="255.0" text-anchor="end">varchar</text><text class="cn" x="416" y="273.0">color</text><text class="ct" x="620" y="273.0" text-anchor="end">varchar</text></g>
+<g class="tbl d-conoc" data-t="documento_chunk" tabindex="0" role="group" aria-label="Tabla documento_chunk"><rect class="tb" x="380" y="312" width="250" height="128" rx="6"/><path class="th" d="M380 342 V318 Q380 312 386 312 H624 Q630 312 630 318 V342 Z"/><text class="tn" x="392" y="332">documento_chunk</text><text class="k k-PK" x="390" y="355.0">PK</text><text class="cn cpk" x="416" y="355.0">chunk_id</text><text class="ct" x="620" y="355.0" text-anchor="end">int</text><text class="k k-FK" x="390" y="373.0">FK</text><text class="cn" x="416" y="373.0">documento_id</text><text class="ct" x="620" y="373.0" text-anchor="end">int</text><text class="k k-FK" x="390" y="391.0">FK</text><text class="cn" x="416" y="391.0">empresa_id</text><text class="ct" x="620" y="391.0" text-anchor="end">int</text><text class="cn" x="416" y="409.0">orden</text><text class="ct" x="620" y="409.0" text-anchor="end">int</text><text class="cn" x="416" y="427.0">contenido</text><text class="ct" x="620" y="427.0" text-anchor="end">text</text></g>
+<g class="tbl d-conoc" data-t="documento" tabindex="0" role="group" aria-label="Tabla documento"><rect class="tb" x="380" y="466" width="250" height="164" rx="6"/><path class="th" d="M380 496 V472 Q380 466 386 466 H624 Q630 466 630 472 V496 Z"/><text class="tn" x="392" y="486">documento</text><text class="k k-PK" x="390" y="509.0">PK</text><text class="cn cpk" x="416" y="509.0">documento_id</text><text class="ct" x="620" y="509.0" text-anchor="end">int</text><text class="k k-FK" x="390" y="527.0">FK</text><text class="cn" x="416" y="527.0">empresa_id</text><text class="ct" x="620" y="527.0" text-anchor="end">int</text><text class="k k-FK" x="390" y="545.0">FK</text><text class="cn" x="416" y="545.0">maquina_id</text><text class="ct" x="620" y="545.0" text-anchor="end">int</text><text class="k k-FK" x="390" y="563.0">FK</text><text class="cn" x="416" y="563.0">discipline_id</text><text class="ct" x="620" y="563.0" text-anchor="end">int</text><text class="k k-FK" x="390" y="581.0">FK</text><text class="cn" x="416" y="581.0">usuario_id</text><text class="ct" x="620" y="581.0" text-anchor="end">int</text><text class="cn" x="416" y="599.0">title</text><text class="ct" x="620" y="599.0" text-anchor="end">varchar</text><text class="cn" x="416" y="617.0">activo</text><text class="ct" x="620" y="617.0" text-anchor="end">boolean</text></g>
+<g class="tbl d-tenant" data-t="usuario" tabindex="0" role="group" aria-label="Tabla usuario"><rect class="tb" x="380" y="656" width="250" height="146" rx="6"/><path class="th" d="M380 686 V662 Q380 656 386 656 H624 Q630 656 630 662 V686 Z"/><text class="tn" x="392" y="676">usuario</text><text class="k k-PK" x="390" y="699.0">PK</text><text class="cn cpk" x="416" y="699.0">usuario_id</text><text class="ct" x="620" y="699.0" text-anchor="end">int</text><text class="k k-FK" x="390" y="717.0">FK</text><text class="cn" x="416" y="717.0">empresa_id</text><text class="ct" x="620" y="717.0" text-anchor="end">int</text><text class="cn" x="416" y="735.0">nombre</text><text class="ct" x="620" y="735.0" text-anchor="end">varchar</text><text class="cn" x="416" y="753.0">email</text><text class="ct" x="620" y="753.0" text-anchor="end">varchar</text><text class="cn" x="416" y="771.0">rol</text><text class="ct" x="620" y="771.0" text-anchor="end">varchar</text><text class="cn" x="416" y="789.0">activo</text><text class="ct" x="620" y="789.0" text-anchor="end">boolean</text></g>
+<g class="tbl d-conoc" data-t="chat_session" tabindex="0" role="group" aria-label="Tabla chat_session"><rect class="tb" x="380" y="828" width="250" height="164" rx="6"/><path class="th" d="M380 858 V834 Q380 828 386 828 H624 Q630 828 630 834 V858 Z"/><text class="tn" x="392" y="848">chat_session</text><text class="k k-PK" x="390" y="871.0">PK</text><text class="cn cpk" x="416" y="871.0">session_id</text><text class="ct" x="620" y="871.0" text-anchor="end">uuid</text><text class="k k-FK" x="390" y="889.0">FK</text><text class="cn" x="416" y="889.0">empresa_id</text><text class="ct" x="620" y="889.0" text-anchor="end">int</text><text class="k k-FK" x="390" y="907.0">FK</text><text class="cn" x="416" y="907.0">usuario_id</text><text class="ct" x="620" y="907.0" text-anchor="end">int</text><text class="k k-FK" x="390" y="925.0">FK</text><text class="cn" x="416" y="925.0">maquina_id</text><text class="ct" x="620" y="925.0" text-anchor="end">int</text><text class="cn" x="416" y="943.0">titulo</text><text class="ct" x="620" y="943.0" text-anchor="end">varchar</text><text class="cn" x="416" y="961.0">messages</text><text class="ct" x="620" y="961.0" text-anchor="end">jsonb</text><text class="cn" x="416" y="979.0">saved_at</text><text class="ct" x="620" y="979.0" text-anchor="end">timestamptz</text></g>
+<g class="tbl d-mant" data-t="repuesto" tabindex="0" role="group" aria-label="Tabla repuesto"><rect class="tb" x="380" y="1018" width="250" height="164" rx="6"/><path class="th" d="M380 1048 V1024 Q380 1018 386 1018 H624 Q630 1018 630 1024 V1048 Z"/><text class="tn" x="392" y="1038">repuesto</text><text class="k k-PK" x="390" y="1061.0">PK</text><text class="cn cpk" x="416" y="1061.0">repuesto_id</text><text class="ct" x="620" y="1061.0" text-anchor="end">int</text><text class="k k-FK" x="390" y="1079.0">FK</text><text class="cn" x="416" y="1079.0">empresa_id</text><text class="ct" x="620" y="1079.0" text-anchor="end">int</text><text class="cn" x="416" y="1097.0">codigo</text><text class="ct" x="620" y="1097.0" text-anchor="end">varchar</text><text class="cn" x="416" y="1115.0">nombre</text><text class="ct" x="620" y="1115.0" text-anchor="end">varchar</text><text class="cn" x="416" y="1133.0">stock_actual</text><text class="ct" x="620" y="1133.0" text-anchor="end">numeric</text><text class="cn" x="416" y="1151.0">stock_minimo</text><text class="ct" x="620" y="1151.0" text-anchor="end">numeric</text><text class="cn" x="416" y="1169.0">costo_unitario</text><text class="ct" x="620" y="1169.0" text-anchor="end">numeric</text></g>
+<g class="tbl d-planta" data-t="topologia_nodo" tabindex="0" role="group" aria-label="Tabla topologia_nodo"><rect class="tb" x="830" y="60" width="250" height="164" rx="6"/><path class="th" d="M830 90 V66 Q830 60 836 60 H1074 Q1080 60 1080 66 V90 Z"/><text class="tn" x="842" y="80">topologia_nodo</text><text class="k k-PK" x="840" y="103.0">PK</text><text class="cn cpk" x="866" y="103.0">nodo_id</text><text class="ct" x="1070" y="103.0" text-anchor="end">int</text><text class="k k-FK" x="840" y="121.0">FK</text><text class="cn" x="866" y="121.0">planta_id</text><text class="ct" x="1070" y="121.0" text-anchor="end">int</text><text class="k k-FK" x="840" y="139.0">FK</text><text class="cn" x="866" y="139.0">maquina_id</text><text class="ct" x="1070" y="139.0" text-anchor="end">int</text><text class="k k-FK" x="840" y="157.0">FK</text><text class="cn" x="866" y="157.0">sensor_id</text><text class="ct" x="1070" y="157.0" text-anchor="end">int</text><text class="cn" x="866" y="175.0">tipo</text><text class="ct" x="1070" y="175.0" text-anchor="end">varchar</text><text class="cn" x="866" y="193.0">nombre</text><text class="ct" x="1070" y="193.0" text-anchor="end">varchar</text><text class="cn" x="866" y="211.0">estado</text><text class="ct" x="1070" y="211.0" text-anchor="end">varchar</text></g>
+<g class="tbl d-planta" data-t="maquina" tabindex="0" role="group" aria-label="Tabla maquina"><rect class="tb" x="830" y="330" width="250" height="164" rx="6"/><path class="th" d="M830 360 V336 Q830 330 836 330 H1074 Q1080 330 1080 336 V360 Z"/><text class="tn" x="842" y="350">maquina</text><text class="k k-PK" x="840" y="373.0">PK</text><text class="cn cpk" x="866" y="373.0">maquina_id</text><text class="ct" x="1070" y="373.0" text-anchor="end">int</text><text class="k k-FK" x="840" y="391.0">FK</text><text class="cn" x="866" y="391.0">planta_id</text><text class="ct" x="1070" y="391.0" text-anchor="end">int</text><text class="k k-FK" x="840" y="409.0">FK</text><text class="cn" x="866" y="409.0">disciplina_id</text><text class="ct" x="1070" y="409.0" text-anchor="end">int</text><text class="cn" x="866" y="427.0">codigo</text><text class="ct" x="1070" y="427.0" text-anchor="end">varchar</text><text class="cn" x="866" y="445.0">nombre</text><text class="ct" x="1070" y="445.0" text-anchor="end">varchar</text><text class="cn" x="866" y="463.0">sla_horas</text><text class="ct" x="1070" y="463.0" text-anchor="end">numeric</text><text class="cn" x="866" y="481.0">costo_inactividad_minuto</text><text class="ct" x="1070" y="481.0" text-anchor="end">numeric</text></g>
+<g class="tbl d-mant" data-t="aviso_falla" tabindex="0" role="group" aria-label="Tabla aviso_falla"><rect class="tb" x="830" y="540" width="250" height="164" rx="6"/><path class="th" d="M830 570 V546 Q830 540 836 540 H1074 Q1080 540 1080 546 V570 Z"/><text class="tn" x="842" y="560">aviso_falla</text><text class="k k-PK" x="840" y="583.0">PK</text><text class="cn cpk" x="866" y="583.0">aviso_falla_id</text><text class="ct" x="1070" y="583.0" text-anchor="end">int</text><text class="k k-FK" x="840" y="601.0">FK</text><text class="cn" x="866" y="601.0">maquina_id</text><text class="ct" x="1070" y="601.0" text-anchor="end">int</text><text class="k k-FK" x="840" y="619.0">FK</text><text class="cn" x="866" y="619.0">reportado_por</text><text class="ct" x="1070" y="619.0" text-anchor="end">int</text><text class="k k-FK" x="840" y="637.0">FK</text><text class="cn" x="866" y="637.0">resuelto_por</text><text class="ct" x="1070" y="637.0" text-anchor="end">int</text><text class="cn" x="866" y="655.0">numero_aviso</text><text class="ct" x="1070" y="655.0" text-anchor="end">varchar</text><text class="cn" x="866" y="673.0">severidad</text><text class="ct" x="1070" y="673.0" text-anchor="end">varchar</text><text class="cn" x="866" y="691.0">estado</text><text class="ct" x="1070" y="691.0" text-anchor="end">varchar</text></g>
+<g class="tbl d-mant" data-t="orden_trabajo" tabindex="0" role="group" aria-label="Tabla orden_trabajo"><rect class="tb" x="830" y="740" width="250" height="218" rx="6"/><path class="th" d="M830 770 V746 Q830 740 836 740 H1074 Q1080 740 1080 746 V770 Z"/><text class="tn" x="842" y="760">orden_trabajo</text><text class="k k-PK" x="840" y="783.0">PK</text><text class="cn cpk" x="866" y="783.0">ot_id</text><text class="ct" x="1070" y="783.0" text-anchor="end">int</text><text class="k k-FK" x="840" y="801.0">FK</text><text class="cn" x="866" y="801.0">aviso_falla_id</text><text class="ct" x="1070" y="801.0" text-anchor="end">int</text><text class="k k-FK" x="840" y="819.0">FK</text><text class="cn" x="866" y="819.0">maquina_id</text><text class="ct" x="1070" y="819.0" text-anchor="end">int</text><text class="k k-FK" x="840" y="837.0">FK</text><text class="cn" x="866" y="837.0">tecnico_id</text><text class="ct" x="1070" y="837.0" text-anchor="end">int</text><text class="k k-FK" x="840" y="855.0">FK</text><text class="cn" x="866" y="855.0">creado_por</text><text class="ct" x="1070" y="855.0" text-anchor="end">int</text><text class="cn" x="866" y="873.0">numero_ot</text><text class="ct" x="1070" y="873.0" text-anchor="end">varchar</text><text class="cn" x="866" y="891.0">tipo</text><text class="ct" x="1070" y="891.0" text-anchor="end">varchar</text><text class="cn" x="866" y="909.0">priority</text><text class="ct" x="1070" y="909.0" text-anchor="end">varchar</text><text class="cn" x="866" y="927.0">estado</text><text class="ct" x="1070" y="927.0" text-anchor="end">varchar</text><text class="cn" x="866" y="945.0">costo_real</text><text class="ct" x="1070" y="945.0" text-anchor="end">numeric</text></g>
+<g class="tbl d-mant" data-t="ot_repuesto" tabindex="0" role="group" aria-label="Tabla ot_repuesto"><rect class="tb" x="830" y="990" width="250" height="128" rx="6"/><path class="th" d="M830 1020 V996 Q830 990 836 990 H1074 Q1080 990 1080 996 V1020 Z"/><text class="tn" x="842" y="1010">ot_repuesto</text><text class="k k-PK" x="840" y="1033.0">PK</text><text class="cn cpk" x="866" y="1033.0">ot_repuesto_id</text><text class="ct" x="1070" y="1033.0" text-anchor="end">int</text><text class="k k-FK" x="840" y="1051.0">FK</text><text class="cn" x="866" y="1051.0">ot_id</text><text class="ct" x="1070" y="1051.0" text-anchor="end">int</text><text class="k k-FK" x="840" y="1069.0">FK</text><text class="cn" x="866" y="1069.0">repuesto_id</text><text class="ct" x="1070" y="1069.0" text-anchor="end">int</text><text class="cn" x="866" y="1087.0">cantidad</text><text class="ct" x="1070" y="1087.0" text-anchor="end">numeric</text><text class="cn" x="866" y="1105.0">costo_unitario</text><text class="ct" x="1070" y="1105.0" text-anchor="end">numeric</text></g>
+<g class="tbl d-planta" data-t="sensor" tabindex="0" role="group" aria-label="Tabla sensor"><rect class="tb" x="1240" y="330" width="220" height="110" rx="6"/><path class="th" d="M1240 360 V336 Q1240 330 1246 330 H1454 Q1460 330 1460 336 V360 Z"/><text class="tn" x="1252" y="350">sensor</text><text class="k k-PK" x="1250" y="373.0">PK</text><text class="cn cpk" x="1276" y="373.0">sensor_id</text><text class="ct" x="1450" y="373.0" text-anchor="end">int</text><text class="k k-FK" x="1250" y="391.0">FK</text><text class="cn" x="1276" y="391.0">maquina_id</text><text class="ct" x="1450" y="391.0" text-anchor="end">int</text><text class="cn" x="1276" y="409.0">nombre</text><text class="ct" x="1450" y="409.0" text-anchor="end">varchar</text><text class="cn" x="1276" y="427.0">codigo</text><text class="ct" x="1450" y="427.0" text-anchor="end">varchar</text></g>
+</svg>
+    </div>
+    <figcaption>Todo cuelga de <code>empresa</code>: cada planta, usuario, documento, chat y repuesto lleva <code>empresa_id</code>. Las órdenes de trabajo no lo llevan; heredan la empresa por <code>orden_trabajo → maquina → planta</code>.</figcaption>
+  </figure>
+
+  <div class="notes">
+    <div>
+      <h2>Flujo de una falla</h2>
+      <p><code>aviso_falla</code> lo reporta un usuario sobre una máquina. El supervisor lo descarta o genera una <code>orden_trabajo</code> (<code>aviso_falla_id</code>). La OT consume piezas vía <code>ot_repuesto</code>.</p>
+    </div>
+    <div>
+      <h2>Chat y documentos</h2>
+      <p><code>documento</code> se parte en <code>documento_chunk</code> para la búsqueda del chat. Un documento y una conversación pueden fijarse a una máquina (<code>maquina_id</code>).</p>
+    </div>
+    <div>
+      <h2>Omitido a propósito</h2>
+      <p>En <code>orden_trabajo</code> se ocultan <code>diagnostico_id</code> y <code>reporte_id</code> (apuntan a tablas fuera del diagrama). <code>usuario.empresa_id</code> es NULL solo para <code>super_usuario</code>.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var svg = document.getElementById('er');
+  if (!svg) return;
+  var tbls = Array.prototype.slice.call(svg.querySelectorAll('.tbl'));
+  var edges = Array.prototype.slice.call(svg.querySelectorAll('.edge'));
+  var pinned = null;
+  function show(name) {
+    svg.classList.add('dim');
+    tbls.forEach(function (g) { g.classList.remove('on'); });
+    edges.forEach(function (e) {
+      var hit = e.getAttribute('data-a') === name || e.getAttribute('data-b') === name;
+      e.classList.toggle('on', hit);
+      if (hit) {
+        tbls.forEach(function (g) {
+          var n = g.getAttribute('data-t');
+          if (n === e.getAttribute('data-a') || n === e.getAttribute('data-b')) g.classList.add('on');
+        });
+      }
+    });
+    tbls.forEach(function (g) { if (g.getAttribute('data-t') === name) g.classList.add('on'); });
+  }
+  function clear() {
+    svg.classList.remove('dim');
+    tbls.concat(edges).forEach(function (n) { n.classList.remove('on'); });
+  }
+  tbls.forEach(function (g) {
+    var name = g.getAttribute('data-t');
+    g.addEventListener('mouseenter', function () { if (!pinned) show(name); });
+    g.addEventListener('mouseleave', function () { if (!pinned) clear(); });
+    g.addEventListener('focus', function () { if (!pinned) show(name); });
+    g.addEventListener('blur', function () { if (!pinned) clear(); });
+    g.addEventListener('click', function () {
+      if (pinned === name) { pinned = null; clear(); } else { pinned = name; show(name); }
+    });
+    g.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); g.dispatchEvent(new Event('click')); }
+      if (ev.key === 'Escape') { pinned = null; clear(); }
+    });
+  });
+})();
+</script>
+
+</body>
+</html>
