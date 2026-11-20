@@ -79,10 +79,17 @@ import { I18nService } from '../../../../core/i18n/i18n.service';
           las canceladas; aquí se muestran las dos para que la cuenta cierre a la vista.
         -->
         <p class="mt-2 text-[11px] text-tinta-suave" data-testid="desglose-total">
-          {{ t().healthDesgloseTotal }}: <strong [class]="'text-tinta'">{{ totalPeriodo() }}</strong>
+          {{ t().healthDesgloseTotal }}:
+          <strong [class]="desgloseIncompleto() ? 'text-peligro' : 'text-tinta'"
+                  data-testid="desglose-total-valor">{{ totalPeriodo() ?? '—' }}</strong>
           <span class="px-1">·</span>{{ porValidar() }} {{ t().healthDesglosePorValidar }}
           <span class="px-1">·</span>{{ canceladas() }} {{ t().healthDesgloseCanceladas }}
         </p>
+        @if (desgloseIncompleto()) {
+          <p class="mt-1 text-[11px] font-semibold text-peligro" data-testid="desglose-desincronizado">
+            {{ t().healthDesgloseIncompleto }}
+          </p>
+        }
       </div>
     </figure>
   `
@@ -137,17 +144,23 @@ export class SaludOperacionalComponent {
    * Colores del tema: `ok` = verde, `accion` = azul, `alerta` = naranja.
    */
   /**
-   * Total del período: el `total` que manda el backend (suma de los cinco estados). Si la
-   * respuesta viene de una versión anterior, se reconstruye con lo que haya, para que la
-   * tarjeta nunca muestre un total en blanco.
+   * Total del período: el `total` que manda el backend (suma de los cinco estados).
+   *
+   * Es ESTRICTO a propósito: si el backend no manda el campo, devuelve `null` y la tarjeta
+   * muestra «—» en vez de recalcularlo por su cuenta. Un total recalculado en el cliente
+   * esconde la causa real —un backend desactualizado, como pasó en la demo, que mostraba
+   * 179 mientras la dona sumaba 192— y es peor que un guion: la UI tiene que gritar el
+   * desincronizado, no taparlo con un número que parece válido.
    */
-  protected readonly totalPeriodo = computed(() => {
-    const d = this.salud()?.desglose;
-    if (!d) return 0;
-    if (typeof d.total === 'number') return d.total;
-    return (d.completadas ?? 0) + (d.en_curso ?? 0) + (d.pendientes ?? 0)
-      + (d.por_validar ?? 0) + (d.canceladas ?? 0);
+  protected readonly totalPeriodo = computed<number | null>(() => {
+    const total = this.salud()?.desglose?.total;
+    return typeof total === 'number' ? total : null;
   });
+
+  /** Hay desglose pero sin `total`: la respuesta viene de un backend viejo. */
+  protected readonly desgloseIncompleto = computed(
+    () => !!this.salud()?.desglose && this.totalPeriodo() === null
+  );
 
   protected readonly porValidar = computed(() => this.salud()?.desglose?.por_validar ?? 0);
 
