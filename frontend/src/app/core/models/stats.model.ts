@@ -158,6 +158,15 @@ export interface SaludOperacionalData {
     completadas: number;
     en_curso: number;
     pendientes: number;
+    /**
+     * OTs terminadas que esperan la validación del supervisor. Antes quedaban fuera del
+     * desglose, y por eso la suma de la tarjeta no cerraba contra el total del alcance.
+     */
+    por_validar?: number;
+    /** OTs canceladas: estado final, pero cuentan en el total del período. */
+    canceladas?: number;
+    /** Suma de los cinco estados: el total del alcance, para cuadrar con la dona. */
+    total?: number;
   };
 }
 

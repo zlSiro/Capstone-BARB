@@ -40,7 +40,8 @@ def _fila_financiera(costo: float) -> _Fila:
         mttr=100, costo_total_acumulado=costo, downtime_evitado_min=0, ahorro_inactividad=0,
         total_completadas=4, completadas_en_sla=4, total_ots=10, abiertas=6,
         # Desglose de la tarjeta de Salud (CGBIDA-550): 4 + 2 + 4 = 10, como total_ots.
-        en_curso=2, pendientes=4,
+        # Este dataset no tiene OTs por validar ni canceladas.
+        en_curso=2, pendientes=4, por_validar=0, canceladas=0,
         downtime_total_min=120,
     )
 

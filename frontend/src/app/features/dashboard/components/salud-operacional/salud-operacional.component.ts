@@ -73,6 +73,16 @@ import { I18nService } from '../../../../core/i18n/i18n.service';
             </div>
           }
         </div>
+        <!--
+          Total del período: es el número con el que cuadra la dona por tipo. Los tres
+          contadores de arriba no suman el total porque dejan fuera las OTs por validar y
+          las canceladas; aquí se muestran las dos para que la cuenta cierre a la vista.
+        -->
+        <p class="mt-2 text-[11px] text-tinta-suave" data-testid="desglose-total">
+          {{ t().healthDesgloseTotal }}: <strong [class]="'text-tinta'">{{ totalPeriodo() }}</strong>
+          <span class="px-1">·</span>{{ porValidar() }} {{ t().healthDesglosePorValidar }}
+          <span class="px-1">·</span>{{ canceladas() }} {{ t().healthDesgloseCanceladas }}
+        </p>
       </div>
     </figure>
   `
@@ -126,6 +136,23 @@ export class SaludOperacionalComponent {
    * atributo `class` entero: si la caja dejara sus clases en el template, las perdería.
    * Colores del tema: `ok` = verde, `accion` = azul, `alerta` = naranja.
    */
+  /**
+   * Total del período: el `total` que manda el backend (suma de los cinco estados). Si la
+   * respuesta viene de una versión anterior, se reconstruye con lo que haya, para que la
+   * tarjeta nunca muestre un total en blanco.
+   */
+  protected readonly totalPeriodo = computed(() => {
+    const d = this.salud()?.desglose;
+    if (!d) return 0;
+    if (typeof d.total === 'number') return d.total;
+    return (d.completadas ?? 0) + (d.en_curso ?? 0) + (d.pendientes ?? 0)
+      + (d.por_validar ?? 0) + (d.canceladas ?? 0);
+  });
+
+  protected readonly porValidar = computed(() => this.salud()?.desglose?.por_validar ?? 0);
+
+  protected readonly canceladas = computed(() => this.salud()?.desglose?.canceladas ?? 0);
+
   protected readonly contadores = computed(() => {
     const t = this.t();
     const d = this.salud()?.desglose;

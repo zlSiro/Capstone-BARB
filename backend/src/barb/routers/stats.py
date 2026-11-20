@@ -61,6 +61,8 @@ def _semaforo_operacional(
     completadas: int = 0,
     en_curso: int = 0,
     pendientes: int = 0,
+    por_validar: int = 0,
+    canceladas: int = 0,
 ) -> dict:
     """Semáforo de dos señales. `estancadas` incluye a las `vencidas`.
 
@@ -70,8 +72,12 @@ def _semaforo_operacional(
       verde    -> ninguna de las dos cosas.
 
     El motivo va en texto porque un color sin explicación no es accionable.
-    Además devuelve el `desglose` de OTs del período (completadas / en curso /
-    pendientes), que la tarjeta pinta como contadores (CGBIDA-550).
+    Además devuelve el `desglose` de OTs del período, que la tarjeta pinta como
+    contadores (CGBIDA-550). El desglose cubre TODOS los estados del alcance
+    (completadas, en curso, pendientes, por validar y canceladas) y trae su `total`:
+    así se reconcilia con la dona por tipo, que también cuenta todas las OTs.
+    Antes faltaban `por_validar` y `canceladas`, y la suma de la tarjeta no cerraba
+    contra el total (la dona daba 35 OTs menos de lo que explicaba la tarjeta).
 
     """
     base = {
@@ -84,6 +90,12 @@ def _semaforo_operacional(
             "completadas": int(completadas),
             "en_curso": int(en_curso),
             "pendientes": int(pendientes),
+            "por_validar": int(por_validar),
+            "canceladas": int(canceladas),
+            # Suma de los cinco estados: es el total del alcance y el número contra el
+            # que se reconcilia la dona por tipo.
+            "total": int(completadas) + int(en_curso) + int(pendientes)
+            + int(por_validar) + int(canceladas),
         },
     }
     if vencidas >= 1:
@@ -598,6 +610,11 @@ async def get_financial_impact(
             -- alguien trabajando y lo que todavia espera a que alguien lo tome.
             COUNT(*) FILTER (WHERE ot.estado = 'in_progress') AS en_curso,
             COUNT(*) FILTER (WHERE ot.estado IN ('pending', 'assigned', 'overdue')) AS pendientes,
+            -- Estados que faltaban en el desglose: `por_validar` (trabajo terminado que
+            -- espera la validación del supervisor) y `canceladas`. Sin ellos la suma de la
+            -- tarjeta no llegaba al total del alcance y no cerraba contra la dona por tipo.
+            COUNT(*) FILTER (WHERE ot.estado = 'por_validar') AS por_validar,
+            COUNT(*) FILTER (WHERE ot.estado = 'cancelled') AS canceladas,
             -- Inactividad de las OT no canceladas: denominador de Disponibilidad (CGBIDA-519).
             COALESCE(SUM(ot.downtime_minutes) FILTER (WHERE ot.estado != 'cancelled'), 0) AS downtime_total_min
         FROM orden_trabajo ot
@@ -930,6 +947,8 @@ async def get_financial_impact(
             completadas=int(f["total_completadas"]),
             en_curso=int(f["en_curso"]),
             pendientes=int(f["pendientes"]),
+            por_validar=int(f["por_validar"]),
+            canceladas=int(f["canceladas"]),
         )
 
         respuesta = {

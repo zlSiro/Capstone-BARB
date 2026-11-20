@@ -207,14 +207,16 @@ export class TipoDonutComponent {
   ];
 
   /**
-   * Tipos que no se dibujan.
+   * Tipos que no se dibujan: ninguno.
    *
-   * «Predictivo» se excluye por pedido del usuario: sus 21 OTs no cambian la lectura de la
-   * estrategia y hacían la leyenda más ruidosa que informativa. El backend sigue enviando
-   * los cuatro tipos; el recorte es de presentación, así que si mañana se quiere de vuelta
-   * alcanza con sacarlo de este conjunto.
+   * «Predictivo» estuvo oculto por pedido del usuario (sus 21 OTs no cambiaban la lectura de
+   * la estrategia), pero ese recorte rompía la reconciliación del tablero: la dona sumaba 35
+   * OTs menos que la tarjeta de Salud Operacional y no había forma de cuadrar los dos
+   * widgets en la demo. Como el backend envía los cuatro tipos con su conteo real, el total
+   * de la dona tiene que ser el total del alcance. Se mantiene el mecanismo por si algún día
+   * hay que volver a esconder un tipo, pero hoy no se oculta ninguno.
    */
-  private readonly TIPOS_OCULTOS: ReadonlySet<string> = new Set(['predictive']);
+  private readonly TIPOS_OCULTOS: ReadonlySet<string> = new Set<string>();
 
   /** Filas que efectivamente se dibujan. */
   private readonly filasVisibles = computed(() =>
