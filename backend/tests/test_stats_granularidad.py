@@ -139,5 +139,5 @@ async def test_5year_no_repite_un_anio_en_dos_bloques(client, db_pool):
         ini, fin = (int(x) for x in p["etiqueta"].split("-"))
         rangos.append((ini, fin))
 
-    for (ini_a, fin_a), (ini_b, _) in zip(rangos, rangos[1:]):
+    for (ini_a, fin_a), (ini_b, _) in zip(rangos, rangos[1:], strict=False):
         assert ini_b > fin_a, f"los bloques {ini_a}-{fin_a} y {ini_b} se solapan"

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import sys
 from collections import Counter
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -48,7 +48,7 @@ EMPRESAS = {
 @pytest.fixture(scope="module")
 def hoy() -> date:
     """El mismo "hoy" que usa el generador: UTC, como CURRENT_DATE en la base."""
-    return datetime.now(timezone.utc).date()
+    return datetime.now(UTC).date()
 
 
 @pytest.fixture(scope="module")

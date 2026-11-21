@@ -123,12 +123,6 @@ async def poblar_maquinas(aplicar: bool) -> int:
     for fila in filas:
         sla, costo = _valores(int(fila["maquina_id"]), fila["nombre"], fila["codigo"])
         critica = _es_critica(fila["nombre"], fila["codigo"])
-        ya_igual = (
-            fila["sla_horas"] is not None
-            and fila["costo_inactividad_minuto"] is not None
-            and abs(float(fila["sla_horas"]) - sla) < 0.01
-            and abs(float(fila["costo_inactividad_minuto"]) - costo) < 0.01
-        )
         # `conservada` = ya tiene ambos valores (cargados a mano desde la UI): no se pisa.
         plan.append(
             (

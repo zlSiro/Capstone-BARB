@@ -12,14 +12,13 @@ Estrategia: mockea chat_repository. No toca la BD.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 import pytest
 
 from barb.core.security import get_current_user
 from barb.main import app
-
 
 # =============================================================================
 # Fixtures
@@ -68,7 +67,7 @@ def fake_session_row():
         "usuario_id": 1,
         "empresa_id": 1,
         "titulo": "Diagnóstico bomba",
-        "saved_at": datetime(2026, 9, 29, 18, 30, tzinfo=timezone.utc),
+        "saved_at": datetime(2026, 9, 29, 18, 30, tzinfo=UTC),
         "messages": [],
     }
 
@@ -99,13 +98,13 @@ async def test_list_sessions_devuelve_items(client, override_auth, mock_repo):
         {
             "session_id": "11111111-1111-1111-1111-111111111111",
             "titulo": "Consulta 1",
-            "saved_at": datetime(2026, 9, 29, 10, 0, tzinfo=timezone.utc),
+            "saved_at": datetime(2026, 9, 29, 10, 0, tzinfo=UTC),
             "message_count": 4,
         },
         {
             "session_id": "22222222-2222-2222-2222-222222222222",
             "titulo": "Consulta 2",
-            "saved_at": datetime(2026, 9, 29, 11, 0, tzinfo=timezone.utc),
+            "saved_at": datetime(2026, 9, 29, 11, 0, tzinfo=UTC),
             "message_count": 2,
         },
     ]

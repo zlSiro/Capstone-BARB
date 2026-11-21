@@ -126,11 +126,11 @@ async def stream_chat(
     if request.session_id:
         try:
             uuid.UUID(request.session_id)
-        except (ValueError, TypeError):
+        except (ValueError, TypeError) as err:
             raise HTTPException(
                 status_code=422,
                 detail="session_id debe ser un UUID válido.",
-            )
+            ) from err
 
         existing = await chat_repository.get_session(request.session_id, user_id)
         if not existing:
@@ -542,11 +542,11 @@ async def get_session_detail(
     # Validar formato UUID
     try:
         uuid.UUID(session_id)
-    except (ValueError, TypeError):
+    except (ValueError, TypeError) as err:
         raise HTTPException(
             status_code=422,
             detail="session_id debe ser un UUID válido.",
-        )
+        ) from err
 
     # Verificar ownership + existencia
     session = await chat_repository.get_session(session_id, user_id)
@@ -593,11 +593,11 @@ async def delete_session(
     # Validar formato UUID
     try:
         uuid.UUID(session_id)
-    except (ValueError, TypeError):
+    except (ValueError, TypeError) as err:
         raise HTTPException(
             status_code=422,
             detail="session_id debe ser un UUID válido.",
-        )
+        ) from err
 
     deleted = await chat_repository.delete_session(session_id, user_id)
     if not deleted:
