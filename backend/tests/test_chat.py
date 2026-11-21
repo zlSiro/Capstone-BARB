@@ -12,7 +12,6 @@ from barb.core.security import get_current_user
 from barb.core.token_limit import token_limiter
 from barb.main import app
 
-
 # =============================================================================
 # Fixtures
 # =============================================================================
@@ -264,7 +263,7 @@ async def test_stream_sesion_existente_recupera_historial(client, override_auth,
             "/api/chat/stream",
             json={"message": "seguimiento", "session_id": fake_uuid},
         ) as resp:
-            raw = "".join([c async for c in resp.aiter_text()])
+            "".join([c async for c in resp.aiter_text()])
 
     assert fake_chain.last_kwargs is not None
     assert fake_chain.last_kwargs["mensaje"] == "seguimiento"

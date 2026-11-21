@@ -45,6 +45,8 @@ ignore = ["B008"]
 [tool.ruff.lint.per-file-ignores]
 # RBAC matrices read best as one row per role; keep them un-wrapped.
 "src/barb/core/permissions.py" = ["E501"]
+# Migraciones ya aplicadas: mensajes SQL largos no se reformatean.
+"migrations/versions/*.py" = ["E501"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

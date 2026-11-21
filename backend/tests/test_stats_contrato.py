@@ -16,6 +16,8 @@ comprueba además el 403, que esa suite no ejercía.
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 import pytest
 
 from barb.core.db import fetch_one
@@ -292,7 +294,7 @@ async def _estancadas_esperadas(empresa_id: int) -> dict[str, int]:
             sigue_abierta
             and f["estado"] == "in_progress"
             and referencia is not None
-            and (f["ahora"] - referencia).days > 7
+            and (f["ahora"] - referencia) > timedelta(days=7)
         )
 
         vencidas += 1 if es_vencida else 0

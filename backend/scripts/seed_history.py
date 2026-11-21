@@ -24,7 +24,7 @@ from __future__ import annotations
 import logging
 import random
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
@@ -403,7 +403,7 @@ def generar_ots(
     # Chile el "hoy" del seed va tres horas atrás del de la base: pasada las 21:00 el
     # gráfico de backlog dibuja un día más de los que el seed generó, y ese punto sale
     # vacío. Se vio justo al densificar la ventana (CGBIDA-439).
-    hoy = hoy or datetime.now(timezone.utc).replace(tzinfo=None)
+    hoy = hoy or datetime.now(UTC).replace(tzinfo=None)
     meses = _meses_hacia_atras(hoy, MESES)
     filas: list[dict] = []
     contador = 0

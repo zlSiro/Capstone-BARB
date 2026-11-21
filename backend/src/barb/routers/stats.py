@@ -865,7 +865,6 @@ async def get_financial_impact(
 
         mttr = float(f["mttr"])
         costo_total = float(f["costo_total_acumulado"])
-        downtime_evitado = float(f["downtime_evitado_min"])
         total_completadas = int(f["total_completadas"])
         completadas_en_sla = int(f["completadas_en_sla"])
 

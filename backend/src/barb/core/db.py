@@ -5,7 +5,7 @@ import logging
 from collections.abc import AsyncIterator, Coroutine
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
-from typing import Any, TypeVar
+from typing import Any
 
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
@@ -13,8 +13,6 @@ from psycopg_pool import AsyncConnectionPool
 from barb.core.config import settings
 
 logger = logging.getLogger("barb.db")
-
-T = TypeVar("T")
 
 pool = AsyncConnectionPool(
     conninfo=settings.database_url,
@@ -53,7 +51,7 @@ async def close_pool() -> None:
     await pool.close()
 
 
-async def _a_salvo_de_la_cancelacion(coro: Coroutine[Any, Any, T]) -> T:
+async def _a_salvo_de_la_cancelacion[T](coro: Coroutine[Any, Any, T]) -> T:
     """
     Espera `coro` sin que una cancelación de la request lo interrumpa a media query.
 

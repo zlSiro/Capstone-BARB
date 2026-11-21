@@ -21,9 +21,9 @@ Propiedades que se fijan aquí:
 
 from __future__ import annotations
 
-import pytest
-
 import pathlib
+
+import pytest
 
 from barb.core.db import fetch_all
 from barb.routers import stats
@@ -68,7 +68,12 @@ def _mock_pool(incidentes: int, tiempo_promedio: float | None):
             # MTBF, y esa ambigüedad ya provocó un bug real. Los alias vienen del SELECT
             # de stats.py y son únicos.
             if " AS incidentes_periodo" in self._actual:
-                return _Fila(incidentes_periodo=incidentes, tiempo_promedio_real=tiempo_promedio, costo_periodo=0, minutos_periodo=0)
+                return _Fila(
+                    incidentes_periodo=incidentes,
+                    tiempo_promedio_real=tiempo_promedio,
+                    costo_periodo=0,
+                    minutos_periodo=0,
+                )
             if " AS fallas" in self._actual:  # MTBF
                 return _Fila(fallas=4, downtime_min=0)
             if " AS vencidas" in self._actual:  # estancadas (CGBIDA-396)

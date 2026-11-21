@@ -155,7 +155,8 @@ async def test_catalogos_filtrados_por_empresa(client):
 
 
 async def test_no_se_puede_crear_ot_con_maquina_o_tecnico_de_otra_empresa(client):
-    # Supervisor de empresa 2 (el único rol que crea OT directas) con la máquina de la empresa 1 (id 1 = Chancador de cono Sandvik H8800).
+    # Supervisor de empresa 2 (el único rol que crea OT directas) con la máquina de la
+    # empresa 1 (id 1 = Chancador de cono Sandvik H8800).
     h = await _login(client, ("supervisor@alimentos.cl", "alimentos123"))
     r = await client.post(
         "/api/work-orders",

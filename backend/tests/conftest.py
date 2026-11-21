@@ -12,15 +12,13 @@ if sys.platform == "win32":
     asyncio.new_event_loop = _forced_selector_new_event_loop
 # ==== FIN FORCE ====
 
-from typing import AsyncIterator  # noqa: E402
+from collections.abc import AsyncIterator  # noqa: E402
 
-import pytest  
-import pytest_asyncio  
-from httpx import AsyncClient, ASGITransport  
+import pytest_asyncio
+from httpx import ASGITransport, AsyncClient
 
-from barb.core.db import close_pool, open_pool  
-from barb.main import app  
-
+from barb.core.db import close_pool, open_pool
+from barb.main import app
 
 # =============================================================================
 # Refuerzo por si otro plugin resetea la policy
