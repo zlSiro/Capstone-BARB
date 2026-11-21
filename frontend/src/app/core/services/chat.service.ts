@@ -41,7 +41,7 @@ export class ChatService {
   /**
    * Turno multimodal: imagen (data URL) + pregunta, atendido por el modelo
    * multimodal del backend (mismos eventos SSE que el stream textual).
-   * Contrato: docs/contrato_api_chat_multimedia.md.
+   * Contrato: docs/referencias/contrato_api_chat_multimedia.md.
    */
   streamMultimedia(payload: MultimediaRequest): Observable<ChatStreamEvent> {
     const t = this.i18n.t('docChat');

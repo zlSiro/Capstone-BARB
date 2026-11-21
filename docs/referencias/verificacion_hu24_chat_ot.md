@@ -24,7 +24,7 @@
 |---|---|---|---|
 | **CGBIDA-536** | RBAC fail-closed en tools y prompt | Listo | `crear_tools()` no registra `proponer_ot` para roles sin permiso; `_prompt_sistema` omite la regla 9. |
 | **CGBIDA-537** | Asignación por rol y aislamiento | Listo | `_resolver_tecnico()` asigna técnico de la sesión o primer técnico de la empresa; tests en `test_crear_ot.py`. |
-| **CGBIDA-538** | E2E + docs | Listo | Sección §2.14 en `docs/AI_ARCHITECTURE.md` y este informe de verificación. |
+| **CGBIDA-538** | E2E + docs | Listo | Sección §2.14 en `docs/referencias/AI_ARCHITECTURE.md` y este informe de verificación. |
 | **CGBIDA-539** | Fuzzy matching en máquinas | Listo | Tolerancia en `_buscar_maquinas`, `_puntaje` y `_coincide_identificador` con pruebas de variación y aislamiento. |
 
 ---

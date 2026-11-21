@@ -1,7 +1,7 @@
 # Contrato API `/api/chat/multimedia` (HU-05)
 
 > Análisis de imágenes en el chat IA (multimodal). Diseño:
-> `docs/MULTIMODAL_ARCHITECTURE.md` (CGBIDA-274).
+> `docs/referencias/MULTIMODAL_ARCHITECTURE.md` (CGBIDA-274).
 
 ## Base
 

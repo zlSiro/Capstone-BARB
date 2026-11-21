@@ -1,7 +1,7 @@
 # Arquitectura Multimodal — HU-05: Que la IA pueda procesar multimedia
 
 > **Estado: PROPUESTA (CGBIDA-274).** Pendiente de validación con el equipo.
-> Al implementarse, se documenta el estado final en `docs/AI_ARCHITECTURE.md` (CGBIDA-282).
+> Al implementarse, se documenta el estado final en `docs/referencias/AI_ARCHITECTURE.md` (CGBIDA-282).
 
 ## 1. Objetivo
 
@@ -150,7 +150,7 @@ MULTIMODAL_TIMEOUT=120
 MULTIMODAL_MAX_IMAGE_MB=5
 ```
 
-## 6. Contrato API (formalizado en CGBIDA-275 → docs/contrato_api_chat_multimedia.md)
+## 6. Contrato API (formalizado en CGBIDA-275 → docs/referencias/contrato_api_chat_multimedia.md)
 
 `POST /api/chat/multimedia` · Body: `{session_id?, message, image_base64}`
 · Response: SSE idéntico al de `/api/chat/stream`.

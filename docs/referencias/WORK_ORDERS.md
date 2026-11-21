@@ -281,7 +281,7 @@ cd frontend && npm test
 
 ## 13. Verificación end-to-end
 
-Usuarios del seed (ver `docs/MULTIEMPRESA.md`): `supervisor1@planta.com / super123`, `engineer1@planta.com / engineer123`, `carlos@planta.com / tecnico123`, `operador1@planta.com / operador123`.
+Usuarios del seed (ver `docs/referencias/MULTIEMPRESA.md`): `supervisor1@planta.com / super123`, `engineer1@planta.com / engineer123`, `carlos@planta.com / tecnico123`, `operador1@planta.com / operador123`.
 
 - [ ] Supervisor en `/work-orders`: la columna Estado muestra un selector; una OT Pendiente ofrece `→ En curso` y `→ Cancelada`.
 - [ ] Elegir `→ En curso` y confirmar: toast de éxito; el selector pasa a «En curso» y ahora ofrece `→ Por validar` / `→ Cancelada`.

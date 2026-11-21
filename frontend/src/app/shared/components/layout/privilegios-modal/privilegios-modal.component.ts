@@ -7,7 +7,7 @@ import { ModalComponent } from '../../ui/modal/modal.component';
 
 /**
  * Cantidad de privilegios que describen los textos de cada rol (`privilegios.<rol>_puede_N` / `<rol>_no_N`).
- * Fuente: `matriz_rol.md`. Un spec comprueba que cada clave existe en español e inglés.
+ * Fuente: `docs/referencias/matriz_rol.md`. Un spec comprueba que cada clave existe en español e inglés.
  */
 export const PRIVILEGIOS_POR_ROL: Record<string, { puede: number; no: number }> = {
   operador: { puede: 3, no: 2 },

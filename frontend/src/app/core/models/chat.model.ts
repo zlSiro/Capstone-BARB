@@ -28,7 +28,7 @@ export interface ChatRequest {
   locale?: string;
 }
 
-// --- Chat multimodal (HU-05, CGBIDA-276): docs/contrato_api_chat_multimedia.md ---
+// --- Chat multimodal (HU-05, CGBIDA-276): docs/referencias/contrato_api_chat_multimedia.md ---
 
 export interface MultimediaRequest {
   session_id: string | null;

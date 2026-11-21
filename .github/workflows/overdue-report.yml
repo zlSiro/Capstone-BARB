@@ -1,5 +1,5 @@
 # Dispara cada hora el job de OTs atrasadas. El backend decide por empresa si "toca" enviar
-# (frecuencia/hora configuradas) y es idempotente por período. Ver docs/NOTIFICACIONES.md.
+# (frecuencia/hora configuradas) y es idempotente por período. Ver docs/referencias/NOTIFICACIONES.md.
 name: overdue-report
 
 on:

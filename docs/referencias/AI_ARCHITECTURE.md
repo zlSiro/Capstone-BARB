@@ -226,8 +226,7 @@ Al abrir una conversación existente, el flujo es:
 
 > CGBIDA-276/277 (backend, PR #24) + CGBIDA-278/279 (frontend, PR #25) + Fase 3
 > de verificación (CGBIDA-280/281/282). Diseño completo:
-> `docs/MULTIMODAL_ARCHITECTURE.md` · Contrato: `docs/contrato_api_chat_multimedia.md`
-> · Evidencia: `docs/verificacion_hu05_multimedia.md`.
+> `docs/referencias/MULTIMODAL_ARCHITECTURE.md` · Contrato: `docs/referencias/contrato_api_chat_multimedia.md`.
 >
 > Vigencia: las secciones 2.3–2.8 se escribieron en la HU-03 (deepseek con memoria en
 > RAM) y se actualizaron en la HU-22 (§2.13): hoy el chat textual usa NVIDIA NIM

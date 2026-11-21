@@ -7,8 +7,7 @@ Este documento tiene dos partes, con dueños y estados distintos:
 | **Comportamiento del mapa** | §1, §1.a–§1.g | Implementado y verificado |
 | **Decisión sobre las tablas `topologia_*`** | §2, §3, §4 | **Pendiente** (CGBIDA-370) |
 
-El contrato de la API vive en `docs/contrato_api_topologia.md` y **no se duplica aquí**.
-La revisión cruzada de HU-07 vive en `docs/verificacion_hu07_topologia.md`.
+El contrato de la API vive en `docs/referencias/contrato_api_topologia.md` y **no se duplica aquí**.
 
 **Índice**
 
@@ -50,7 +49,7 @@ grafo**, así que A-2 y A-3 se heredan sin volver a implementarlas: lo que el ma
 el panel tampoco lo lista.
 
 El contrato exacto —rutas, respuesta, códigos y ejemplos— está en
-`docs/contrato_api_topologia.md`, sección "detalle de un nodo". **No se repite aquí.**
+`docs/referencias/contrato_api_topologia.md`, sección "detalle de un nodo". **No se repite aquí.**
 
 **Consecuencia de A-3:** el grafo deja de ser un árbol estricto de tres niveles. Un nodo de
 disciplina puede tener varios padres. El cliente debe soportarlo.
@@ -217,7 +216,7 @@ La verificación es por **tests de clase** (`dark:` presente en el DOM) más rev
 medición de contraste con herramienta: queda como deuda de accesibilidad.
 
 El modo oscuro general de la aplicación (navbar y dashboard) se documenta en
-`docs/DASHBOARD_KPIS.md`; aquí solo se describe lo específico del mapa.
+`docs/referencias/DASHBOARD_KPIS.md`; aquí solo se describe lo específico del mapa.
 
 ## 1.f El panel de OTs: filtro, orden y grupos plegables (CGBIDA-386)
 
@@ -302,7 +301,7 @@ zoom y paneo. Es la diferencia entre recargar y resetear (§1.d.1).
 
 Payload y respuesta: `PlantaCompletaCreate` / `PlantaCompletaResponse`. El **contrato completo**
 —campos, límites, códigos `403`/`409`/`422`/`500` y el flag `creada`— vive en
-`docs/contrato_api_plantas.md` y no se duplica aquí; esta sección solo resume lo que el mapa
+`docs/referencias/contrato_api_plantas.md` y no se duplica aquí; esta sección solo resume lo que el mapa
 necesita saber del alta.
 
 ### 1.g.3 Qué se ve en el mapa después del alta
@@ -322,7 +321,7 @@ plantas. Consecuencias:
 - **No hay push del mapa**: ningún canal avisa «se creó una planta». El refresco depende de
   `recargarTopologia()`, y por eso el mantenedor y el mapa son la misma pantalla.
 - **No hay refresco entre usuarios**: si otra persona crea una máquina, hay que recargar.
-- El tiempo real por SSE existe para **OTs** (`docs/HU-10-REALTIME_OT.md`), no para la topología.
+- El tiempo real por SSE existe para **OTs** (`docs/referencias/HU-10-REALTIME_OT.md`), no para la topología.
 
 ## 2. Las tablas `topologia_*`: evidencia
 
@@ -434,12 +433,9 @@ entrega.
 
 | Tema | Dónde vive |
 |---|---|
-| Contrato HTTP (rutas, campos, códigos, ejemplos) | `docs/contrato_api_topologia.md` |
-| Revisión cruzada de HU-07 (qué se verificó y cómo) | `docs/verificacion_hu07_topologia.md` |
-| KPI del dashboard y su modo oscuro | `docs/DASHBOARD_KPIS.md` |
-| Tiempo real de OTs por SSE | `docs/HU-10-REALTIME_OT.md` |
-| Reglas de negocio y estados de las OTs | `docs/WORK_ORDERS.md` |
-| Multi-empresa, roles y `super_usuario` | `docs/MULTIEMPRESA.md` |
-| Contrato del alta masiva de plantas (campos, límites, errores) | `docs/contrato_api_plantas.md` |
-
-El índice de la documentación está en `docs/README.md`.
+| Contrato HTTP (rutas, campos, códigos, ejemplos) | `docs/referencias/contrato_api_topologia.md` |
+| KPI del dashboard y su modo oscuro | `docs/referencias/DASHBOARD_KPIS.md` |
+| Tiempo real de OTs por SSE | `docs/referencias/HU-10-REALTIME_OT.md` |
+| Reglas de negocio y estados de las OTs | `docs/referencias/WORK_ORDERS.md` |
+| Multi-empresa, roles y `super_usuario` | `docs/referencias/MULTIEMPRESA.md` |
+| Contrato del alta masiva de plantas (campos, límites, errores) | `docs/referencias/contrato_api_plantas.md` |

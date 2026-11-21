@@ -377,7 +377,7 @@ def bloque_equipo(maquina: dict | None) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Cadena multimodal (HU-05 / CGBIDA-277) — docs/MULTIMODAL_ARCHITECTURE.md (D5)
+# Cadena multimodal (HU-05 / CGBIDA-277) — docs/referencias/MULTIMODAL_ARCHITECTURE.md (D5)
 #
 # El chat textual (nemotron) es text-only: para analizar imágenes se usa un
 # SEGUNDO modelo (MULTIMODAL_MODEL, default meta/muse-glimmer-30b) sobre el

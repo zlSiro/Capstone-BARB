@@ -5,7 +5,7 @@ import { ImageAttachmentComponent } from './image-attachment.component';
 
 /**
  * HU-05 (CGBIDA-278): el componente de carga valida ANTES de emitir — mismo
- * contrato que el backend (docs/contrato_api_chat_multimedia.md): solo
+ * contrato que el backend (docs/referencias/contrato_api_chat_multimedia.md): solo
  * jpeg/png/webp y máx. 5 MB decodificados. El backend revalida igual.
  */
 describe('ImageAttachmentComponent', () => {

@@ -2,7 +2,7 @@
 """
 Tests del endpoint POST /api/chat/multimedia (HU-05, CGBIDA-276/277).
 
-Contrato: docs/contrato_api_chat_multimedia.md
+Contrato: docs/referencias/contrato_api_chat_multimedia.md
 - Validaciones de payload: 400 (sin imagen/mensaje vacío), 413 (tamaño),
   422 (formato no permitido → array de errores Pydantic).
 - Infra compartida con /api/chat/stream: JWT, rate limit, token limit, SSE.

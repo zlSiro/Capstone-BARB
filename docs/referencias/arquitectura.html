@@ -215,11 +215,10 @@ footer{max-width:1200px;margin:0 auto;padding:0 20px 40px;color:var(--muted);fon
 │  ├─ scripts/         seed.py · backfill_*.py · run_overdue_job.py · sse_load.py
 │  └─ tests/           pytest contra Postgres real
 ├─ frontend/           Angular 22 (Vitest, Tailwind v4)
-├─ docs/               documentación de features (este archivo incluido)
+├─ docs/referencias/    documentación de features, matriz_rol.md incluida (este archivo también)
 ├─ docker-compose.yml  solo Postgres (pgvector/pgvector:pg17)
 ├─ render.yaml         blueprint del backend en Render
-├─ DEPLOY.md           Supabase + Render + Cloudflare Pages
-└─ matriz_rol.md       matriz de roles y privilegios (fuente de verdad RBAC)</pre>
+└─ DEPLOY.md           Supabase + Render + Cloudflare Pages</pre>
 
   <h3>Capas y módulos</h3>
   <div class="scroll"><table>
@@ -275,7 +274,7 @@ footer{max-width:1200px;margin:0 auto;padding:0 20px 40px;color:var(--muted);fon
   <p class="lead">RBAC estático en backend, espejado en frontend. Cualquier cambio de permisos toca tres lugares a la vez y los tests verifican la alineación.</p>
 
   <div class="card"><b>Regla de sincronía</b><br>
-    <code>backend/src/barb/core/permissions.py</code> + <code>frontend/src/app/core/permissions/permissions.ts</code> + <code>matriz_rol.md</code>. Tests: <code>test_permissions.py</code> / <code>permissions.spec.ts</code>.</div>
+    <code>backend/src/barb/core/permissions.py</code> + <code>frontend/src/app/core/permissions/permissions.ts</code> + <code>docs/referencias/matriz_rol.md</code>. Tests: <code>test_permissions.py</code> / <code>permissions.spec.ts</code>.</div>
 
   <h3>Roles</h3>
   <div class="scroll"><table>
@@ -486,7 +485,7 @@ Auditoría:  transacciones (trg_transaccion)  ·  auditoria_cambio (JSONB)</pre>
   </ul>
 
   <h3>Dashboard (stats)</h3>
-  <p><code>routers/stats.py</code> calcula MTBF, costo, salud, SLA e impacto con SLA y costo por máquina; KPIs financieros solo para gerente. Ver <code>docs/DASHBOARD_KPIS.md</code>.</p>
+  <p><code>routers/stats.py</code> calcula MTBF, costo, salud, SLA e impacto con SLA y costo por máquina; KPIs financieros solo para gerente. Ver <code>docs/referencias/DASHBOARD_KPIS.md</code>.</p>
 </section>
 
 <!-- ============ MODELO DE DATOS ============ -->
@@ -584,7 +583,7 @@ npm test                 # vitest</pre>
 </section>
 
 </main>
-<footer>Documento generado a partir del estado del repositorio. Fuente de verdad: código, <code>CLAUDE.md</code>, <code>matriz_rol.md</code> y <code>docs/</code>.</footer>
+<footer>Documento generado a partir del estado del repositorio. Fuente de verdad: código, <code>CLAUDE.md</code>, <code>docs/referencias/matriz_rol.md</code> y <code>docs/referencias/</code>.</footer>
 
 <script>
 (function(){

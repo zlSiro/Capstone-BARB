@@ -3,7 +3,7 @@
 Almacenamiento de los archivos de documentación (HU-04 — CGBIDA-233).
 
 Guarda los archivos subidos en **Supabase Storage** (bucket privado, ver
-docs/RAG_ARCHITECTURE.md D3) para que sobrevivan a los redeploys de Render.
+docs/referencias/RAG_ARCHITECTURE.md D3) para que sobrevivan a los redeploys de Render.
 Si Supabase no está configurado (`SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY`),
 degrada a disco local (`./uploads/documentos/...`) — el flujo sigue
 funcionando en desarrollo sin credenciales (patrón tolerante a fallos).

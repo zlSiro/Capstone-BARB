@@ -7,7 +7,7 @@ import { Component, computed, inject, input, output } from '@angular/core';
 import { I18nService } from '../../core/i18n/i18n.service';
 import { Icon } from '../../shared/components/ui/icon/icon';
 
-/** Formatos permitidos por el contrato del backend (docs/contrato_api_chat_multimedia.md). */
+/** Formatos permitidos por el contrato del backend (docs/referencias/contrato_api_chat_multimedia.md). */
 const ALLOWED_IMAGE_TYPES: readonly string[] = ['image/jpeg', 'image/png', 'image/webp'];
 
 /** Igual que MULTIMODAL_MAX_IMAGE_MB del backend: el backend revalida igual. */
