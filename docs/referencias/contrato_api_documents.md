@@ -1,7 +1,7 @@
 # Contrato API `/api/documents` (HU-04)
 
 > Gestión de manuales PDF que la IA usa como base de conocimiento (RAG).
-> Diseño: `docs/RAG_ARCHITECTURE.md` (CGBIDA-231).
+> Diseño: `docs/referencias/RAG_ARCHITECTURE.md` (CGBIDA-231).
 
 ## Base
 

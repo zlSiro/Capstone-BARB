@@ -1,7 +1,7 @@
 """pgvector + tabla documento_embedding (RAG — HU-04)
 
 Habilita la extensión vector y crea la tabla de chunks embebidos que usa el
-pipeline de RAG (ver docs/RAG_ARCHITECTURE.md, decisión D2):
+pipeline de RAG (ver docs/referencias/RAG_ARCHITECTURE.md, decisión D2):
 
 - `embedding vector(2048)`: dimensión de nvidia/nemotron-3-embed-1b (D1,
   validada por el equipo).

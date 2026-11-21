@@ -295,7 +295,7 @@ como `operativo`.
 **No se documentan aquí.** Cada elemento es la misma OT que devuelve el listado de órdenes de
 trabajo, con su contrato completo (campos, significados y `allowed_transitions`):
 
-> **Ver `docs/WORK_ORDERS.md`, sección 2 "Contrato API"**.
+> **Ver `docs/referencias/WORK_ORDERS.md`, sección 2 "Contrato API"**.
 
 Se reutiliza el mismo serializador del backend (`row_to_work_order`), así que reescribir los
 campos aquí garantizaría que los dos documentos se separen con el primer cambio.
@@ -334,7 +334,7 @@ Lo que sí importa para el panel: `estado` llega en **crudo** (`pending`, `assig
 ```
 
 > La OT se muestra recortada a los campos que el panel usa. El objeto real trae el contrato
-> completo de `docs/WORK_ORDERS.md`.
+> completo de `docs/referencias/WORK_ORDERS.md`.
 
 #### Nodo Planta — `GET /api/topology/p_4`
 
@@ -448,7 +448,7 @@ Este documento las describe como comportamiento vigente.
 Queda pendiente, en **CGBIDA-370**, decidir el destino de las cuatro tablas del esquema
 `topologia_zona` / `topologia_nodo` / `topologia_conexion` / `zona_nodo`: existen, están
 pobladas y **ningún código las lee**. La decisión y sus opciones viven en
-`docs/TOPOLOGIA.md`; aquí solo se referencia para no duplicar.
+`docs/referencias/TOPOLOGIA.md`; aquí solo se referencia para no duplicar.
 
 > **Interfaz.** El comportamiento de la interfaz (encuadre, zoom, modo oscuro, panel) se
 > documenta en `TOPOLOGIA.md` §1.d–1.g.

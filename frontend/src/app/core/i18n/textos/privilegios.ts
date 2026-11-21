@@ -1,5 +1,5 @@
 // Textos del aviso de privilegios que se muestra tras iniciar sesión. `en` está tipado como `typeof es`: no puede faltarle ni sobrarle una clave.
-// Fuente de los privilegios: `matriz_rol.md` (si cambia la matriz, hay que actualizar también estos textos).
+// Fuente de los privilegios: `docs/referencias/matriz_rol.md` (si cambia la matriz, hay que actualizar también estos textos).
 const es = {
   privilegios: {
     titulo: 'Tus privilegios como {v0}',

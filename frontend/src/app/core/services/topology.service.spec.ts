@@ -7,7 +7,7 @@ import { TopologyNodoDetalle } from '../models';
 
 /**
  * CGBIDA-382: el servicio debe llamar al endpoint de detalle de nodo con el
- * `nodo_id` en la ruta. El contrato está en `docs/contrato_api_topologia.md`,
+ * `nodo_id` en la ruta. El contrato está en `docs/referencias/contrato_api_topologia.md`,
  * sección "detalle de un nodo" (CGBIDA-381).
  */
 describe('TopologyService', () => {

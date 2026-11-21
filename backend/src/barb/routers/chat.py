@@ -253,7 +253,7 @@ async def stream_chat(
 
 # =============================================================================
 # Chat multimodal (HU-05): POST /api/chat/multimedia
-# Contrato: docs/contrato_api_chat_multimedia.md · Diseño: docs/MULTIMODAL_ARCHITECTURE.md
+# Contrato: docs/referencias/contrato_api_chat_multimedia.md · Diseño: docs/referencias/MULTIMODAL_ARCHITECTURE.md
 # =============================================================================
 
 # Formatos permitidos por el contrato (D4). muse-glimmer los soporta vía data URL

@@ -9,7 +9,7 @@ CGBIDA-359: cobertura del endpoint completo — estructura de la respuesta, cód
 estados de nodo derivados, formato de conexiones e integridad referencial.
 
 Solo lectura: estas pruebas no crean ni modifican filas.
-Contrato documentado en `docs/contrato_api_topologia.md`.
+Contrato documentado en `docs/referencias/contrato_api_topologia.md`.
 """
 
 from __future__ import annotations

@@ -75,7 +75,7 @@ class Settings(BaseSettings):
     chat_memory_window: int = 10
 
     # --- Multimodal (HU-05): análisis de imágenes en el chat ---
-    # Diseño: docs/MULTIMODAL_ARCHITECTURE.md (D1/D5). Modelo text+imagen de NVIDIA
+    # Diseño: docs/referencias/MULTIMODAL_ARCHITECTURE.md (D1/D5). Modelo text+imagen de NVIDIA
     # NIM, separado del chat textual (nemotron es text-only). Vacío = endpoint
     # /api/chat/multimedia responde 503.
     multimodal_model: str = "meta/muse-glimmer-30b"
@@ -101,7 +101,7 @@ class Settings(BaseSettings):
     def multimodal_configurado(self) -> bool:
         return bool(self.multimodal_model and self.multimodal_api_key)
 
-    # --- RAG: embeddings (HU-04 — D1, D2 y D6 de docs/RAG_ARCHITECTURE.md) ---
+    # --- RAG: embeddings (HU-04 — D1, D2 y D6 de docs/referencias/RAG_ARCHITECTURE.md) ---
     # El modelo produce 2048 dimensiones y `documento_embedding.embedding` está declarada
     # `vector(2048) NOT NULL` con índice HNSW sobre halfvec(2048). Cambiar de modelo no es
     # inocuo: obliga a migrar la columna (decisión de JP, ver AGENTS.md).

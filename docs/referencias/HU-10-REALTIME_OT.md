@@ -42,7 +42,7 @@ El evento **no** incluye `allowed_transitions` (depende del rol de cada cliente)
 
 - Entra: crear, cambiar estado y eliminar OT vía API. Objetivo de latencia < 1 s.
 - Aislamiento multi-empresa: usuario de empresa solo recibe eventos de su empresa (se ignora cualquier `empresa_id` del cliente). `super_usuario` recibe todas, o filtra con `?empresa_id=`.
-- Fuera: cambios hechos por SQL directo, y el paso automático a `overdue` (no hay scheduler en proceso; ver `docs/NOTIFICACIONES.md`).
+- Fuera: cambios hechos por SQL directo, y el paso automático a `overdue` (no hay scheduler en proceso; ver `docs/referencias/NOTIFICACIONES.md`).
 - Una sola instancia (plan gratis de Render). Escalar a varias = broker en Redis pub/sub.
 
 ### Reconexión (CGBIDA-337, 341)

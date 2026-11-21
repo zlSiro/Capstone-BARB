@@ -21,7 +21,7 @@ export class TopologyService {
    * Un nodo del mapa con sus órdenes de trabajo y sus hijos (CGBIDA-379).
    *
    * Un nodo de otra empresa devuelve 404, no 403: el backend no revela si existe
-   * (`docs/contrato_api_topologia.md`, sección "Aislamiento multi-empresa").
+   * (`docs/referencias/contrato_api_topologia.md`, sección "Aislamiento multi-empresa").
    */
   getNodo(nodoId: string) {
     return this.http.get<TopologyNodoDetalle>(`${this.url}/${encodeURIComponent(nodoId)}`);

@@ -1,4 +1,4 @@
-"""Embeddings de NVIDIA NIM para el RAG (HU-04 — D1 y D2 de docs/RAG_ARCHITECTURE.md).
+"""Embeddings de NVIDIA NIM para el RAG (HU-04 — D1 y D2 de docs/referencias/RAG_ARCHITECTURE.md).
 
 Antes de este módulo el proyecto tenía **todo listo menos el paso que genera los
 vectores**: la extensión `vector`, la tabla `documento_embedding` con su índice HNSW y

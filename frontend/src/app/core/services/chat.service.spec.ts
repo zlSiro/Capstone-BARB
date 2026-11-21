@@ -10,7 +10,7 @@ import type { ChatStreamEvent } from '../models/chat.model';
  * HU-03/HU-05: el chat textual y el multimodal comparten postSse (mismo parser
  * SSE y mismo manejo de 401). Estos tests blindan el endpoint correcto, el body
  * (image_base64 / empresa_id del super_usuario) y el parseo de eventos.
- * Contrato multimodal: docs/contrato_api_chat_multimedia.md (CGBIDA-276).
+ * Contrato multimodal: docs/referencias/contrato_api_chat_multimedia.md (CGBIDA-276).
  */
 
 const originalFetch = globalThis.fetch;

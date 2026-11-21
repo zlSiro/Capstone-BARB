@@ -14,7 +14,7 @@ dejara una maquina SIN ordenes (m_11), pero el historial sintetico del dashboard
 ajeno deje una fila vacia, la prueba que necesita una maquina sin ordenes crea la suya y
 la borra.
 
-Contrato del mapa: `docs/contrato_api_topologia.md`.
+Contrato del mapa: `docs/referencias/contrato_api_topologia.md`.
 """
 
 from __future__ import annotations

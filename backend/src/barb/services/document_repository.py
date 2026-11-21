@@ -4,7 +4,7 @@ Repositorio de documentos para RAG (HU-04).
 
 Capa de persistencia sobre las tablas `documento` y `documento_embedding`
 (migración 0003; ampliadas por 0004_multiempresa_documentos). El diseño
-completo está en docs/RAG_ARCHITECTURE.md (D2/D5/D6).
+completo está en docs/referencias/RAG_ARCHITECTURE.md (D2/D5/D6).
 
 Aislamiento multi-empresa (misma regla que el resto del sistema): TODAS las
 funciones exigen `empresa_id` y filtran por él en SQL — una empresa jamás ve,
@@ -15,7 +15,7 @@ Convención de ingesta (D5): primero se crea el documento con `chunks_indexed=0`
 (create_documento) y luego se indexan sus chunks (set_chunks), que actualiza
 el contador en la misma transacción. Si la indexación falla, el documento
 queda en estado "subido sin indexar" y puede re-subirse — coherente con
-docs/contrato_api_documents.md.
+docs/referencias/contrato_api_documents.md.
 
 Nota: desde HU-04 Fase 1 (CGBIDA-461) la búsqueda del chat es SEMÁNTICA: usa
 `search_similar_chunks` (pgvector, operador `<=>`) y cae a full-text solo si el

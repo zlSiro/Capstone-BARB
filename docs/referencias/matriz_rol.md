@@ -67,7 +67,7 @@ Leyenda: ✔ acceso total · 👁 solo lectura · propio = solo lo suyo · — s
   El resto de los roles de empresa ve todas las OT de su empresa.
 - **Aviso de falla → OT:** quien reporta (con foto opcional) ve solo sus avisos. Supervisor y gerente ven el repositorio completo,
   pero solo el supervisor decide: generar una OT (queda enlazada al aviso) o descartar (con motivo obligatorio, que ve quien reportó).
-  El gerente consulta, no decide. Detalle en `docs/AVISOS_FALLA.md`.
+  El gerente consulta, no decide. Detalle en `docs/referencias/AVISOS_FALLA.md`.
 - **Notificación de atrasos:** el correo de OT atrasadas llega a los destinatarios configurados y, además, a los gerentes y supervisores activos de la empresa (si la notificación está activa). La configuran supervisor y admin; el gerente solo la recibe.
 - **Estados de las OT:** `pending → in_progress → por_validar → completed`; desde `por_validar` el supervisor también puede devolverla a
   `in_progress` (comentario obligatorio). Cualquier estado activo puede pasar a `cancelled` (motivo obligatorio). `completed` y

@@ -4,7 +4,7 @@ Revision ID: 0004_multiempresa_documentos
 Revises: 0003_work_order_indexes
 Create Date: 2026-10-05
 
-Cambios de estructura de datos (resumen; detalle en docs/MULTIEMPRESA.md):
+Cambios de estructura de datos (resumen; detalle en docs/referencias/MULTIEMPRESA.md):
 
 1. USUARIO.empresa_id pasa a ser NULLABLE y se agrega un CHECK: solo el rol
    'super_usuario' puede no pertenecer a una empresa (ve toda la plataforma).

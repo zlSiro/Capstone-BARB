@@ -1,6 +1,6 @@
 // =============================================================================
 // TOPOLOGÍA DE PLANTA — GET /api/topology
-// Contrato: docs/contrato_api_topologia.md (CGBIDA-358)
+// Contrato: docs/referencias/contrato_api_topologia.md (CGBIDA-358)
 // =============================================================================
 
 import { WorkOrder } from './work-order.model';
@@ -52,7 +52,7 @@ export interface Topology {
 
 /**
  * Respuesta de `GET /api/topology/{nodo_id}` (CGBIDA-379).
- * Contrato: `docs/contrato_api_topologia.md`, sección "detalle de un nodo".
+ * Contrato: `docs/referencias/contrato_api_topologia.md`, sección "detalle de un nodo".
  *
  * - `nodo`    → EXACTAMENTE el mismo objeto que emite el mapa, con sus mismas coordenadas.
  * - `ordenes` → órdenes de trabajo de la máquina. **Vacío** si el nodo no es Máquina.
