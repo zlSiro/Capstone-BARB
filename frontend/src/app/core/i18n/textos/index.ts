@@ -7,6 +7,7 @@ import { empresasTextos } from './empresas';
 import { otTextos } from './ot';
 import { plantasTextos } from './plantas';
 import { privilegiosTextos } from './privilegios';
+import { reportesTextos } from './reportes';
 import { sistemaTextos } from './sistema';
 import { trxTextos } from './trx';
 import { usuariosTextos } from './usuarios';
@@ -21,6 +22,7 @@ export const textosExtra = {
     ...otTextos.es,
     ...plantasTextos.es,
     ...privilegiosTextos.es,
+    ...reportesTextos.es,
     ...sistemaTextos.es,
     ...trxTextos.es,
     ...usuariosTextos.es,
@@ -34,6 +36,7 @@ export const textosExtra = {
     ...otTextos.en,
     ...plantasTextos.en,
     ...privilegiosTextos.en,
+    ...reportesTextos.en,
     ...sistemaTextos.en,
     ...trxTextos.en,
     ...usuariosTextos.en,

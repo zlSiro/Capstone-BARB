@@ -43,9 +43,9 @@ describe('AyudaComponent (inicio de «Aprende BARB»)', () => {
     const { el } = montar('tecnico');
     expect(el.querySelector('#ayuda-primeros')!.textContent).toContain('Primeros pasos como Técnico');
     // Con el aviso de privilegios ya aceptado, esa primera tarea cuenta como hecha.
-    expect(q(el, 'ayuda-avance')!.textContent!.trim()).toBe('1 de 5');
+    expect(q(el, 'ayuda-avance')!.textContent!.trim()).toBe('1 de 6');
     const barra = el.querySelector('[role="progressbar"]')!;
-    expect(barra.getAttribute('aria-valuemax')).toBe('5');
+    expect(barra.getAttribute('aria-valuemax')).toBe('6');
     expect(barra.getAttribute('aria-valuenow')).toBe('1');
   });
 
@@ -57,37 +57,66 @@ describe('AyudaComponent (inicio de «Aprende BARB»)', () => {
       'tarea-iniciar_ot',
       'tarea-enviar_validacion',
       'tarea-docchat',
+      'tarea-reporte_mi_actividad',
     ]);
     // «Confirmar privilegios» (ya aceptado) no tiene recorrido ni botón. Las otras 4 pendientes sí.
-    expect(el.querySelectorAll('[data-testid="tarea-mostrar"]')).toHaveLength(4);
+    expect(el.querySelectorAll('[data-testid="tarea-mostrar"]')).toHaveLength(5);
     expect(q(el, 'tarea-privilegios')!.textContent).toContain('Confirmar tus privilegios');
   });
 
   it('«Confirmar privilegios» queda hecha solo cuando el aviso ya fue aceptado', () => {
     const { fixture, el, privilegiosPendientes } = montar('operador', { privilegiosPendientes: true });
     expect(q(el, 'tarea-privilegios')!.querySelector('[data-testid="tarea-hecha"]')).toBeNull();
-    expect(q(el, 'ayuda-avance')!.textContent!.trim()).toBe('0 de 5');
+    expect(q(el, 'ayuda-avance')!.textContent!.trim()).toBe('0 de 6');
 
     privilegiosPendientes.set(false); // el usuario acepta el aviso de privilegios
     fixture.detectChanges();
     expect(q(el, 'tarea-privilegios')!.querySelector('[data-testid="tarea-hecha"]')!.textContent).toContain('Hecho');
-    expect(q(el, 'ayuda-avance')!.textContent!.trim()).toBe('1 de 5');
+    expect(q(el, 'ayuda-avance')!.textContent!.trim()).toBe('1 de 6');
   });
 
-  it('una tarea con su recorrido terminado aparece como «Hecho» y sin botón; el avance se actualiza', () => {
+  it('un recorrido terminado se puede repetir cuantas veces se quiera: el botón sigue y dice «Repetir recorrido»', () => {
+    const { fixture, el, progreso, recorridos } = montar('tecnico');
+    progreso.marcar('iniciar_enviar');
+    fixture.detectChanges();
+    const fila = q(el, 'tarea-iniciar_ot')!;
+    expect(fila.querySelector('[data-testid="tarea-hecha"]')).not.toBeNull(); // sigue «Hecho»: el avance no se pierde
+    const boton = q(fila, 'tarea-mostrar') as HTMLButtonElement;
+    expect(boton).not.toBeNull();
+    expect(boton.textContent).toContain('Repetir recorrido');
+    expect(boton.getAttribute('aria-label')).toContain('Repetir el recorrido');
+    const iniciar = vi.spyOn(recorridos, 'iniciar').mockImplementation(() => undefined);
+    boton.click();
+    boton.click();
+    expect(iniciar).toHaveBeenCalledTimes(2);
+    expect(iniciar.mock.calls[0][0]).toBe('iniciar_enviar');
+  });
+
+  it('en una sesión posterior (avance guardado) los recorridos ya hechos siguen disponibles', () => {
+    localStorage.setItem('barb.ayuda.progreso.5', JSON.stringify(['reportar_falla', 'docchat', 'iniciar_enviar']));
+    const { el } = montar('tecnico');
+    for (const tarea of ['reportar_falla', 'iniciar_ot', 'enviar_validacion', 'docchat']) {
+      const fila = q(el, `tarea-${tarea}`)!;
+      expect(fila.querySelector('[data-testid="tarea-hecha"]'), tarea).not.toBeNull();
+      expect(fila.querySelector('[data-testid="tarea-mostrar"]'), tarea).not.toBeNull();
+    }
+    // y la lista de «Recorridos guiados» nunca los oculta
+    expect(el.querySelector('[data-testid="recorrido-reportar_falla"]')).not.toBeNull();
+  });
+
+  it('una tarea con su recorrido terminado aparece como «Hecho» y el avance se actualiza', () => {
     const { fixture, el, progreso } = montar('tecnico');
     progreso.marcar('iniciar_enviar'); // un solo recorrido respalda «iniciar» y «enviar a validación»
     fixture.detectChanges();
     expect(q(el, 'tarea-iniciar_ot')!.querySelector('[data-testid="tarea-hecha"]')).not.toBeNull();
-    expect(q(el, 'tarea-enviar_validacion')!.querySelector('[data-testid="tarea-mostrar"]')).toBeNull();
-    expect(q(el, 'ayuda-avance')!.textContent!.trim()).toBe('3 de 5');
+    expect(q(el, 'ayuda-avance')!.textContent!.trim()).toBe('3 de 6');
     expect(el.querySelector('[role="progressbar"]')!.getAttribute('aria-valuenow')).toBe('3');
   });
 
   it('el avance guardado de este usuario se ve al abrir la ayuda', () => {
     localStorage.setItem('barb.ayuda.progreso.5', JSON.stringify(['reportar_falla', 'docchat']));
     const { el } = montar('tecnico', { id: 5 });
-    expect(q(el, 'ayuda-avance')!.textContent!.trim()).toBe('3 de 5'); // privilegios + 2 guardadas
+    expect(q(el, 'ayuda-avance')!.textContent!.trim()).toBe('3 de 6'); // privilegios + 2 guardadas
   });
 
   it('«Mostrarme cómo» inicia el recorrido de la tarea y le pasa el botón para devolverle el foco', () => {

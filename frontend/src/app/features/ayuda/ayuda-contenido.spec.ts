@@ -20,16 +20,19 @@ function servicio(role: string) {
 
 /** El requisito se mide contra `permissions.ts` directamente (la fuente de verdad), no contra el servicio que se prueba. */
 const cumple = (role: string, req: Requisito | undefined): boolean =>
-  !req || ((!req.ruta || puedeAccederRuta(role as never, req.ruta)) && (!req.accion || puedeEjecutarAccion(role as never, req.accion)));
+  !req ||
+  ((!req.ruta || puedeAccederRuta(role as never, req.ruta)) &&
+    (!req.accion || puedeEjecutarAccion(role as never, req.accion)) &&
+    (!req.sinRuta || !puedeAccederRuta(role as never, req.sinRuta)));
 
 /** Tareas esperadas por perfil (tabla del pedido; «Asignar una OT» no existe aún en el frontend). */
 const ESPERADAS: Record<string, string[]> = {
-  operador: ['privilegios', 'reportar_falla', 'seguir_aviso', 'ver_ot_generada', 'docchat'],
-  tecnico: ['privilegios', 'reportar_falla', 'iniciar_ot', 'enviar_validacion', 'docchat'],
-  supervisor: ['revisar_avisos', 'generar_ot', 'validar_devolver', 'salud'],
-  engineer: ['dash_operativo', 'top5', 'subir_documento', 'reportar_falla', 'docchat'],
-  gerente: ['dashboard_completo', 'costo_maquina', 'crear_administrador', 'bitacora', 'revisar_avisos'],
-  admin: ['crear_usuario_operativo', 'registrar_planta', 'disciplinas', 'subir_documento', 'consultar_ot'],
+  operador: ['privilegios', 'reportar_falla', 'seguir_aviso', 'ver_ot_generada', 'docchat', 'reporte_mi_actividad'],
+  tecnico: ['privilegios', 'reportar_falla', 'iniciar_ot', 'enviar_validacion', 'docchat', 'reporte_mi_actividad'],
+  supervisor: ['revisar_avisos', 'generar_ot', 'validar_devolver', 'salud', 'reporte_resumen'],
+  engineer: ['dash_operativo', 'top5', 'subir_documento', 'reportar_falla', 'docchat', 'reporte_resumen'],
+  gerente: ['dashboard_completo', 'costo_maquina', 'crear_administrador', 'bitacora', 'revisar_avisos', 'reporte_resumen', 'reporte_costos'],
+  admin: ['crear_usuario_operativo', 'registrar_planta', 'disciplinas', 'subir_documento', 'consultar_ot', 'reporte_calidad'],
   super_usuario: ['crear_empresa', 'crear_gerente', 'suspender', 'mis_transacciones'],
 };
 
@@ -64,6 +67,23 @@ describe('Ayuda: filtrado por perfil', () => {
       return servicio(r).recorridos().some((x) => x.id === 'costo_maquina');
     });
     expect(conCosto).toEqual(['gerente']);
+  });
+
+  it('cada perfil ve las guías de Reportes que SÍ puede abrir (y ninguna que lo redirija)', () => {
+    const esperadas: Record<string, string[]> = {
+      operador: ['reporte_mi_actividad', 'reporte_traza', 'reportes_inicio'],
+      tecnico: ['reporte_mi_actividad', 'reporte_traza', 'reportes_inicio'],
+      supervisor: ['reporte_resumen', 'reporte_traza', 'reportes_inicio'],
+      engineer: ['reporte_resumen', 'reporte_traza', 'reportes_inicio'],
+      gerente: ['reporte_costos', 'reporte_resumen', 'reporte_traza', 'reportes_inicio'],
+      admin: ['reporte_calidad', 'reporte_traza', 'reportes_inicio'],
+      super_usuario: [],
+    };
+    for (const [rol, ids] of Object.entries(esperadas)) {
+      TestBed.resetTestingModule();
+      const guias = servicio(rol).recorridos().map((r) => r.id).filter((id) => id.startsWith('reporte')).sort();
+      expect(guias, rol).toEqual(ids);
+    }
   });
 
   it('el superusuario no ve nada de DocChat', () => {

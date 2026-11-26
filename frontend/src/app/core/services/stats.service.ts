@@ -3,6 +3,8 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import {
   FinancialStats,
   FiltrosDashboard,
+  FiltrosReporte,
+  GranularidadReporte,
   GRANULARIDAD_POR_RANGO,
   HistoricoRespuesta,
 } from '../models';
@@ -59,4 +61,33 @@ export class StatsService {
       `${this.apiUrl}/stats/historical?${params.toString()}`
     );
   }
+
+  /**
+   * KPIs con una ventana de `dias` cualquiera (módulo Reportes). Los métodos de arriba solo mandan `days` para 7 días; este acepta
+   * 7, 30, 90, 365… (`null` = histórico) sin cambiar el comportamiento del dashboard.
+   */
+  getFinancialImpactDias(dias: number | null, topo: Pick<FiltrosReporte, 'planta' | 'disciplina' | 'maquina'>) {
+    return this.http.get<FinancialStats>(`${this.apiUrl}/stats/financial-impact${consultaReporte(dias, topo)}`);
+  }
+
+  /** Serie histórica con la granularidad y la ventana que pide el reporte. */
+  getHistoricalDias(granularity: GranularidadReporte, dias: number | null, topo: Pick<FiltrosReporte, 'planta' | 'disciplina' | 'maquina'>) {
+    return this.http.get<HistoricoRespuesta>(`${this.apiUrl}/stats/historical${consultaReporte(dias, topo, granularity)}`);
+  }
+}
+
+/** Query de los reportes: solo viaja lo que tiene valor (mandar `planta_id=null` rompería la conversión a entero en FastAPI). */
+function consultaReporte(
+  dias: number | null,
+  topo: Pick<FiltrosReporte, 'planta' | 'disciplina' | 'maquina'>,
+  granularity?: GranularidadReporte,
+): string {
+  let params = new HttpParams();
+  if (granularity) params = params.set('granularity', granularity);
+  if (dias !== null) params = params.set('days', dias);
+  if (topo.planta !== null) params = params.set('planta_id', topo.planta);
+  if (topo.disciplina !== null) params = params.set('disciplina_id', topo.disciplina);
+  if (topo.maquina !== null) params = params.set('maquina_id', topo.maquina);
+  const q = params.toString();
+  return q ? `?${q}` : '';
 }

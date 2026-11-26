@@ -2,7 +2,9 @@ import { Component, computed, inject } from '@angular/core';
 
 import { I18nService } from '../../../../core/i18n/i18n.service';
 import { TranslatePipe } from '../../../../core/i18n/translate.pipe';
+import { PermissionsService } from '../../../../core/permissions/permissions.service';
 import { AuthService } from '../../../../core/services/auth.service';
+import { reportesVisibles } from '../../../../features/reportes/reportes-catalogo';
 import { ModalComponent } from '../../ui/modal/modal.component';
 
 /**
@@ -62,6 +64,21 @@ const claves = (rol: string, tipo: 'puede' | 'no', cantidad: number): string[] =
             </ul>
           </section>
 
+          @if (c.reportes.length) {
+            <section aria-labelledby="priv-reportes" data-testid="privilegios-reportes-seccion">
+              <h3 id="priv-reportes" class="mb-2 text-base font-bold text-accion">{{ 'privilegios.reportes' | translate }}</h3>
+              <ul class="flex flex-col gap-2" data-testid="privilegios-reportes">
+                @for (id of c.reportes; track id) {
+                  <li class="flex gap-2 text-base">
+                    <span aria-hidden="true" class="font-bold text-accion">•</span>
+                    <span>{{ 'reportes.' + id + '_titulo' | translate }}</span>
+                  </li>
+                }
+              </ul>
+              <p class="mt-2 text-sm text-tinta-suave">{{ 'privilegios.reportes_nota' | translate }}</p>
+            </section>
+          }
+
           <p class="text-sm text-tinta-suave">{{ 'privilegios.aviso' | translate }}</p>
         </div>
 
@@ -77,6 +94,7 @@ const claves = (rol: string, tipo: 'puede' | 'no', cantidad: number): string[] =
 export class PrivilegiosModalComponent {
   private readonly auth = inject(AuthService);
   private readonly i18n = inject(I18nService);
+  private readonly permisos = inject(PermissionsService);
 
   private readonly rol = computed(() => String(this.auth.user()?.role ?? ''));
 
@@ -85,7 +103,9 @@ export class PrivilegiosModalComponent {
     const rol = this.rol();
     const cantidades = PRIVILEGIOS_POR_ROL[rol];
     if (!cantidades) return null;
-    return { puede: claves(rol, 'puede', cantidades.puede), no: claves(rol, 'no', cantidades.no) };
+    // Los reportes salen del catálogo de Reportes, que los filtra con la matriz de permisos (no hay una lista de roles aquí).
+    const reportes = reportesVisibles(this.permisos).map((r) => r.id);
+    return { puede: claves(rol, 'puede', cantidades.puede), no: claves(rol, 'no', cantidades.no), reportes };
   });
 
   protected readonly titulo = computed(() =>

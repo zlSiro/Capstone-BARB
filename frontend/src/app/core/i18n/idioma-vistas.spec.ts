@@ -23,6 +23,7 @@ import { WorkOrdersListComponent } from '../../features/work-orders/pages/work-o
 import { AyudaComponent } from '../../features/ayuda/ayuda.component';
 import { ExplicameComponent } from '../../features/dashboard/explicame/explicame.component';
 import { RecorridosService } from '../../features/ayuda/recorridos.service';
+import { ReportesBibliotecaComponent } from '../../features/reportes/reportes-biblioteca.component';
 import { RecorridoCapaComponent } from '../../shared/components/layout/recorrido-capa/recorrido-capa.component';
 import { FinancialStats } from '../models';
 import { I18nService } from './i18n.service';
@@ -74,6 +75,25 @@ const OT = {
 } as unknown as WorkOrder;
 
 describe('Cambio de idioma en cada vista', () => {
+  it('Reportes (supervisor): biblioteca con grupos y títulos de los reportes', () => {
+    const { i18n } = preparar('supervisor');
+    const f = TestBed.createComponent(ReportesBibliotecaComponent);
+    ciclo(f, i18n, {
+      es: ['Reportes', 'Desempeño', 'Resumen ejecutivo del periodo', 'Backlog y OT atrasadas', 'Calidad de datos'],
+      en: ['Reports', 'Performance', 'Executive summary of the period', 'Backlog and overdue work orders', 'Data quality'],
+    });
+  });
+
+  it('Reportes (operador): solo «Mi actividad» y la trazabilidad', () => {
+    const { i18n } = preparar('operador');
+    const f = TestBed.createComponent(ReportesBibliotecaComponent);
+    ciclo(f, i18n, {
+      es: ['Mi actividad', 'Trazabilidad de una OT'],
+      en: ['My activity', 'Work order traceability'],
+      noEn: ['Mi actividad'],
+    });
+  });
+
   it('Avisos de falla (supervisor): título, filtros, estado, gravedad y botones', () => {
     const { http, i18n } = preparar('supervisor');
     const f = TestBed.createComponent(Avisos);

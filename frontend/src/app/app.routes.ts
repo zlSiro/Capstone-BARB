@@ -23,6 +23,17 @@ export const routes: Routes = [
         canActivate: [roleGuard('dashboard')],
         loadComponent: () => import('./features/dashboard/dashboard.component').then(m => m.DashboardComponent)
       },
+      // Reportes (HU-26): biblioteca y reporte. Qué reportes ve cada perfil lo decide el catálogo con la matriz de permisos.
+      {
+        path: 'reportes',
+        canActivate: [roleGuard('report')],
+        loadComponent: () => import('./features/reportes/reportes-biblioteca.component').then(m => m.ReportesBibliotecaComponent)
+      },
+      {
+        path: 'reportes/:id',
+        canActivate: [roleGuard('report')],
+        loadComponent: () => import('./features/reportes/reporte.component').then(m => m.ReporteComponent)
+      },
       {
         path: 'work-orders',
         canActivate: [roleGuard('menu')],

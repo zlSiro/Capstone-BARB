@@ -34,6 +34,52 @@ describe('PrivilegiosModalComponent', () => {
     expect(el.textContent).not.toMatch(/privilegios\.[a-z]/);
   });
 
+  it.each([
+    ['operador', ['Mi actividad', 'Trazabilidad de una OT']],
+    ['tecnico', ['Mi actividad', 'Trazabilidad de una OT']],
+    ['supervisor', ['Resumen ejecutivo del periodo', 'Backlog y OT atrasadas', 'Avisos de falla', 'Calidad de datos']],
+    ['engineer', ['Resumen ejecutivo del periodo', 'Máquinas con peor confiabilidad', 'Mezcla de mantenimiento']],
+    ['gerente', ['Resumen ejecutivo del periodo', 'Costos por máquina y desviación', 'Avisos de falla']],
+    ['admin', ['Trazabilidad de una OT', 'Calidad de datos']],
+  ])('%s: lista los reportes que puede extraer', (rol, titulos) => {
+    const { el } = montar(rol);
+    const lista = el.querySelector('[data-testid="privilegios-reportes"]')!;
+    expect(lista).not.toBeNull();
+    for (const t of titulos) expect(lista.textContent, `${rol}: ${t}`).toContain(t);
+    expect(el.textContent).toContain('Reportes que puedes extraer');
+    expect(el.textContent).not.toMatch(/reportes\.r\d+_/);
+  });
+
+  it('cada perfil ve ni más ni menos reportes que su matriz permite', () => {
+    const cuenta: Record<string, number> = { operador: 2, tecnico: 2, supervisor: 8, engineer: 6, gerente: 8, admin: 2 };
+    for (const [rol, n] of Object.entries(cuenta)) {
+      TestBed.resetTestingModule();
+      const { el } = montar(rol);
+      expect(el.querySelectorAll('[data-testid="privilegios-reportes"] li'), rol).toHaveLength(n);
+    }
+  });
+
+  it('cada reporte va solo con su título: sin descripción adicional debajo', () => {
+    const { el } = montar('supervisor');
+    const lista = el.querySelector('[data-testid="privilegios-reportes"]')!;
+    expect(lista.textContent).not.toContain('Las OT abiertas ahora');
+    expect(lista.textContent).not.toContain('Cómo terminan los avisos');
+    for (const li of Array.from(lista.querySelectorAll('li'))) expect(li.children.length).toBe(2); // viñeta + título
+  });
+
+  it('el superusuario no tiene reportes: la sección no aparece', () => {
+    const { el } = montar('super_usuario');
+    expect(el.querySelector('[data-testid="privilegios-reportes-seccion"]')).toBeNull();
+    expect(el.textContent).not.toContain('Reportes que puedes extraer');
+  });
+
+  it('en inglés los reportes se muestran traducidos', () => {
+    const { el } = montar('gerente', 'en');
+    expect(el.textContent).toContain('Reports you can get');
+    expect(el.textContent).toContain('Executive summary of the period');
+    expect(el.textContent).not.toContain('Resumen ejecutivo');
+  });
+
   it('el título nombra el perfil del usuario', () => {
     expect(montar('supervisor').el.querySelector('h2')!.textContent).toContain('Tus privilegios como Supervisor');
   });

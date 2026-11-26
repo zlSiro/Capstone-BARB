@@ -58,17 +58,18 @@ import { RecorridosService } from './recorridos.service';
                     <span class="chip chip-ok" data-testid="tarea-hecha">{{ 'ayuda.hecho' | translate }}</span>
                   } @else {
                     <span class="sr-only">{{ 'ayuda.pendiente' | translate }}</span>
-                    @if (t.def.recorrido; as recorrido) {
-                      <button
-                        type="button"
-                        class="btn-secondary shrink-0"
-                        data-testid="tarea-mostrar"
-                        [attr.aria-label]="'ayuda.mostrarme_aria' | translate: { v0: (claveTarea(t.def.id, 'titulo') | translate) }"
-                        (click)="iniciar(recorrido, $event)">
-                        <app-icon name="play" [size]="16" />
-                        {{ 'ayuda.mostrarme' | translate }}
-                      </button>
-                    }
+                  }
+                  <!-- El recorrido se puede repetir siempre: «Hecho» solo marca el avance, no bloquea la guía. -->
+                  @if (t.def.recorrido; as recorrido) {
+                    <button
+                      type="button"
+                      class="btn-secondary shrink-0"
+                      data-testid="tarea-mostrar"
+                      [attr.aria-label]="(t.hecha ? 'ayuda.repetir_aria' : 'ayuda.mostrarme_aria') | translate: { v0: (claveTarea(t.def.id, 'titulo') | translate) }"
+                      (click)="iniciar(recorrido, $event)">
+                      <app-icon [name]="t.hecha ? 'refrescar' : 'play'" [size]="16" />
+                      {{ (t.hecha ? 'ayuda.repetir' : 'ayuda.mostrarme') | translate }}
+                    </button>
                   }
                 </li>
               }

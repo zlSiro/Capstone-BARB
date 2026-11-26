@@ -5,7 +5,7 @@ export interface NavItem {
   path: string;
   icon: IconName;
   /** Clave de `nav.*` en translations.ts (nombre completo y versión corta para la barra inferior). */
-  label: 'avisos' | 'workOrders' | 'dashboard' | 'topology' | 'chat' | 'documentos' | 'usuarios' | 'empresas' | 'transacciones' | 'ayuda';
+  label: 'avisos' | 'workOrders' | 'dashboard' | 'topology' | 'chat' | 'documentos' | 'usuarios' | 'empresas' | 'transacciones' | 'reportes' | 'ayuda';
   /** Pantalla de la matriz de permisos que habilita el ítem. Sin `ruta`, el ítem se muestra a toda sesión iniciada (p. ej. Ayuda). */
   ruta?: RutaKey;
   /** Orden de prioridad en la barra inferior del móvil (1 = primero). Lo que no cabe va al menú «Más». */
@@ -18,6 +18,7 @@ export const NAV_ITEMS: NavItem[] = [
   { path: '/transacciones', icon: 'registro', label: 'transacciones', ruta: 'transacciones', prioridad: 2 },
   { path: '/transacciones-empresa', icon: 'registro', label: 'transacciones', ruta: 'transacciones_empresa', prioridad: 4 },
   { path: '/dashboard', icon: 'panel', label: 'dashboard', ruta: 'dashboard', prioridad: 3 },
+  { path: '/reportes', icon: 'reportes', label: 'reportes', ruta: 'report', prioridad: 5 },
   { path: '/avisos', icon: 'etiqueta', label: 'avisos', ruta: 'avisos', prioridad: 1 },
   { path: '/work-orders', icon: 'orden', label: 'workOrders', ruta: 'menu', prioridad: 2 },
   { path: '/topology', icon: 'topologia', label: 'topology', ruta: 'topology', prioridad: 4 },

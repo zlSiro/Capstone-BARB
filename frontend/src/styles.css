@@ -423,3 +423,28 @@
     opacity: 1;
   }
 }
+
+/*
+ * Hoja de impresión de los reportes (PDF por «Imprimir»): la página de Reportes marca el <body> con `imprimiendo-reporte`
+ * mientras imprime. Se oculta el menú, la cabecera y los avisos, y se libera la altura fija del layout para que el
+ * contenido fluya en varias páginas. No afecta a ninguna otra impresión.
+ */
+@media print {
+  body.imprimiendo-reporte app-header,
+  body.imprimiendo-reporte app-sidebar,
+  body.imprimiendo-reporte app-bottom-nav,
+  body.imprimiendo-reporte app-toast,
+  body.imprimiendo-reporte app-recorrido-capa,
+  body.imprimiendo-reporte app-privilegios-modal {
+    display: none !important;
+  }
+  body.imprimiendo-reporte app-main-layout div,
+  body.imprimiendo-reporte app-main-layout main {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+  body.imprimiendo-reporte {
+    background: #fff !important;
+  }
+}
