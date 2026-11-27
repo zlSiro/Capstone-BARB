@@ -11,4 +11,4 @@ export * from './stats.model';
 export * from './app-state.model';
 export * from './topology.model';
 export * from './planta.model';
-
+export * from './reporte.model';

@@ -6,6 +6,8 @@ const es = {
     subtitulo: 'Esto es lo que tu perfil puede y no puede hacer en BARB.',
     puedes: 'Lo que puedes hacer',
     no_puedes: 'Lo que no puedes hacer',
+    reportes: 'Reportes que puedes extraer',
+    reportes_nota: 'Los encuentras en la pestaña Reportes: filtra, elige las columnas y descarga en CSV o PDF. La Ayuda te lo muestra paso a paso.',
     boton: 'Comprendo los privilegios de mi perfil de usuario',
     aviso: 'Para comenzar a usar la herramienta debes confirmar que leíste tus privilegios.',
 
@@ -80,6 +82,8 @@ const en: typeof es = {
     subtitulo: 'This is what your profile can and cannot do in BARB.',
     puedes: 'What you can do',
     no_puedes: 'What you cannot do',
+    reportes: 'Reports you can get',
+    reportes_nota: 'You find them in the Reports tab: filter, pick the columns and download as CSV or PDF. Help walks you through it step by step.',
     boton: 'I understand the privileges of my user profile',
     aviso: 'To start using the tool you must confirm that you have read your privileges.',
 

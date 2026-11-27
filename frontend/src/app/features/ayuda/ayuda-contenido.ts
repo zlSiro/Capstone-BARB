@@ -14,6 +14,8 @@ import { AccionKey, RutaKey } from '../../core/permissions/permissions';
 export interface Requisito {
   ruta?: RutaKey;
   accion?: AccionKey;
+  /** El perfil NO debe tener esa ruta (p. ej. «Mi actividad» es para quien no tiene dashboard). */
+  sinRuta?: RutaKey;
 }
 
 export interface PasoDef {
@@ -88,6 +90,28 @@ export const RECORRIDOS: readonly RecorridoDef[] = [
   { id: 'crear_empresa', requiere: { accion: 'gestionar_empresas' }, pantalla: '/empresas', pasos: [{ ruta: '/empresas', objetivo: 'empresas-nueva' }, {}, {}] },
   { id: 'suspender_empresa', requiere: { accion: 'gestionar_empresas' }, pantalla: '/empresas', pasos: [{ ruta: '/empresas', objetivo: 'empresa-estado' }, {}] },
   { id: 'mis_transacciones', requiere: { ruta: 'transacciones' }, pantalla: '/transacciones', pasos: [{ ruta: '/transacciones', objetivo: 'trx-tabla' }] },
+  // --- Reportes: cada guía lleva al reporte que el perfil realmente puede abrir (lo decide la matriz, no una lista de roles) ---
+  { id: 'reportes_inicio', requiere: { ruta: 'report' }, pantalla: '/reportes', pasos: [{ ruta: '/reportes', objetivo: 'reportes-biblioteca' }, { objetivo: 'reportes-biblioteca' }] },
+  {
+    id: 'reporte_resumen',
+    requiere: { ruta: 'dashboard' },
+    pantalla: '/reportes',
+    pasos: [{ ruta: '/reportes/r1', objetivo: 'reporte-filtros' }, { objetivo: 'reporte-filtros' }, { objetivo: 'reporte-exportar' }, { objetivo: 'reporte-cuadratura' }],
+  },
+  {
+    id: 'reporte_costos',
+    requiere: { ruta: 'dashboard', accion: 'ver_kpis_financieros' },
+    pantalla: '/reportes',
+    pasos: [{ ruta: '/reportes/r6', objetivo: 'reporte-filtros' }, { objetivo: 'reporte-tabla' }, { objetivo: 'reporte-exportar' }],
+  },
+  {
+    id: 'reporte_mi_actividad',
+    requiere: { accion: 'reportar_falla', sinRuta: 'dashboard' },
+    pantalla: '/reportes',
+    pasos: [{ ruta: '/reportes/r8', objetivo: 'reporte-filtros' }, { objetivo: 'reporte-tabla' }, { objetivo: 'reporte-exportar' }],
+  },
+  { id: 'reporte_calidad', requiere: { ruta: 'plantas' }, pantalla: '/reportes', pasos: [{ ruta: '/reportes/r10', objetivo: 'reporte-filtros' }, { objetivo: 'reporte-tabla' }] },
+  { id: 'reporte_traza', requiere: { ruta: 'menu' }, pantalla: '/reportes', pasos: [{ ruta: '/reportes/r9', objetivo: 'reporte-buscar' }, { objetivo: 'reporte-exportar' }] },
 ];
 
 export const TAREAS: Readonly<Record<string, TareaDef>> = Object.fromEntries(
@@ -119,6 +143,10 @@ export const TAREAS: Readonly<Record<string, TareaDef>> = Object.fromEntries(
       { id: 'crear_gerente', requiere: { accion: 'gestionar_empresas' }, recorrido: 'crear_empresa' },
       { id: 'suspender', requiere: { accion: 'gestionar_empresas' }, recorrido: 'suspender_empresa' },
       { id: 'mis_transacciones', requiere: { ruta: 'transacciones' }, recorrido: 'mis_transacciones' },
+      { id: 'reporte_resumen', requiere: { ruta: 'dashboard' }, recorrido: 'reporte_resumen' },
+      { id: 'reporte_costos', requiere: { ruta: 'dashboard', accion: 'ver_kpis_financieros' }, recorrido: 'reporte_costos' },
+      { id: 'reporte_mi_actividad', requiere: { accion: 'reportar_falla', sinRuta: 'dashboard' }, recorrido: 'reporte_mi_actividad' },
+      { id: 'reporte_calidad', requiere: { ruta: 'plantas' }, recorrido: 'reporte_calidad' },
     ] satisfies TareaDef[]
   ).map((t) => [t.id, t]),
 );
@@ -131,11 +159,11 @@ export const TAREAS: Readonly<Record<string, TareaDef>> = Object.fromEntries(
  * que mostrar. Cuando exista, se agrega su recorrido y su tarea aquí.
  */
 export const PRIMEROS_PASOS: Readonly<Record<string, readonly string[]>> = {
-  operador: ['privilegios', 'reportar_falla', 'seguir_aviso', 'ver_ot_generada', 'docchat'],
-  tecnico: ['privilegios', 'reportar_falla', 'iniciar_ot', 'enviar_validacion', 'docchat'],
-  supervisor: ['revisar_avisos', 'generar_ot', 'validar_devolver', 'salud'],
-  engineer: ['dash_operativo', 'top5', 'subir_documento', 'reportar_falla', 'docchat'],
-  gerente: ['dashboard_completo', 'costo_maquina', 'crear_administrador', 'bitacora', 'revisar_avisos'],
-  admin: ['crear_usuario_operativo', 'registrar_planta', 'disciplinas', 'subir_documento', 'consultar_ot'],
+  operador: ['privilegios', 'reportar_falla', 'seguir_aviso', 'ver_ot_generada', 'docchat', 'reporte_mi_actividad'],
+  tecnico: ['privilegios', 'reportar_falla', 'iniciar_ot', 'enviar_validacion', 'docchat', 'reporte_mi_actividad'],
+  supervisor: ['revisar_avisos', 'generar_ot', 'validar_devolver', 'salud', 'reporte_resumen'],
+  engineer: ['dash_operativo', 'top5', 'subir_documento', 'reportar_falla', 'docchat', 'reporte_resumen'],
+  gerente: ['dashboard_completo', 'costo_maquina', 'crear_administrador', 'bitacora', 'revisar_avisos', 'reporte_resumen', 'reporte_costos'],
+  admin: ['crear_usuario_operativo', 'registrar_planta', 'disciplinas', 'subir_documento', 'consultar_ot', 'reporte_calidad'],
   super_usuario: ['crear_empresa', 'crear_gerente', 'suspender', 'mis_transacciones'],
 };

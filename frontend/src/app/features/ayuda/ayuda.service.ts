@@ -30,7 +30,11 @@ export class AyudaService {
   cumple(req: Requisito | undefined): boolean {
     this.permisos.role();
     if (!req) return true;
-    return (!req.ruta || this.permisos.canAccess(req.ruta)) && (!req.accion || this.permisos.canPerform(req.accion));
+    return (
+      (!req.ruta || this.permisos.canAccess(req.ruta)) &&
+      (!req.accion || this.permisos.canPerform(req.accion)) &&
+      (!req.sinRuta || !this.permisos.canAccess(req.sinRuta))
+    );
   }
 
   /** Recorridos que el perfil puede hacer. */
